@@ -257,13 +257,13 @@ const ShaderHub = {
 
             for( const msg of info.messages )
             {
-                LX.toast( `❌ ${msg.type}: ${msg.lineNum}:${msg.linePos}`, msg.message, { timeout: -1 } );
+                const fragLineNumber = msg.lineNum - ( shaderNumLines - fragShaderNumLines );
+
+                LX.toast( `❌ ${ LX.toTitleCase( msg.type ) }: ${ fragLineNumber }:${ msg.linePos }`, msg.message, { timeout: -1 } );
 
                 if( msg.type === "error" )
                 {
                     hasError = true;
-
-                    const fragLineNumber = msg.lineNum - ( shaderNumLines - fragShaderNumLines );
                     this.editor.code.childNodes[ fragLineNumber - 1 ]?.classList.add( "removed" );
                 }
             }
