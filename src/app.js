@@ -251,6 +251,10 @@ const ShaderHub = {
         if( info.messages.length > 0 )
         {
             let hasError = false;
+
+            const shaderNumLines = code.split( '\n' ).length;
+            const fragShaderNumLines = this.editor.code.lines.length;
+
             for( const msg of info.messages )
             {
                 LX.toast( `❌ ${msg.type}: ${msg.lineNum}:${msg.linePos}`, msg.message, { timeout: -1 } );
@@ -258,8 +262,12 @@ const ShaderHub = {
                 if( msg.type === "error" )
                 {
                     hasError = true;
+
+                    const fragLineNumber = msg.lineNum - ( shaderNumLines - fragShaderNumLines );
+                    this.editor.code.childNodes[ fragLineNumber - 1 ]?.classList.add( "removed" );
                 }
             }
+
             if( hasError )
             {
                 return { valid: false, messages: info.messages };

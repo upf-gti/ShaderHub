@@ -5,7 +5,10 @@
     <title>ShaderHub</title>
     <link rel="stylesheet" href="https://cdn.skypack.dev/lexgui/build/lexgui.css">
     <style>
-      .lextoast .lextoastcontent .desc {
+      .notifications ol .lextoast .lextoastcontent .desc {
+        transition: all 0.5s cubic-bezier(.42,.97,.52,1.19);
+      }
+      .notifications ol.list .lextoast .lextoastcontent .desc {
         word-wrap: break-word;
         white-space: normal;
       }
