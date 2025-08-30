@@ -65,11 +65,11 @@ const ShaderHub = {
             }
         ]);
 
-        menubar.setButtonImage("ShaderHub", `../images/icon_${ starterTheme }.png`, null, { float: "left" } );
+        menubar.setButtonImage("ShaderHub", `images/icon_${ starterTheme }.png`, null, { float: "left" } );
         menubar.setButtonIcon("Github", "Github@solid", () => { window.open("https://github.com/upf-gti/ShaderHub") } );
 
         LX.addSignal( "@on_new_color_scheme", ( el, value ) => {
-            menubar.setButtonImage("ShaderHub", `../images/icon_${ value }.png`, null, { float: "left" } );
+            menubar.setButtonImage("ShaderHub", `images/icon_${ value }.png`, null, { float: "left" } );
         } );
 
         var [ leftArea, rightArea ] = area.split({ sizes: ["50%", "50%"] });
