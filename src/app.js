@@ -13,13 +13,14 @@ const UNIFORM_CHANNEL_3 = 3;
 
 class Shader {
 
-    constructor( shaderName, shaderFiles ) {
+    constructor( shaderName, shaderFiles, metadata = {} ) {
 
-        this.shaderName = shaderName;
-        this.shaderFiles = shaderFiles;
+        this.name = shaderName;
+        this.files = shaderFiles;
         this.channelsUsed = [];
 
-        this.author = "anonymous";
+        this.author = metadata.author ?? "anonymous";
+        this.description = metadata.description ?? "";
         this.lastUpdatedDate = "";
     }
 }
@@ -29,6 +30,10 @@ const ShaderHub = {
     loadedFiles: {},
     loadedImages: {},
     uniformChannels: [],
+
+    lastTime: 0,
+    elapsedTime: 0,
+    timePaused: false,
 
     async initUI() {
 
@@ -63,16 +68,23 @@ const ShaderHub = {
         menubar.setButtonImage("ShaderHub", `../images/icon_${ starterTheme }.png`, null, { float: "left" } );
         menubar.setButtonIcon("Github", "Github@solid", () => { window.open("https://github.com/upf-gti/ShaderHub") } );
 
-        var [ leftArea, rightArea ] = area.split({ sizes: ["55%", "45%"] });
+        LX.addSignal( "@on_new_color_scheme", ( el, value ) => {
+            menubar.setButtonImage("ShaderHub", `../images/icon_${ value }.png`, null, { float: "left" } );
+        } );
+
+        var [ leftArea, rightArea ] = area.split({ sizes: ["50%", "50%"] });
+        rightArea.root.className += " p-4";
+        leftArea.root.className += " p-4";
         leftArea.onresize = function (bounding) {
             
         };
 
         var [ codeArea, shaderSettingsArea ] = rightArea.split({ type: "vertical", sizes: ["80%", null], resize: false });
+        codeArea.root.className += " rounded-lg overflow-hidden";
 
         // Add input channels UI
         {
-            this.channelsContainer = LX.makeContainer( ["100%", "100%"], "p-2 flex flex-row gap-2 items-center justify-center bg-primary", "", shaderSettingsArea );
+            this.channelsContainer = LX.makeContainer( ["100%", "100%"], "flex flex-row gap-2 items-center justify-center bg-primary", "", shaderSettingsArea );
             for( let i = 0; i < UNIFORM_CHANNELS_COUNT; i++ )
             {
                 const channelContainer = LX.makeContainer( [`${ 100 / UNIFORM_CHANNELS_COUNT }%`, "80%"], "relative rounded-lg bg-secondary hover:bg-tertiary cursor-pointer", "", this.channelsContainer );
@@ -117,15 +129,23 @@ const ShaderHub = {
             }
         }
 
-        this.shader = new Shader( "Example", [
+        this.shader = new Shader( "Example Shader", [
             // "shaders/common.wgsl",
             "shaders/dynamic_metaballs.wgsl"
-        ] );
+        ], {
+            author: "Sujit Kumar",
+            description: `A shader that renders two animated metaballs moving across the screen.
+The blobs merge and separate smoothly using distance fields and a smoothstep threshold.
+Created by Sujit Kumar (2025).
+<a href="https://www.shadertoy.com/view/wfjyDz">https://www.shadertoy.com/view/wfjyDz</a>`
+        } );
+
+        document.title = `${ this.shader.name } - ShaderHub`;
 
         this.editor = new LX.CodeEditor( codeArea, {
             allowAddScripts: false,
             fileExplorer: false,
-            files: this.shader.shaderFiles,
+            files: this.shader.files,
             statusShowEditorIndentation: false,
             statusShowEditorLanguage: false,
             statusShowEditorFilename: false,
@@ -137,7 +157,7 @@ const ShaderHub = {
             },
             onFilesLoaded: async () => {
 
-                for( const f of this.shader.shaderFiles )
+                for( const f of this.shader.files )
                 {
                     const name = f.substring( f.lastIndexOf( "/" ) + 1 );
                     this.loadedFiles[ f ] = this.editor.loadedTabs[ name ].lines.join( "\n" );
@@ -147,9 +167,37 @@ const ShaderHub = {
             }
         });
 
+        var [ graphicsArea, shaderDataArea ] = leftArea.split({ type: "vertical", sizes: ["70%", null], resize: false });
+
+        // Add Shader data
+        {
+            shaderDataArea.root.className += " pt-4 items-center justify-center bg-primary";
+            const shaderDataContainer = LX.makeContainer( [`100%`, "100%"], "p-6 flex flex-col gap-2 rounded-lg bg-secondary", "", shaderDataArea );
+            const shaderName = LX.makeContainer( [`auto`, "auto"], "fg-primary text-xxl font-semibold", this.shader.name, shaderDataContainer );
+            const shaderAuthor = LX.makeContainer( [`auto`, "auto"], "fg-primary text-lg", this.shader.author, shaderDataContainer );
+            // const shaderDate = LX.makeContainer( [`auto`, "auto"], "fg-primary text-lg", this.shader.lastUpdatedDate, shaderDataContainer );
+            const shaderDesc = LX.makeContainer( [`auto`, "auto"], "fg-primary mt-4 text-lg", this.shader.description, shaderDataContainer );
+
+            // Shaderhub footer
+            // const footer = LX.makeContainer( [`auto`, "auto"], "fg-primary text-lg mt-auto ml-auto mr-auto flex flex-row gap-2", LX.makeIcon("Github@solid", {svgClass:"lg"} ).innerHTML + "Code on Github", shaderDataContainer );
+        }
+
+        var [ canvasArea, canvasControlsArea ] = graphicsArea.split({ type: "vertical", sizes: ["calc(100% - 48px)", null], resize: false });
+
+        // Add shader controls data
+        {
+            canvasControlsArea.root.className += " px-2 rounded-b-lg bg-secondary";
+            const panel = canvasControlsArea.addPanel();
+            panel.sameLine();
+            panel.addButton( null, "ResetTime", () => { this.elapsedTime = 0 }, { icon: "SkipBack", title: "Reset time", tooltip: true } );
+            panel.addButton( null, "PauseTime", () => { this.timePaused = !this.timePaused }, { icon: "Pause", title: "Pause/Resume", tooltip: true, swap: "Play" } );
+            panel.addLabel( "0.0", { signal: "@elapsed-time", xclassName: "ml-auto", xinputClass: "text-end" } );
+            panel.endLine( "items-center h-full" );
+        }
+
         const canvas = document.createElement("canvas");
-        canvas.className = "w-full h-full";
-        leftArea.attach( canvas );
+        canvas.className = "w-full h-full rounded-t-lg";
+        canvasArea.attach( canvas );
 
         canvas.addEventListener("dragover", (e) => {
             e.preventDefault();
@@ -236,11 +284,23 @@ const ShaderHub = {
 
         const frame = () => {
 
-            this.device.queue.writeBuffer(
-                this.timeBuffer,
-                0,
-                new Float32Array([ LX.getTime() / 1000.0 ])
-            );
+            const now = LX.getTime();
+            const dt = now - this.lastTime;
+
+            if( !this.timePaused )
+            {
+                this.elapsedTime += ( dt / 1000 );
+
+                this.device.queue.writeBuffer(
+                    this.timeBuffer,
+                    0,
+                    new Float32Array([ this.elapsedTime ])
+                );
+
+                LX.emit( "@elapsed-time", `${ this.elapsedTime.toFixed( 2 ) }s` );
+            }
+
+            this.lastTime = now;
 
             if( this.fullscreenQuadPipeline )
             {
