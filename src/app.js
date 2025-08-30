@@ -4,34 +4,123 @@ import 'lexgui/extensions/codeeditor.js';
 const WEBGPU_OK     = 0;
 const WEBGPU_ERROR  = 1;
 
+const UNIFORM_CHANNELS_COUNT = 4;
+
+const UNIFORM_CHANNEL_0 = 0;
+const UNIFORM_CHANNEL_1 = 1;
+const UNIFORM_CHANNEL_2 = 2;
+const UNIFORM_CHANNEL_3 = 3;
+
 const ShaderHub = {
 
     loadedFiles: {},
     loadedImages: {},
-    lastLoadedImage: null,
+    uniformChannels: [],
 
     async initUI() {
 
         let area = await LX.init();
+
+        const starterTheme = LX.getTheme();
+        const menubar = area.addMenubar([
+            {
+                name: "New", callback: () => {}
+            },
+            {
+                name: "Browse", callback: () => {}
+            },
+        ]);
+
+        const searchButton = new LX.Button(null, 
+            `<span class="px-2 mr-auto">Search shaders...</span>`,
+            () => { },
+            { width: "256px", className: "right", buttonClass: "border fg-tertiary bg-secondary" }
+        );
+        menubar.root.appendChild( searchButton.root );
+
+        menubar.addButtons([
+            {
+                title: "Switch Theme",
+                icon: starterTheme == "dark" ? "Moon" : "Sun",
+                swap: starterTheme == "dark" ? "Sun" : "Moon",
+                callback: (value, event) => { LX.switchTheme() }
+            }
+        ]);
+
+        menubar.setButtonImage("ShaderHub", `../images/icon_${ starterTheme }.png`, null, { float: "left" } );
+        menubar.setButtonIcon("Github", "Github@solid", () => { window.open("https://github.com/upf-gti/ShaderHub") } );
 
         var [ leftArea, rightArea ] = area.split({ sizes: ["55%", "45%"] });
         leftArea.onresize = function (bounding) {
             
         };
 
+        var [ codeArea, shaderSettingsArea ] = rightArea.split({ type: "vertical", sizes: ["80%", null], resize: false });
+
+        // Add input channels UI
+        {
+            this.channelsContainer = LX.makeContainer( ["100%", "100%"], "p-2 flex flex-row gap-2 items-center justify-center bg-primary", "", shaderSettingsArea );
+            for( let i = 0; i < UNIFORM_CHANNELS_COUNT; i++ )
+            {
+                const channelContainer = LX.makeContainer( [`${ 100 / UNIFORM_CHANNELS_COUNT }%`, "80%"], "relative rounded-lg bg-secondary hover:bg-tertiary cursor-pointer", "", this.channelsContainer );
+                const channelImage = LX.makeElement( "img", "rounded-lg bg-secondary hover:bg-tertiary w-full h-full border-none", "", channelContainer );
+                channelImage.src = "data:image/gif;base64,R0lGODlhAQABAPcAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACH5BAEAAP8ALAAAAAABAAEAAAgEAP8FBAA7";
+                const channelTitle = LX.makeContainer( ["100%", "auto"], "p-2 absolute text-md bottom-0 channel-title pointer-events-none", `iChannel${ i }`, channelContainer );
+                channelContainer.addEventListener( "click", ( e ) => {
+                    const input = document.createElement('input');
+                    input.type = 'file';
+                    document.body.appendChild( input );
+                    input.click();
+                    input.addEventListener('change', async ( e ) => {
+                        if( e.target.files[ 0 ] )
+                        {
+                            await this.loadChannelFromFile( e.target.files[ 0 ], i );
+                        }
+                        input.remove();
+                    });
+                } );
+                channelContainer.addEventListener("dragover", (e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "copy"; // shows a copy cursor
+                });
+
+                channelContainer.addEventListener("drop", async ( e ) => {
+                    e.preventDefault();
+                    const file = e.dataTransfer.files[0];
+                    if (!file) return;
+                    if (file.type.startsWith("image/")) {
+                        await this.loadChannelFromFile( file, i );
+                    } else {
+                        console.warn("Dropped file is not an image:", file.type);
+                    }
+                });
+
+                channelContainer.addEventListener("contextmenu", ( e ) => {
+                    e.preventDefault();
+                    new LX.DropdownMenu( e.target, [
+                        { name: "Remove", className: "fg-error", callback: async () => await this.removeUniformChannel( i ) },
+                    ], { side: "top", align: "start" });
+                });
+            }
+        }
+
         const files = [
-            "shaders/fullscreenTexturedQuad.vert.wgsl",
-            "shaders/frag.wgsl"
+            "shaders/fullscreenTexturedQuad.template.wgsl",
+            "shaders/image.wgsl"
         ]
 
-        this.editor = new LX.CodeEditor( rightArea, {
+        this.editor = new LX.CodeEditor( codeArea, {
             allowAddScripts: false,
             fileExplorer: false,
             files: files.slice( 1 ),
+            statusShowEditorIndentation: false,
+            statusShowEditorLanguage: false,
+            statusShowEditorFilename: false,
             onsave: async ( code ) => {
+                this.editor.processLines();
                 const currentTab = `shaders/${ this.editor.getSelectedTabName() }`;
                 this.loadedFiles[ currentTab ] = code;
-                await this.createRenderPipeline();
+                await this.createRenderPipeline( true, true );
             }
         });
 
@@ -50,8 +139,8 @@ const ShaderHub = {
             const file = e.dataTransfer.files[0];
             if (!file) return;
             if (file.type.startsWith("image/")) {
-                const imageTexture = await this.createTexture( file );
-                await this.createRenderBindGroup( imageTexture );
+                await this.createTexture( file, UNIFORM_CHANNEL_0 );
+                await this.createRenderBindGroup();
             } else {
                 console.warn("Dropped file is not an image:", file.type);
             }
@@ -96,20 +185,46 @@ const ShaderHub = {
             format: this.presentationFormat,
         });
 
-        await this.createRenderPipeline( false );
+         // Input Parameters
+        {
+            // this.parametersBuffer = this.device.createBuffer({
+            //     size: 4,
+            //     usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
+            // });
+
+            this.timeBuffer = this.device.createBuffer({
+                size: 4,
+                usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
+            });
+        }
 
         // Load texture
+        {
+            await this.createTexture( "images/kimetsu.png", UNIFORM_CHANNEL_0 );
+        }
+
+        // Create render pipeline based on editor shaders
+        {
+            await this.createRenderPipeline( false, true );
+        }
+
+        // Create bind group
         {
             this.sampler = this.device.createSampler({
                 magFilter: 'linear',
                 minFilter: 'linear',
             });
 
-            const imageTexture = await this.createTexture( "images/kimetsu.png" );
-            await this.createRenderBindGroup( imageTexture );
+            await this.createRenderBindGroup();
         }
 
         const frame = () => {
+
+            this.device.queue.writeBuffer(
+                this.timeBuffer,
+                0,
+                new Float32Array([ LX.getTime() ])
+            );
 
             if( this.fullscreenQuadPipeline )
             {
@@ -147,14 +262,38 @@ const ShaderHub = {
         requestAnimationFrame(frame);
     },
 
-    async createRenderPipeline( updateBindGroup = true ) {
+    async createRenderPipeline( updateBindGroup = true, showFeedback ) {
 
-        const shadersCode = [
-            this.loadedFiles[ "shaders/fullscreenTexturedQuad.vert.wgsl" ],
-            this.loadedFiles[ "shaders/frag.wgsl" ]
-        ].join( '\n\n' );
+        const templateCodeLines = this.loadedFiles[ "shaders/fullscreenTexturedQuad.template.wgsl" ].replaceAll( '\r', '' ).split( "\n" );
 
-        const result = await this.validateShader( shadersCode );
+        // Process texture bindings
+        {
+            const textureBindingsIndex = templateCodeLines.indexOf( "$texture_bindings" );
+            console.assert( textureBindingsIndex > -1 );
+            templateCodeLines.splice( textureBindingsIndex, 1, ...[
+                `@group(0) @binding(1) var texSampler : sampler;`,
+                ...this.uniformChannels.filter( u => u !== undefined ).map( ( u, index ) => `@group(0) @binding(${ 2 + index }) var iChannel${ index } : texture_2d<f32>;` )
+            ] );
+        }
+
+        // Process texture dummies so using it isn't mandatory
+        {
+            const textureDummiesIndex = templateCodeLines.indexOf( "$texture_dummies" );
+            console.assert( textureDummiesIndex > -1 );
+            templateCodeLines.splice( textureDummiesIndex, 1, ...[
+                ...this.uniformChannels.filter( u => u !== undefined ).map( ( u, index ) => `    let channel${ index }Dummy: vec4f = textureSample(iChannel${ index }, texSampler, fragUV);` )
+            ] );
+        }
+
+        // Add main image
+        {
+            const mainImageIndex = templateCodeLines.indexOf( "$main_image" );
+            console.assert( mainImageIndex > -1 );
+            const mainImageLines = this.loadedFiles[ "shaders/image.wgsl" ].replaceAll( '\r', '' ).split( "\n" );
+            templateCodeLines.splice( mainImageIndex, 1, ...mainImageLines );
+        }
+
+        const result = await this.validateShader( templateCodeLines.join( "\n" ), showFeedback );
         if( !result.valid )
         {
             return;
@@ -184,34 +323,35 @@ const ShaderHub = {
         }
     },
 
-    async createRenderBindGroup( imageTexture ) {
+    async createRenderBindGroup() {
 
         if( !this.fullscreenQuadPipeline )
         {
             return;
         }
 
-        if( !imageTexture )
+        const entries = [
+            {
+                binding: 0,
+                resource: {
+                    buffer: this.timeBuffer,
+                }
+            }
+        ]
+
+        if( this.uniformChannels.length )
         {
-            imageTexture = this.lastLoadedImage;
+            entries.push( { binding: 1, resource: this.sampler } );
+            entries.push( ...this.uniformChannels.filter( u => u !== undefined ).map( ( u, index ) => { return { binding: 2 + index, resource: u.createView() } } ) );
         }
 
         this.renderBindGroup = this.device.createBindGroup({
             layout: this.fullscreenQuadPipeline.getBindGroupLayout( 0 ),
-            entries: [
-                {
-                    binding: 0,
-                    resource: this.sampler,
-                },
-                {
-                    binding: 1,
-                    resource: imageTexture.createView()
-                }
-            ],
+            entries
         });
     },
 
-    async createTexture( imageData ) {
+    async createTexture( imageData, channel ) {
 
         const isFile = ( imageData.constructor === File );
         const data = isFile ? imageData : await this.requestFile( imageData );
@@ -234,12 +374,29 @@ const ShaderHub = {
         );
 
         this.loadedImages[ path ] = imageTexture;
-        this.lastLoadedImage = imageTexture;
+
+        if( channel !== undefined )
+        {
+            this.uniformChannels[ channel ] = imageTexture;
+
+            if( isFile )
+            {
+                var reader = new FileReader();
+                reader.onloadend = () => {
+                    this.channelsContainer.childNodes[ channel ].querySelector( "img" ).src = reader.result;
+                }
+                reader.readAsDataURL( data );
+            }
+            else
+            {
+                this.channelsContainer.childNodes[ channel ].querySelector( "img" ).src = path;
+            }
+        }
 
         return imageTexture;
     },
 
-    async validateShader( code ) {
+    async validateShader( code, showFeedback ) {
 
         // Close all toasts
         document.querySelectorAll( ".lextoast" ).forEach( t => t.close() );
@@ -252,19 +409,24 @@ const ShaderHub = {
         {
             let hasError = false;
 
-            const shaderNumLines = code.split( '\n' ).length;
-            const fragShaderNumLines = this.editor.code.lines.length;
+            const codeLines = code.split( '\n' );
+            const mainImageLines = this.loadedFiles[ "shaders/image.wgsl" ].replaceAll( '\r', '' ).split( "\n" );
+            const mainImageLineOffset = codeLines.indexOf( mainImageLines[ 0 ] );
+            console.assert( mainImageLineOffset > 0 );
 
             for( const msg of info.messages )
             {
-                const fragLineNumber = msg.lineNum - ( shaderNumLines - fragShaderNumLines );
+                const fragLineNumber = msg.lineNum - ( mainImageLineOffset );
 
-                LX.toast( `❌ ${ LX.toTitleCase( msg.type ) }: ${ fragLineNumber }:${ msg.linePos }`, msg.message, { timeout: -1 } );
+                if( showFeedback )
+                {
+                    LX.toast( `❌ ${ LX.toTitleCase( msg.type ) }: ${ fragLineNumber }:${ msg.linePos }`, msg.message, { timeout: -1 } );
+                    this.editor.code.childNodes[ fragLineNumber - 1 ]?.classList.add( msg.type === "error" ? "removed" : "debug");
+                }
 
                 if( msg.type === "error" )
                 {
                     hasError = true;
-                    this.editor.code.childNodes[ fragLineNumber - 1 ]?.classList.add( "removed" );
                 }
             }
 
@@ -274,9 +436,40 @@ const ShaderHub = {
             }
         }
 
-        LX.toast( `✅ No errors`, "Shader compiled successfully!" );
+        if( showFeedback )
+        {
+            LX.toast( `✅ No errors`, "Shader compiled successfully!" );
+        }
 
         return { valid: true, module };
+    },
+
+    async loadChannelFromFile( file, channel ) {
+
+        const mustUpdateRenderPipeline = ( this.uniformChannels[ channel ] === undefined );
+
+        await this.createTexture( file, channel );
+
+        if( mustUpdateRenderPipeline )
+        {
+            // This already recreates bind group
+            await this.createRenderPipeline();
+        }
+        else
+        {
+            await this.createRenderBindGroup();
+        }
+    },
+
+    async removeUniformChannel( channel ) {
+
+        this.uniformChannels[ channel ] = undefined;
+
+        // Reset image
+        this.channelsContainer.childNodes[ channel ].querySelector( "img" ).src = "data:image/gif;base64,R0lGODlhAQABAPcAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACH5BAEAAP8ALAAAAAABAAEAAAgEAP8FBAA7";
+
+        // Recreate everything
+        await this.createRenderPipeline( true, true );
     },
 
     quitIfWebGPUNotAvailable( adapter, device ) {
