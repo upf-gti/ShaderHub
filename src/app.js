@@ -11,6 +11,19 @@ const UNIFORM_CHANNEL_1 = 1;
 const UNIFORM_CHANNEL_2 = 2;
 const UNIFORM_CHANNEL_3 = 3;
 
+class Shader {
+
+    constructor( shaderName, shaderFiles ) {
+
+        this.shaderName = shaderName;
+        this.shaderFiles = shaderFiles;
+        this.channelsUsed = [];
+
+        this.author = "anonymous";
+        this.lastUpdatedDate = "";
+    }
+}
+
 const ShaderHub = {
 
     loadedFiles: {},
@@ -104,15 +117,15 @@ const ShaderHub = {
             }
         }
 
-        const files = [
-            "shaders/fullscreenTexturedQuad.template.wgsl",
-            "shaders/image.wgsl"
-        ]
+        this.shader = new Shader( "Example", [
+            // "shaders/common.wgsl",
+            "shaders/dynamic_metaballs.wgsl"
+        ] );
 
         this.editor = new LX.CodeEditor( codeArea, {
             allowAddScripts: false,
             fileExplorer: false,
-            files: files.slice( 1 ),
+            files: this.shader.shaderFiles,
             statusShowEditorIndentation: false,
             statusShowEditorLanguage: false,
             statusShowEditorFilename: false,
@@ -121,6 +134,16 @@ const ShaderHub = {
                 const currentTab = `shaders/${ this.editor.getSelectedTabName() }`;
                 this.loadedFiles[ currentTab ] = code;
                 await this.createRenderPipeline( true, true );
+            },
+            onFilesLoaded: async () => {
+
+                for( const f of this.shader.shaderFiles )
+                {
+                    const name = f.substring( f.lastIndexOf( "/" ) + 1 );
+                    this.loadedFiles[ f ] = this.editor.loadedTabs[ name ].lines.join( "\n" );
+                }
+
+                editor.processLines();
             }
         });
 
@@ -146,18 +169,11 @@ const ShaderHub = {
             }
         });
 
-        let loaded = 0;
-        for( const f of files )
-        {
-            LX.requestText( f, async (code) => {
-                this.loadedFiles[ f ] = code;
-                loaded++;
-                if( loaded == files.length )
-                {
-                    await this.initGraphics(canvas);
-                }
-            });
-        }
+        const templateShaderUrl = "shaders/fullscreenTexturedQuad.template.wgsl";
+        LX.requestText( templateShaderUrl, async (code) => {
+            this.loadedFiles[ templateShaderUrl ] = code;
+            await this.initGraphics(canvas);
+        });
     },
 
     async initGraphics( canvas ) {
@@ -223,7 +239,7 @@ const ShaderHub = {
             this.device.queue.writeBuffer(
                 this.timeBuffer,
                 0,
-                new Float32Array([ LX.getTime() ])
+                new Float32Array([ LX.getTime() / 1000.0 ])
             );
 
             if( this.fullscreenQuadPipeline )
@@ -270,10 +286,11 @@ const ShaderHub = {
         {
             const textureBindingsIndex = templateCodeLines.indexOf( "$texture_bindings" );
             console.assert( textureBindingsIndex > -1 );
-            templateCodeLines.splice( textureBindingsIndex, 1, ...[
-                `@group(0) @binding(1) var texSampler : sampler;`,
-                ...this.uniformChannels.filter( u => u !== undefined ).map( ( u, index ) => `@group(0) @binding(${ 2 + index }) var iChannel${ index } : texture_2d<f32>;` )
-            ] );
+            const bindings = this.uniformChannels.map( ( u, index ) => {
+                if( !u ) return;
+                return `@group(0) @binding(${ 2 + index }) var iChannel${ index } : texture_2d<f32>;`;
+            } );
+            templateCodeLines.splice( textureBindingsIndex, 1, ...(bindings.length ? [ `@group(0) @binding(1) var texSampler : sampler;`, ...bindings.filter( u => u !== undefined ) ] : []) );
         }
 
         // Process texture dummies so using it isn't mandatory
@@ -281,7 +298,10 @@ const ShaderHub = {
             const textureDummiesIndex = templateCodeLines.indexOf( "$texture_dummies" );
             console.assert( textureDummiesIndex > -1 );
             templateCodeLines.splice( textureDummiesIndex, 1, ...[
-                ...this.uniformChannels.filter( u => u !== undefined ).map( ( u, index ) => `    let channel${ index }Dummy: vec4f = textureSample(iChannel${ index }, texSampler, fragUV);` )
+                ...this.uniformChannels.map( ( u, index ) => {
+                    if( !u ) return;
+                    return `    let channel${ index }Dummy: vec4f = textureSample(iChannel${ index }, texSampler, fragUV);`;
+                } ).filter( u => u !== undefined )
             ] );
         }
 
@@ -289,7 +309,8 @@ const ShaderHub = {
         {
             const mainImageIndex = templateCodeLines.indexOf( "$main_image" );
             console.assert( mainImageIndex > -1 );
-            const mainImageLines = this.loadedFiles[ "shaders/image.wgsl" ].replaceAll( '\r', '' ).split( "\n" );
+            const currentTab = `shaders/${ this.editor.getSelectedTabName() }`;
+            const mainImageLines = this.loadedFiles[ currentTab ].replaceAll( '\r', '' ).split( "\n" );
             templateCodeLines.splice( mainImageIndex, 1, ...mainImageLines );
         }
 
@@ -339,10 +360,15 @@ const ShaderHub = {
             }
         ]
 
-        if( this.uniformChannels.length )
+        const bindings = this.uniformChannels.filter( u => u !== undefined );
+
+        if( bindings.length )
         {
             entries.push( { binding: 1, resource: this.sampler } );
-            entries.push( ...this.uniformChannels.filter( u => u !== undefined ).map( ( u, index ) => { return { binding: 2 + index, resource: u.createView() } } ) );
+            entries.push( ...this.uniformChannels.map( ( u, index ) => {
+                if( !u ) return;
+                return { binding: 2 + index, resource: u.createView() }
+            } ).filter( u => u !== undefined ) );
         }
 
         this.renderBindGroup = this.device.createBindGroup({
@@ -410,7 +436,8 @@ const ShaderHub = {
             let hasError = false;
 
             const codeLines = code.split( '\n' );
-            const mainImageLines = this.loadedFiles[ "shaders/image.wgsl" ].replaceAll( '\r', '' ).split( "\n" );
+            const currentTab = `shaders/${ this.editor.getSelectedTabName() }`;
+            const mainImageLines = this.loadedFiles[ currentTab ].replaceAll( '\r', '' ).split( "\n" );
             const mainImageLineOffset = codeLines.indexOf( mainImageLines[ 0 ] );
             console.assert( mainImageLineOffset > 0 );
 
@@ -420,7 +447,7 @@ const ShaderHub = {
 
                 if( showFeedback )
                 {
-                    LX.toast( `❌ ${ LX.toTitleCase( msg.type ) }: ${ fragLineNumber }:${ msg.linePos }`, msg.message, { timeout: -1 } );
+                    LX.toast( `❌ ${ LX.toTitleCase( msg.type ) }: ${ fragLineNumber }:${ msg.linePos }`, msg.message, { timeout: -1, position: "top-right" } );
                     this.editor.code.childNodes[ fragLineNumber - 1 ]?.classList.add( msg.type === "error" ? "removed" : "debug");
                 }
 
@@ -438,7 +465,7 @@ const ShaderHub = {
 
         if( showFeedback )
         {
-            LX.toast( `✅ No errors`, "Shader compiled successfully!" );
+            LX.toast( `✅ No errors`, "Shader compiled successfully!", { position: "top-right" } );
         }
 
         return { valid: true, module };
