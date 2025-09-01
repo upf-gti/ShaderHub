@@ -39,8 +39,8 @@ fn mainImage(fragUV : vec2f) -> vec4f {
     let ro : vec3f = vec3f(0, 0, 1);                    // ray origin
 
     let fragCoord : vec2f = fragUV * iResolution;
-    let q : vec2f = (fragCoord.xy - .5 * iResolution.xy ) / -iResolution.y;
-    let rd : vec3f = normalize(vec3f(q, 0.) - ro);             // ray direction for fragCoord.xy
+    let q : vec2f = (fragCoord.xy - 0.5 * iResolution.xy ) / -iResolution.y;
+    let rd : vec3f = normalize(vec3f(q, 0.0) - ro);             // ray direction for fragCoord.xy
 
     // March the distance field until a surface is hit.
     var h : f32;
@@ -60,7 +60,7 @@ fn mainImage(fragUV : vec2f) -> vec4f {
         
         // Calculate diffuse lighting by taking the dot product of 
         // the light direction (light-p) and the normal.
-        var dif : f32 = clamp(dot(normal, normalize(light - p)), 0., 1.);
+        var dif : f32 = clamp(dot(normal, normalize(light - p)), 0.0, 1.);
 		
         // Multiply by light intensity (5) and divide by the square
         // of the distance to the light.

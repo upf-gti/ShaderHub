@@ -45,6 +45,17 @@
         "description": "Please have a look at the <a href='https://www.shadertoy.com/view/4dSfRc'>tutorial</a>.<a href='https://www.shadertoy.com/view/4dSBz3'>https://www.shadertoy.com/view/4dSBz3</a>",
         "hasPreview": true
     },
+     {
+        "name": "Waves",
+        "uid": "8085-b85e-22d5",
+        "author": "ShaderHub",
+        "files": [
+            "shaders/waves.wgsl"
+        ],
+        "channels": [],
+        "description": "",
+        "hasPreview": true
+    },
     {
         "name": "New Shader",
         "uid": "b79a-fa8f-012c",
