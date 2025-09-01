@@ -456,7 +456,7 @@ const ShaderHub = {
                 if( !u ) return;
                 return `@group(0) @binding(${ 3 + index }) var iChannel${ index } : texture_2d<f32>;`;
             } );
-            templateCodeLines.splice( textureBindingsIndex, 1, ...(bindings.length ? [ `@group(0) @binding(1) var texSampler : sampler;`, ...bindings.filter( u => u !== undefined ) ] : []) );
+            templateCodeLines.splice( textureBindingsIndex, 1, ...(bindings.length ? [ `@group(0) @binding(2) var texSampler : sampler;`, ...bindings.filter( u => u !== undefined ) ] : []) );
         }
 
         // Process texture dummies so using it isn't mandatory
