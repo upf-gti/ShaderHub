@@ -233,6 +233,14 @@ const ShaderHub = {
                 }
 
                 editor.processLines();
+
+                const templateShaderUrl = "shaders/fullscreenTexturedQuad.template.wgsl";
+                LX.requestText( templateShaderUrl, async (code) => {
+
+                    this.loadedFiles[ templateShaderUrl ] = code;
+
+                    await this.initGraphics( canvas );
+                });
             }
         });
 
@@ -281,14 +289,6 @@ const ShaderHub = {
             } else {
                 console.warn("Dropped file is not an image:", file.type);
             }
-        });
-
-        const templateShaderUrl = "shaders/fullscreenTexturedQuad.template.wgsl";
-        LX.requestText( templateShaderUrl, async (code) => {
-
-            this.loadedFiles[ templateShaderUrl ] = code;
-
-            await this.initGraphics( canvas );
         });
     },
 
