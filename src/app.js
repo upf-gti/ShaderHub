@@ -251,7 +251,7 @@ const ShaderHub = {
             shaderDataArea.root.className += " pt-4 items-center justify-center bg-primary";
             const shaderDataContainer = LX.makeContainer( [`100%`, "100%"], "p-6 flex flex-col gap-2 rounded-lg bg-secondary", "", shaderDataArea );
             const shaderName = LX.makeContainer( [`auto`, "auto"], "fg-primary text-xxl font-semibold", this.shader.name, shaderDataContainer );
-            const shaderAuthor = LX.makeContainer( [`auto`, "auto"], "fg-primary text-lg", this.shader.author, shaderDataContainer );
+            const shaderAuthor = LX.makeContainer( [`auto`, "auto"], "fg-primary text-md", `by ${ this.shader.author }`, shaderDataContainer );
             // const shaderDate = LX.makeContainer( [`auto`, "auto"], "fg-primary text-lg", this.shader.lastUpdatedDate, shaderDataContainer );
             const shaderDesc = LX.makeContainer( [`auto`, "auto"], "fg-primary mt-4 text-lg", this.shader.description, shaderDataContainer );
         }
@@ -354,6 +354,11 @@ const ShaderHub = {
                 size: 4,
                 usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
             });
+
+            this.resolutionBuffer = this.device.createBuffer({
+                size: 8,
+                usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
+            });
         }
 
         // Load any necessary texture channels for the current shader
@@ -394,6 +399,12 @@ const ShaderHub = {
 
                 LX.emit( "@elapsed-time", `${ this.elapsedTime.toFixed( 2 ) }s` );
             }
+
+            this.device.queue.writeBuffer(
+                this.resolutionBuffer,
+                0,
+                new Float32Array([ this.gpuCanvas.offsetWidth, this.gpuCanvas.offsetHeight ])
+            );
 
             this.lastTime = now;
 
@@ -443,7 +454,7 @@ const ShaderHub = {
             console.assert( textureBindingsIndex > -1 );
             const bindings = this.uniformChannels.map( ( u, index ) => {
                 if( !u ) return;
-                return `@group(0) @binding(${ 2 + index }) var iChannel${ index } : texture_2d<f32>;`;
+                return `@group(0) @binding(${ 3 + index }) var iChannel${ index } : texture_2d<f32>;`;
             } );
             templateCodeLines.splice( textureBindingsIndex, 1, ...(bindings.length ? [ `@group(0) @binding(1) var texSampler : sampler;`, ...bindings.filter( u => u !== undefined ) ] : []) );
         }
@@ -512,6 +523,12 @@ const ShaderHub = {
                 resource: {
                     buffer: this.timeBuffer,
                 }
+            },
+            {
+                binding: 1,
+                resource: {
+                    buffer: this.resolutionBuffer,
+                }
             }
         ]
 
@@ -519,10 +536,10 @@ const ShaderHub = {
 
         if( bindings.length )
         {
-            entries.push( { binding: 1, resource: this.sampler } );
+            entries.push( { binding: 2, resource: this.sampler } );
             entries.push( ...this.uniformChannels.map( ( u, index ) => {
                 if( !u ) return;
-                return { binding: 2 + index, resource: u.createView() }
+                return { binding: 3 + index, resource: u.createView() }
             } ).filter( u => u !== undefined ) );
         }
 

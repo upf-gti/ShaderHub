@@ -31,13 +31,24 @@
             "shaders/voronoi_distances.wgsl"
         ],
         "channels": [],
-        "description": "Basic Voronoi pattern.",
+        "description": "Basic Voronoi pattern. <a href='https://www.shadertoy.com/view/MslGD8'>https://www.shadertoy.com/view/MslGD8</a>",
         "hasPreview": true
     },
     {
-        "name": "Shader 4",
+        "name": "Super simple raymarching example",
+        "uid": "1654-160c-6eed",
+        "author": "Reinder Nijhoff",
+        "files": [
+            "shaders/super_simple_raymarching.wgsl"
+        ],
+        "channels": [],
+        "description": "Please have a look at the <a href='https://www.shadertoy.com/view/4dSfRc'>tutorial</a>.",
+        "hasPreview": true
+    },
+    {
+        "name": "New Shader",
         "uid": "b79a-fa8f-012c",
-        "author": "Pedro Gonzalez",
+        "author": "ShaderHub",
         "files": [
             "shaders/main.wgsl"
         ]
