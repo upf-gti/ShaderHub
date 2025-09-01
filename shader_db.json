@@ -39,7 +39,7 @@
         "uid": "b79a-fa8f-012c",
         "author": "Pedro Gonzalez",
         "files": [
-            "shaders/image.wgsl"
+            "shaders/main.wgsl"
         ]
     }
 ]
