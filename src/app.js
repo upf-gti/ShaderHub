@@ -6,22 +6,21 @@ const WEBGPU_ERROR  = 1;
 
 const UNIFORM_CHANNELS_COUNT = 4;
 
-const UNIFORM_CHANNEL_0 = 0;
-const UNIFORM_CHANNEL_1 = 1;
-const UNIFORM_CHANNEL_2 = 2;
-const UNIFORM_CHANNEL_3 = 3;
+const SRC_IMAGE_EMPTY = "data:image/gif;base64,R0lGODlhAQABAPcAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACH5BAEAAP8ALAAAAAABAAEAAAgEAP8FBAA7";
 
 class Shader {
 
-    constructor( shaderName, shaderFiles, metadata = {} ) {
+    constructor( data ) {
 
-        this.name = shaderName;
-        this.files = shaderFiles;
-        this.channelsUsed = [];
+        this.name = data.name ?? "";
+        this.uid = data.uid ?? "";
+        this.files = data.files ?? [];
+        this.channels = data.channels ?? [];
 
-        this.author = metadata.author ?? "anonymous";
-        this.description = metadata.description ?? "";
+        this.author = data.author ?? "anonymous";
+        this.description = data.description ?? "";
         this.lastUpdatedDate = "";
+        this.hasPreview = data.hasPreview ?? false
     }
 }
 
@@ -37,15 +36,15 @@ const ShaderHub = {
 
     async initUI() {
 
-        let area = await LX.init();
+        this.area = await LX.init();
 
         const starterTheme = LX.getTheme();
-        const menubar = area.addMenubar([
+        const menubar = this.area.addMenubar([
             {
-                name: "New", callback: () => {}
+                name: "New", callback: () => this.createNewShader()
             },
             {
-                name: "Browse", callback: () => {}
+                name: "Browse", callback: () => window.location.href = `${ window.location.origin + window.location.pathname }`
             },
         ]);
 
@@ -72,7 +71,80 @@ const ShaderHub = {
             menubar.setButtonImage("ShaderHub", `images/icon_${ value }.png`, null, { float: "left" } );
         } );
 
-        var [ leftArea, rightArea ] = area.split({ sizes: ["50%", "50%"] });
+        menubar.siblingArea.root.classList.add( "content-area" );
+
+        const onLoad = () => {
+            const params = new URLSearchParams( document.location.search );
+            const queryShader = params.get( "view" );
+            if( queryShader )
+            {
+                this.createShaderView( queryShader );
+            }
+            else
+            {
+                this.createBrowseListUI();
+            }
+        }
+
+        LX.requestJSON( "shader_db.json", ( json ) => {
+            this.shaderList = json.sort( ( a, b ) => {
+                if( !a.hasPreview ) return 1; // REMOVE THIS ONCE EVERYTHING HAS PREVIEWS
+                return a.name.localeCompare( b.name );
+            } );
+            onLoad();
+        }, ( error ) => {
+            console.error( error )
+            onLoad();
+        });
+    },
+
+    createBrowseListUI() {
+
+        var [ topArea, bottomArea ] = this.area.split({ type: "vertical", sizes: ["calc(100% - 48px)", null], resize: false });
+        topArea.root.className += " overflow-scroll";
+        bottomArea.root.className += " items-center content-center";
+
+        // Shaderhub footer
+        LX.makeContainer( [`auto`, "auto"], "fg-primary text-lg flex flex-row gap-2 ", `
+            ${ LX.makeIcon("Github@solid", {svgClass:"lg"} ).innerHTML }<a class="decoration-none fg-secondary" href="https://github.com/upf-gti/ShaderHub">Code on Github</a>`, bottomArea, {
+            fontFamily: "var(--global-code-font)"
+        } );
+
+        const listContainer = LX.makeContainer( ["100%", "auto"], "grid shader-list gap-8 p-8 justify-center", "", topArea );
+
+        for( const shader of this.shaderList ?? [] )
+        {
+            const shaderItem = LX.makeElement( "li", "shader-item rounded-lg bg-secondary hover:bg-tertiary cursor-pointer overflow-hidden flex flex-col h-auto", "", listContainer );
+            const shaderPreview = LX.makeElement( "img", "rounded-t-lg bg-secondary hover:bg-tertiary w-full border-none", "", shaderItem );
+            shaderPreview.src = shader.hasPreview ? `previews/${ shader.name.replaceAll(" ", "_") }_preview.png` : "previews/shader_preview.png";
+            const shaderDesc = LX.makeContainer( ["100%", "100%"], "flex flex-row rounded-b-lg gap-6 p-4 items-center", `
+                <div class="w-full">
+                    <div class="text-lg font-bold"><span style="font-family:var(--global-code-font);">${ shader.name }</span></div>
+                    <div class="text-sm font-light"><span style="font-family:var(--global-code-font);">by
+                        <a href=""><span class="font-bold" style="text-decoration:underline">${ shader.author }</span></a></span>
+                    </div>
+                </div>
+                <div class=""><a href="">
+                    <div class="">
+                        ${ LX.makeIcon( "CircleUserRound", { svgClass: "xxl fg-secondary" } ).innerHTML }
+                    </div>
+                </a></div>`, shaderItem );
+                // <img alt="avatar" width="32" height="32" decoding="async" data-nimg="1" class="rounded-full" src="https://imgproxy.compute.toys/insecure/width:64/plain/https://hkisrufjmjfdgyqbbcwa.supabase.co/storage/v1/object/public/avatar/f91bbd73-7734-49a9-99ce-460774d4ccc0/avatar.jpg">
+
+            shaderItem.addEventListener( "click", ( e ) => {
+                window.location.href = `${ window.location.origin + window.location.pathname }?view=${ shader.uid }`;
+            } );
+        }
+
+        if( listContainer.childElementCount === 0 )
+        {
+            LX.makeContainer( ["100%", "auto"], "text-xxl font-medium justify-center text-center", "No shaders found.", topArea );
+        }
+    },
+
+    createShaderView( shaderUid ) {
+
+        var [ leftArea, rightArea ] = this.area.split({ sizes: ["50%", "50%"] });
         rightArea.root.className += " p-4";
         leftArea.root.className += " p-4";
         leftArea.onresize = function (bounding) {
@@ -89,7 +161,7 @@ const ShaderHub = {
             {
                 const channelContainer = LX.makeContainer( [`${ 100 / UNIFORM_CHANNELS_COUNT }%`, "80%"], "relative rounded-lg bg-secondary hover:bg-tertiary cursor-pointer", "", this.channelsContainer );
                 const channelImage = LX.makeElement( "img", "rounded-lg bg-secondary hover:bg-tertiary w-full h-full border-none", "", channelContainer );
-                channelImage.src = "data:image/gif;base64,R0lGODlhAQABAPcAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACH5BAEAAP8ALAAAAAABAAEAAAgEAP8FBAA7";
+                channelImage.src = SRC_IMAGE_EMPTY;
                 const channelTitle = LX.makeContainer( ["100%", "auto"], "p-2 absolute text-md bottom-0 channel-title pointer-events-none", `iChannel${ i }`, channelContainer );
                 channelContainer.addEventListener( "click", ( e ) => {
                     const input = document.createElement('input');
@@ -129,16 +201,13 @@ const ShaderHub = {
             }
         }
 
-        this.shader = new Shader( "Example Shader", [
-            // "shaders/common.wgsl",
-            "shaders/dynamic_metaballs.wgsl"
-        ], {
-            author: "Sujit Kumar",
-            description: `A shader that renders two animated metaballs moving across the screen.
-The blobs merge and separate smoothly using distance fields and a smoothstep threshold.
-Created by Sujit Kumar (2025).
-<a href="https://www.shadertoy.com/view/wfjyDz">https://www.shadertoy.com/view/wfjyDz</a>`
-        } );
+        const shaderData = this.shaderList.filter( s => s.uid === shaderUid )[ 0 ];
+        if( !shaderData )
+        {
+            return;
+        }
+
+        this.shader = new Shader( shaderData );
 
         document.title = `${ this.shader.name } - ShaderHub`;
 
@@ -177,9 +246,6 @@ Created by Sujit Kumar (2025).
             const shaderAuthor = LX.makeContainer( [`auto`, "auto"], "fg-primary text-lg", this.shader.author, shaderDataContainer );
             // const shaderDate = LX.makeContainer( [`auto`, "auto"], "fg-primary text-lg", this.shader.lastUpdatedDate, shaderDataContainer );
             const shaderDesc = LX.makeContainer( [`auto`, "auto"], "fg-primary mt-4 text-lg", this.shader.description, shaderDataContainer );
-
-            // Shaderhub footer
-            // const footer = LX.makeContainer( [`auto`, "auto"], "fg-primary text-lg mt-auto ml-auto mr-auto flex flex-row gap-2", LX.makeIcon("Github@solid", {svgClass:"lg"} ).innerHTML + "Code on Github", shaderDataContainer );
         }
 
         var [ canvasArea, canvasControlsArea ] = graphicsArea.split({ type: "vertical", sizes: ["calc(100% - 48px)", null], resize: false });
@@ -210,7 +276,7 @@ Created by Sujit Kumar (2025).
             const file = e.dataTransfer.files[0];
             if (!file) return;
             if (file.type.startsWith("image/")) {
-                await this.createTexture( file, UNIFORM_CHANNEL_0 );
+                await this.createTexture( file, 0 );
                 await this.createRenderBindGroup();
             } else {
                 console.warn("Dropped file is not an image:", file.type);
@@ -219,13 +285,41 @@ Created by Sujit Kumar (2025).
 
         const templateShaderUrl = "shaders/fullscreenTexturedQuad.template.wgsl";
         LX.requestText( templateShaderUrl, async (code) => {
+
             this.loadedFiles[ templateShaderUrl ] = code;
-            await this.initGraphics(canvas);
+
+            await this.initGraphics( canvas );
         });
+    },
+
+    createNewShader() {
+
+        const uid = "b79a-fa8f-012c";//LX.guidGenerator();
+        // const shaderFilename = `shaders/unnamed-${ uid }.wgsl`;
+        const shaderFilename = `shaders/image.wgsl`;
+
+        this.shaderList.push( {
+            "name": "Unnamed Shader",
+            "uid": uid,
+            "author": "Pedro Gonzalez", // Get this from the Login info
+            "files": [ shaderFilename ]
+        } );
+
+        // Store to DB so we can get the info on reloading the page
+        // ...
+
+        window.location.href = `${ window.location.origin + window.location.pathname }?view=${ uid }`;
+
+        console.log("wwefwefew");
+
+        // Store to DB
+        // ...
+
     },
 
     async initGraphics( canvas ) {
 
+        this.gpuCanvas = canvas;
         this.adapter = await navigator.gpu?.requestAdapter({
             featureLevel: 'compatibility',
         });
@@ -249,7 +343,7 @@ Created by Sujit Kumar (2025).
             format: this.presentationFormat,
         });
 
-         // Input Parameters
+        // Input Parameters
         {
             // this.parametersBuffer = this.device.createBuffer({
             //     size: 4,
@@ -262,9 +356,10 @@ Created by Sujit Kumar (2025).
             });
         }
 
-        // Load texture
+        // Load any necessary texture channels for the current shader
+        for( let i = 0; i < this.shader.channels?.length ?? 0; ++i )
         {
-            await this.createTexture( "images/kimetsu.png", UNIFORM_CHANNEL_0 );
+            await this.createTexture( this.shader.channels[ i ], i );
         }
 
         // Create render pipeline based on editor shaders
@@ -557,6 +652,33 @@ Created by Sujit Kumar (2025).
 
         // Recreate everything
         await this.createRenderPipeline( true, true );
+    },
+
+    async snapshotCanvas( outWidth, outHeight ) {
+
+        const width = outWidth ?? 640;
+        const height = outHeight ?? 360;
+        const blob = await (() => {return new Promise((resolve) =>
+            this.gpuCanvas.toBlob((blob) => resolve(blob), "image/png")
+        )})();
+        const bitmap = await createImageBitmap( blob );
+
+        const snapCanvas = document.createElement("canvas");
+        snapCanvas.width = width;
+        snapCanvas.height = height;
+        const ctx = snapCanvas.getContext("2d");
+        ctx.drawImage( bitmap, 0, 0, width, height );
+
+        return new Promise((resolve) =>
+            snapCanvas.toBlob((blob) => resolve(blob), "image/png")
+        );
+    },
+
+    async getCanvasSnapshot() {
+
+        const blob = await this.snapshotCanvas();
+        const url = URL.createObjectURL( blob );
+        window.open(url);
     },
 
     quitIfWebGPUNotAvailable( adapter, device ) {

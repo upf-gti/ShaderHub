@@ -1,0 +1,84 @@
+* {
+	font-family: var(--global-code-font);
+}
+
+.notifications ol .lextoast .lextoastcontent .desc {
+	transition: all 0.5s cubic-bezier(.42, .97, .52, 1.19);
+}
+
+.notifications ol.list .lextoast .lextoastcontent .desc {
+	word-wrap: break-word;
+	white-space: normal;
+}
+
+.channel-title {
+	background-color: var(--global-blur-background);
+	--webkit-backdrop-filter: blur(12px);
+	backdrop-filter: blur(12px);
+	border-bottom-left-radius: 8px;
+	border-bottom-right-radius: 8px;
+}
+
+.lexmenubar {
+	background-color: var(--global-blur-background);
+}
+
+.lexareatabs.row {
+	background: none !important;
+}
+
+.lexareatabs.row .lexareatab {
+	border-top-left-radius: 8px !important;
+	border-top-right-radius: 8px !important;
+	border: none !important;
+}
+
+.lexareatabs.row .lexareatab.selected {
+	border: none !important;
+	background-color: light-dark(var(--global-color-secondary), var(--global-medium-background)) !important;
+}
+
+.shader-item {
+    grid-column-end: span 1;
+    grid-row-end: span 1;
+    aspect-ratio: 1 / 0.75;
+}
+
+@media (min-width: 0px) {
+	.shader-list {
+		grid-template-columns:repeat(1, 1fr);
+	}
+}
+
+@media (min-width: 785px) {
+	.shader-list {
+		grid-template-columns:repeat(2, 1fr);
+	}
+}
+
+@media (min-width: 1180px) {
+	.shader-list {
+		grid-template-columns:repeat(3, 1fr);
+	}
+}
+
+@media (min-width: 1560px) {
+	.shader-list {
+		grid-template-columns:repeat(4, 1fr);
+	}
+}
+
+@media screen and (max-width: 992px) {
+    .content-area {
+		flex-direction: column;
+	}
+
+	.content-area > * {
+		width: 100% !important;
+	}
+
+	:root, :root body {
+    	overflow-y: auto;
+	}
+
+}

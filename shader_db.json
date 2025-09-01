@@ -1,0 +1,45 @@
+[
+    {
+        "name": "Dynamic Metaballs - Blending",
+        "uid": "a7d7-6a54-0004",
+        "author": "Sujit Kumar",
+        "files": [
+            "shaders/common.wgsl",
+            "shaders/dynamic_metaballs.wgsl"
+        ],
+        "channels": [],
+        "description": "A shader that renders two animated metaballs moving across the screen. The blobs merge and separate smoothly using distance fields and a smoothstep threshold. Created by Sujit Kumar (2025). <a href='https://www.shadertoy.com/view/wfjyDz'>https://www.shadertoy.com/view/wfjyDz</a>",
+        "hasPreview": true
+    },
+    {
+        "name": "Pixelated Texture",
+        "uid": "4b63-da7c-fab0",
+        "author": "ShaderHub",
+        "files": [
+            "shaders/pixelated_texture.wgsl"
+        ],
+        "channels": [
+            "textures/kimetsu.png"
+        ],
+        "hasPreview": true
+    },
+    {
+        "name": "Voronoi - basic",
+        "uid": "bd60-7434-1594",
+        "author": "Iñigo Quilez",
+        "files": [
+            "shaders/voronoi_distances.wgsl"
+        ],
+        "channels": [],
+        "description": "Basic Voronoi pattern.",
+        "hasPreview": true
+    },
+    {
+        "name": "Shader 4",
+        "uid": "b79a-fa8f-012c",
+        "author": "Pedro Gonzalez",
+        "files": [
+            "shaders/image.wgsl"
+        ]
+    }
+]
