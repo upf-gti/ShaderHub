@@ -1,4 +1,4 @@
-fn mainImage(fragUV : vec2f) -> vec4f {
+fn mainImage(fragUV : vec2f, fragCoord : vec2f) -> vec4f {
     let green : vec3f = vec3f(0.0, 1.0, 0.0);
     let amp : f32 = 0.25;
     let freq : f32 = 1.0;

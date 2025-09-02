@@ -212,7 +212,6 @@ const ShaderHub = {
         document.title = `${ this.shader.name } - ShaderHub`;
 
         this.editor = new LX.CodeEditor( codeArea, {
-            allowAddScripts: false,
             fileExplorer: false,
             files: this.shader.files,
             statusShowEditorIndentation: false,
@@ -225,7 +224,6 @@ const ShaderHub = {
                 await this.createRenderPipeline( true, true );
             },
             onFilesLoaded: async () => {
-
                 for( const f of this.shader.files )
                 {
                     const name = f.substring( f.lastIndexOf( "/" ) + 1 );
@@ -241,6 +239,15 @@ const ShaderHub = {
 
                     await this.initGraphics( canvas );
                 });
+            },
+            onCreateFile: ( instance ) => {
+                const commonIdx = this.shader.files.length - 1;
+                const name = `common${ commonIdx }-${ this.shader.uid }.wgsl`;
+
+                this.loadedFiles[ name ] = "";
+                this.shader.files.push( name );
+
+                return { name, language: "WGSL" };
             }
         });
 
@@ -471,11 +478,30 @@ const ShaderHub = {
             ] );
         }
 
+        // Add common blocks
+        {
+            let allCommon = [];
+
+            for( let i = 0; i < this.shader.files.length - 1; ++i )
+            {
+                const name = `shaders/common${ i }-${ this.shader.uid }.wgsl`;
+                const code = this.loadedFiles[ name ];
+                if( code )
+                {
+                    allCommon = allCommon.concat( code.replaceAll( '\r', '' ).split( "\n" ) );
+                }
+            }
+
+            const commonIndex = templateCodeLines.indexOf( "$common" );
+            console.assert( commonIndex > -1 );
+            templateCodeLines.splice( commonIndex, 1, ...allCommon );
+        }
+
         // Add main image
         {
             const mainImageIndex = templateCodeLines.indexOf( "$main_image" );
             console.assert( mainImageIndex > -1 );
-            const currentTab = `shaders/${ this.editor.getSelectedTabName() }`;
+            const currentTab = this.shader.files[ 0 ];
             const mainImageLines = this.loadedFiles[ currentTab ].replaceAll( '\r', '' ).split( "\n" );
             templateCodeLines.splice( mainImageIndex, 1, ...mainImageLines );
         }
@@ -566,7 +592,7 @@ const ShaderHub = {
         });
 
         this.device.queue.copyExternalImageToTexture(
-            { source: imageBitmap },
+            { source: imageBitmap, flipY: true },
             { texture: imageTexture },
             dimensions
         );

@@ -11,6 +11,7 @@ $texture_bindings
 struct VertexOutput {
     @builtin(position) Position : vec4f,
     @location(0) fragUV : vec2f,
+    @location(1) fragCoord : vec2f,
 }
 
 @vertex
@@ -28,20 +29,21 @@ fn vert_main(@builtin(vertex_index) VertexIndex : u32) -> VertexOutput {
     var output : VertexOutput;
     output.Position = vec4(pos[VertexIndex], 0.0, 1.0);
     output.fragUV = (output.Position.xy * 0.5) + vec2(0.5, 0.5);
-    output.fragUV.y = 1.0 - output.fragUV.y;
+    output.fragCoord = output.fragUV * iResolution;
 
     var time_dummy : f32 = iTime;
-    var resolution_dummy : vec2f = iResolution;
 
     return output;
 }
 
+$common
+
 $main_image
 
 @fragment
-fn frag_main(@location(0) fragUV : vec2f) -> @location(0) vec4f {
+fn frag_main(@location(0) fragUV : vec2f, @location(1) fragCoord : vec2f) -> @location(0) vec4f {
 
 $texture_dummies
 
-    return mainImage(fragUV);
+    return mainImage(fragUV, fragCoord);
 }

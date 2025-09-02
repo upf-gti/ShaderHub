@@ -36,7 +36,7 @@ fn voronoi(x : vec2f) -> vec2f {
     return vec2f(sqrt(m.x), m.y + m.z);
 }
 
-fn mainImage(fragUV : vec2f) -> vec4f {
+fn mainImage(fragUV : vec2f, fragCoord : vec2f) -> vec4f {
 
     // Compute voronoi pattern
     let c : vec2f = voronoi((14.0 + 6.0 * sin(0.2 * iTime)) * fragUV);

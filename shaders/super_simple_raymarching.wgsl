@@ -34,12 +34,10 @@ fn calcNormal(p : vec3f) -> vec3f {
         e.xxx * map(p + e.xxx));
 }
 
-fn mainImage(fragUV : vec2f) -> vec4f {
+fn mainImage(fragUV : vec2f, fragCoord : vec2f) -> vec4f {
 
     let ro : vec3f = vec3f(0, 0, 1);                    // ray origin
-
-    let fragCoord : vec2f = fragUV * iResolution;
-    let q : vec2f = (fragCoord.xy - 0.5 * iResolution.xy ) / -iResolution.y;
+    let q : vec2f = (fragCoord.xy - 0.5 * iResolution.xy ) / iResolution.y;
     let rd : vec3f = normalize(vec3f(q, 0.0) - ro);             // ray direction for fragCoord.xy
 
     // March the distance field until a surface is hit.

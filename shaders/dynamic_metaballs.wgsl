@@ -2,14 +2,7 @@
 // Author: Sujit Kumar
 // License: MIT (c) 2025 Sujit Kumar
 
-fn Ball( p : vec2f, center : vec2f, radius : f32 ) -> f32 {
-
-    let dist = distance(p, center);
-    
-    return radius * radius / (dist * dist + 0.0001);
-}
-
-fn mainImage(fragUV : vec2f) -> vec4f {
+fn mainImage(fragUV : vec2f, fragCoord : vec2f) -> vec4f {
    
     var uv : vec2f = fragUV;
     uv = uv * 2.0 - 1.0;

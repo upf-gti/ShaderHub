@@ -4,8 +4,8 @@
         "uid": "a7d7-6a54-0004",
         "author": "Sujit Kumar",
         "files": [
-            "shaders/common.wgsl",
-            "shaders/dynamic_metaballs.wgsl"
+            "shaders/dynamic_metaballs.wgsl",
+            "shaders/common0-a7d7-6a54-0004.wgsl"
         ],
         "channels": [],
         "description": "A shader that renders two animated metaballs moving across the screen. The blobs merge and separate smoothly using distance fields and a smoothstep threshold. Created by Sujit Kumar (2025). <a href='https://www.shadertoy.com/view/wfjyDz'>https://www.shadertoy.com/view/wfjyDz</a>",
