@@ -923,5 +923,53 @@ const ShaderHub = {
 
 await ShaderHub.initUI();
 
+const projectID = "68b709f30027f98a667b";
+const client = new Appwrite.Client()
+    .setEndpoint("https://cloud.appwrite.io/v1")
+    .setProject(projectID);
+
+const account = new Appwrite.Account(client);
+console.log(account)
+
+// it works
+// account.create('unique()', 'user@example.com', 'password123', 'userName')
+//   .then(response => console.log(response))
+//   .catch(error => console.error(error));
+
+let currentUser = null;
+
+account.get()
+    .then(async (user) => {
+        currentUser = user;
+        console.log("Already logged in:", user);
+
+        // const current = await account.getSession('current');
+        // const result = await account.deleteSession({
+        //     sessionId: current["$id"]
+        // });
+
+        const databaseID = "68b70c8f002d2fe08d90";
+        const collectionID = "shaders";
+
+        const databases = new Appwrite.Databases(client);
+        databases.createDocument(
+        databaseID,
+        collectionID,
+        "unique()",
+        { name: "Hello Appwrite!" }
+        );
+    })
+    .catch(() => {
+
+        // Not logged in → safe to create session
+        account.createEmailPasswordSession('user@example.com', 'password123')
+            .then(async (session) => {
+                currentUser = await account.get();
+                console.log(currentUser);
+            })
+            .catch(error => console.error(error));
+    });
+
+
 window.LX = LX;
 window.ShaderHub = ShaderHub;
