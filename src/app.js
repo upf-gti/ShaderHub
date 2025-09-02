@@ -8,6 +8,10 @@ const UNIFORM_CHANNELS_COUNT = 4;
 
 const SRC_IMAGE_EMPTY = "data:image/gif;base64,R0lGODlhAQABAPcAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACH5BAEAAP8ALAAAAAABAAEAAAgEAP8FBAA7";
 
+function capitalizeFirstLetter(val) {
+    return String(val).charAt(0).toUpperCase() + String(val).slice(1);
+}
+
 class Shader {
 
     constructor( data ) {
@@ -16,6 +20,8 @@ class Shader {
         this.uid = data.uid ?? "";
         this.files = data.files ?? [];
         this.channels = data.channels ?? [];
+        this.uniforms = data.uniforms ?? [];
+        this.uniformBuffers = [];
 
         this.author = data.author ?? "anonymous";
         this.description = data.description ?? "";
@@ -145,8 +151,8 @@ const ShaderHub = {
     createShaderView( shaderUid ) {
 
         var [ leftArea, rightArea ] = this.area.split({ sizes: ["50%", "50%"] });
-        rightArea.root.className += " p-4";
-        leftArea.root.className += " p-4";
+        rightArea.root.className += " p-2";
+        leftArea.root.className += " p-2";
         leftArea.onresize = function (bounding) {
             
         };
@@ -156,10 +162,11 @@ const ShaderHub = {
 
         // Add input channels UI
         {
-            this.channelsContainer = LX.makeContainer( ["100%", "100%"], "flex flex-row gap-2 items-center justify-center bg-primary", "", shaderSettingsArea );
+            this.channelsContainer = LX.makeContainer( ["100%", "100%"], "channel-list grid gap-2 pt-2 items-center justify-center bg-primary", "", shaderSettingsArea );
             for( let i = 0; i < UNIFORM_CHANNELS_COUNT; i++ )
             {
-                const channelContainer = LX.makeContainer( [`${ 100 / UNIFORM_CHANNELS_COUNT }%`, "80%"], "relative rounded-lg bg-secondary hover:bg-tertiary cursor-pointer", "", this.channelsContainer );
+                const channelContainer = LX.makeContainer( ["100%", "100%"], "relative rounded-lg bg-secondary hover:bg-tertiary cursor-pointer overflow-hidden", "", this.channelsContainer );
+                channelContainer.style.minHeight = "100px";
                 const channelImage = LX.makeElement( "img", "rounded-lg bg-secondary hover:bg-tertiary w-full h-full border-none", "", channelContainer );
                 channelImage.src = SRC_IMAGE_EMPTY;
                 const channelTitle = LX.makeContainer( ["100%", "auto"], "p-2 absolute text-md bottom-0 channel-title pointer-events-none", `iChannel${ i }`, channelContainer );
@@ -255,26 +262,15 @@ const ShaderHub = {
 
         // Add Shader data
         {
-            shaderDataArea.root.className += " pt-4 items-center justify-center bg-primary";
-            const shaderDataContainer = LX.makeContainer( [`100%`, "100%"], "p-6 flex flex-col gap-2 rounded-lg bg-secondary", "", shaderDataArea );
+            shaderDataArea.root.className += " pt-2 items-center justify-center bg-primary";
+            const shaderDataContainer = LX.makeContainer( [`100%`, "100%"], "p-6 flex flex-col gap-2 rounded-lg bg-secondary overflow-scroll overflow-x-hidden", "", shaderDataArea );
             const shaderName = LX.makeContainer( [`auto`, "auto"], "fg-primary text-xxl font-semibold", this.shader.name, shaderDataContainer );
             const shaderAuthor = LX.makeContainer( [`auto`, "auto"], "fg-primary text-md", `by ${ this.shader.author }`, shaderDataContainer );
             // const shaderDate = LX.makeContainer( [`auto`, "auto"], "fg-primary text-lg", this.shader.lastUpdatedDate, shaderDataContainer );
-            const shaderDesc = LX.makeContainer( [`auto`, "auto"], "fg-primary mt-4 text-lg", this.shader.description, shaderDataContainer );
+            const shaderDesc = LX.makeContainer( [`auto`, "auto"], "fg-primary mt-4 text-lg break-words", this.shader.description, shaderDataContainer );
         }
 
         var [ canvasArea, canvasControlsArea ] = graphicsArea.split({ type: "vertical", sizes: ["calc(100% - 48px)", null], resize: false });
-
-        // Add shader controls data
-        {
-            canvasControlsArea.root.className += " px-2 rounded-b-lg bg-secondary";
-            const panel = canvasControlsArea.addPanel();
-            panel.sameLine();
-            panel.addButton( null, "ResetTime", () => { this.elapsedTime = 0 }, { icon: "SkipBack", title: "Reset time", tooltip: true } );
-            panel.addButton( null, "PauseTime", () => { this.timePaused = !this.timePaused }, { icon: "Pause", title: "Pause/Resume", tooltip: true, swap: "Play" } );
-            panel.addLabel( "0.0", { signal: "@elapsed-time", xclassName: "ml-auto", xinputClass: "text-end" } );
-            panel.endLine( "items-center h-full" );
-        }
 
         const canvas = document.createElement("canvas");
         canvas.className = "w-full h-full rounded-t-lg";
@@ -297,6 +293,67 @@ const ShaderHub = {
                 console.warn("Dropped file is not an image:", file.type);
             }
         });
+
+        // Add shader controls data
+        {
+            canvasControlsArea.root.className += " px-2 rounded-b-lg bg-secondary";
+            const panel = canvasControlsArea.addPanel( { className: "flex flex-row" } );
+            panel.sameLine();
+            panel.addButton( null, "ResetTime", () => { this.elapsedTime = 0 }, { icon: "SkipBack", title: "Reset time", tooltip: true } );
+            panel.addButton( null, "PauseTime", () => { this.timePaused = !this.timePaused }, { icon: "Pause", title: "Pause/Resume", tooltip: true, swap: "Play" } );
+            panel.addLabel( "0.0", { signal: "@elapsed-time", xclassName: "ml-auto", xinputClass: "text-end" } );
+            panel.endLine( "items-center h-full" );
+
+            const customParametersContainer = LX.makeContainer( [`${ Math.min( 540, window.innerWidth - 72 ) }px`, "auto"], "p-2", "" );
+            LX.makeContainer( ["auto", "auto"], "p-2", `Uniforms [${ this.shader.uniforms.length }]`, customParametersContainer );
+
+            {
+                this.customParametersPanel = new LX.Panel({ className: "custom-parameters-panel w-full" });
+                customParametersContainer.appendChild( this.customParametersPanel.root );
+
+                this.customParametersPanel.refresh = () => {
+
+                    this.customParametersPanel.clear();
+
+                    for( let u of this.shader.uniforms )
+                    {
+                        this.customParametersPanel.sameLine( 4 );
+                        this.customParametersPanel.addText( null, u.name, ( v ) => {
+                            u.name = v;
+                            this.createRenderPipeline( true, true );
+                        }, { width: "25%", skipReset: true } );
+                        this.customParametersPanel.addNumber( "Min", u.min, ( v ) => {
+                            u.min = v;
+                            uRangeComponent.setLimits( u.min, u.max );
+                            this._parametersDirty = true;
+                        }, { width: "20%", skipReset: true, step: 0.1 } );
+                        const uRangeComponent = this.customParametersPanel.addRange( null, u.value, ( v ) => {
+                            u.value = v;
+                            this._parametersDirty = true;
+                        }, { className: "contrast", width: "35%", skipReset: true, min: u.min, max: u.max, step: 0.1 } );
+                        this.customParametersPanel.addNumber( "Max", u.max, ( v ) => {
+                            u.max = v;
+                            uRangeComponent.setLimits( u.min, u.max );
+                            this._parametersDirty = true;
+                        }, { width: "20%", skipReset: true, step: 0.1 } );
+                    }
+
+                    this.customParametersPanel.addButton( null, "AddNewCustomUniform", () => {
+                        const customUniformCount = this.shader.uniforms.length;
+                        this.shader.uniforms.push( { name: "uniform_" + (customUniformCount+1), value: 0, min: 0, max: 1 } )
+                        this.customParametersPanel.refresh();
+                    }, { icon: "Plus", className: "self-center", buttonClass: "bg-none", title: "Add New Uniform", tooltip: true, width: "38px" } );
+                }
+
+                this.customParametersPanel.refresh();
+            }
+
+            panel.sameLine();
+            panel.addButton( null, "OpenCustomParams", ( name, event ) => {
+                new LX.Popover( event.target, [ customParametersContainer ], { align: "end" } );
+            }, { icon: "Settings2", title: "Custom Parameters", tooltip: true } );
+            panel.endLine( "items-center h-full ml-auto" );
+        }
     },
 
     createNewShader() {
@@ -352,11 +409,6 @@ const ShaderHub = {
 
         // Input Parameters
         {
-            // this.parametersBuffer = this.device.createBuffer({
-            //     size: 4,
-            //     usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
-            // });
-
             this.timeBuffer = this.device.createBuffer({
                 size: 4,
                 usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
@@ -407,6 +459,19 @@ const ShaderHub = {
                 LX.emit( "@elapsed-time", `${ this.elapsedTime.toFixed( 2 ) }s` );
             }
 
+            if( this._parametersDirty && this.shader.uniforms.length )
+            {
+                this.shader.uniforms.map( ( u, index ) => {
+                    this.device.queue.writeBuffer(
+                        this.shader.uniformBuffers[ index ],
+                        0,
+                        new Float32Array([ u.value ])
+                    );
+                } );
+
+                this._parametersDirty = false;
+            }
+
             this.device.queue.writeBuffer(
                 this.resolutionBuffer,
                 0,
@@ -454,6 +519,27 @@ const ShaderHub = {
     async createRenderPipeline( updateBindGroup = true, showFeedback ) {
 
         const templateCodeLines = this.loadedFiles[ "shaders/fullscreenTexturedQuad.template.wgsl" ].replaceAll( '\r', '' ).split( "\n" );
+        const customUniformCount = this.shader.uniforms.length;
+
+        // Custom Uniform bindings
+        {
+            for( let u of this.shader.uniforms )
+            {
+                this.shader.uniformBuffers.push( this.device.createBuffer({
+                    size: 4,
+                    usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
+                }) );
+            }
+
+            const customBindingsIndex = templateCodeLines.indexOf( "$custom_bindings" );
+            console.assert( customBindingsIndex > -1 );
+            templateCodeLines.splice( customBindingsIndex, 1, ...[
+                ...this.shader.uniforms.map( ( u, index ) => {
+                    if( !u ) return;
+                    return `@group(0) @binding(${ 2 + index }) var<uniform> i${ capitalizeFirstLetter( u.name ) } : f32;`;
+                } ).filter( u => u !== undefined )
+            ] );
+        }
 
         // Process texture bindings
         {
@@ -461,13 +547,23 @@ const ShaderHub = {
             console.assert( textureBindingsIndex > -1 );
             const bindings = this.uniformChannels.map( ( u, index ) => {
                 if( !u ) return;
-                return `@group(0) @binding(${ 3 + index }) var iChannel${ index } : texture_2d<f32>;`;
+                return `@group(0) @binding(${ 3 + index + customUniformCount }) var iChannel${ index } : texture_2d<f32>;`;
             } );
-            templateCodeLines.splice( textureBindingsIndex, 1, ...(bindings.length ? [ `@group(0) @binding(2) var texSampler : sampler;`, ...bindings.filter( u => u !== undefined ) ] : []) );
+            templateCodeLines.splice( textureBindingsIndex, 1, ...(bindings.length ? [ `@group(0) @binding(${ 2 + customUniformCount }) var texSampler : sampler;`, ...bindings.filter( u => u !== undefined ) ] : []) );
         }
 
-        // Process texture dummies so using it isn't mandatory
+        // Process dummies so using them isn't mandatory
         {
+            const customDummiesIndex = templateCodeLines.indexOf( "$custom_dummies" );
+            console.assert( customDummiesIndex > -1 );
+            templateCodeLines.splice( customDummiesIndex, 1, ...[
+                ...this.shader.uniforms.map( ( u, index ) => {
+                    if( !u ) return;
+                    const uName = capitalizeFirstLetter( u.name );
+                    return `    let u${ uName }Dummy: f32 = i${ uName };`;
+                } ).filter( u => u !== undefined )
+            ] );
+
             const textureDummiesIndex = templateCodeLines.indexOf( "$texture_dummies" );
             console.assert( textureDummiesIndex > -1 );
             templateCodeLines.splice( textureDummiesIndex, 1, ...[
@@ -530,6 +626,8 @@ const ShaderHub = {
             },
         });
 
+        console.warn( "Info: Render Pipeline created!" );
+
         if( updateBindGroup )
         {
             this.createRenderBindGroup();
@@ -543,29 +641,50 @@ const ShaderHub = {
             return;
         }
 
+        let bindingIndex = 0;
+
         const entries = [
             {
-                binding: 0,
+                binding: bindingIndex++,
                 resource: {
                     buffer: this.timeBuffer,
                 }
             },
             {
-                binding: 1,
+                binding: bindingIndex++,
                 resource: {
                     buffer: this.resolutionBuffer,
                 }
             }
         ]
 
+        const customUniformCount = this.shader.uniforms.length;
+        if( customUniformCount )
+        {
+            this.shader.uniforms.map( ( u, index ) => {
+                const buffer = this.shader.uniformBuffers[ index ];
+                this.device.queue.writeBuffer(
+                    buffer,
+                    0,
+                    new Float32Array([ u.value ])
+                );
+                entries.push( {
+                    binding: bindingIndex++,
+                    resource: {
+                        buffer,
+                    }
+                } );
+            } );
+        }
+
         const bindings = this.uniformChannels.filter( u => u !== undefined );
 
         if( bindings.length )
         {
-            entries.push( { binding: 2, resource: this.sampler } );
+            entries.push( { binding: bindingIndex++, resource: this.sampler } );
             entries.push( ...this.uniformChannels.map( ( u, index ) => {
                 if( !u ) return;
-                return { binding: 3 + index, resource: u.createView() }
+                return { binding: 3 + customUniformCount + index, resource: u.createView() }
             } ).filter( u => u !== undefined ) );
         }
 
@@ -573,6 +692,8 @@ const ShaderHub = {
             layout: this.fullscreenQuadPipeline.getBindGroupLayout( 0 ),
             entries
         });
+
+        console.warn( "Info: Render Bind Group created!" );
     },
 
     async createTexture( imageData, channel ) {

@@ -13,10 +13,11 @@
 
 .channel-title {
 	background-color: var(--global-blur-background);
-	--webkit-backdrop-filter: blur(12px);
-	backdrop-filter: blur(12px);
+	--webkit-backdrop-filter: blur(8px);
+	backdrop-filter: blur(8px);
 	border-bottom-left-radius: 8px;
 	border-bottom-right-radius: 8px;
+	text-align: center;
 }
 
 .lexmenubar {
@@ -38,10 +39,23 @@
 	background-color: light-dark(var(--global-color-secondary), var(--global-medium-background)) !important;
 }
 
+.lexcodearea {
+	border-top-right-radius: 8px !important;
+	overflow: hidden;
+}
+
+.custom-parameters-panel .lexnumber input {
+	field-sizing: content;
+}
+
 .shader-item {
     grid-column-end: span 1;
     grid-row-end: span 1;
     aspect-ratio: 1 / 0.75;
+}
+
+.channel-list {
+	grid-template-columns:repeat(4, 1fr);
 }
 
 @media (min-width: 0px) {
@@ -81,4 +95,7 @@
     	overflow-y: auto;
 	}
 
+	.channel-list {
+		grid-template-columns:repeat(1, 1fr);
+	}
 }

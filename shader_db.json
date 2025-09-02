@@ -53,6 +53,7 @@
             "shaders/waves.wgsl"
         ],
         "channels": [],
+        "uniforms": [{ "name": "amplitude", "value": 0.25, "min": 0, "max": 1 }, { "name": "frequency", "value": 1, "min": 0, "max": 1 }],
         "description": "",
         "hasPreview": true
     },
