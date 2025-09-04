@@ -41,7 +41,7 @@ class FS {
     }
 
     async login( mail, password, onlogin, onerror ) {
-        return await this.account.createEmailPasswordSession( mail ?? "public@shaderhub.com", password ?? "password123" )
+        await this.account.createEmailPasswordSession( mail ?? "public@shaderhub.com", password ?? "password123" )
             .then( async session => {
                 this.user = await this.account.get();
                 this.session = session;

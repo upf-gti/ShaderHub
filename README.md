@@ -6,8 +6,10 @@ Roadmap:
 - [x] Update Shader preview (FS)
 - [x] Update Shader content (FS)
 - [x] Profile page
-- [ ] Login/Register dialogs
+- [x] Login dialog
+- [x] Manage Common shader files (FS)
+- [ ] Register dialog
 - [ ] Submit form for Login
-- [ ] Manage Common shader files (FS)
 - [ ] Create account (FS)
+- [ ] Remix Shader
 - [ ] Compute shaders

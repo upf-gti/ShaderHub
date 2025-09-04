@@ -615,9 +615,9 @@ const ShaderHub = {
 
     openLoginDialog( loginOptionsButton ) {
 
-        const dialog = new LX.Dialog( "New Shader", ( p ) => {
-            const formData = { email: { label: "Email", value: "" }, password: { label: "Password", icon: "Key", value: "", type: "password" } };
-            p.addForm( null, formData, async (value, event) => {
+        const dialog = new LX.Dialog( "Login", ( p ) => {
+            const formData = { email: { label: "Email", value: "", icon: "AtSign" }, password: { label: "Password", icon: "Key", value: "", type: "password" } };
+            const form = p.addForm( null, formData, async (value, event) => {
                 await fs.login( value[ "email" ], value[ "password" ], ( user, session ) => {
                     dialog.close();
                     loginOptionsButton.innerHTML = `<span class="decoration-none fg-secondary">${ fs.user.email }</span>
@@ -627,7 +627,8 @@ const ShaderHub = {
                 }, (err) => {
                     LX.toast( `❌ Error`, err, { timeout: -1, position: "top-right" } )
                 } );
-            }, { primaryActionName: "Login", xsecondaryActionName: "Sign Up" });
+            }, { primaryActionName: "Login" });
+            form.root.querySelector( "button" ).classList.add( "mt-2" )
         } );
     },
 
