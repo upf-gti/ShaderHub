@@ -4,8 +4,12 @@ import './codeeditor.js';
 import { FS } from './fs.js';
 import { Shader } from './shader.js';
 
-const WEBGPU_OK = 0;
-const WEBGPU_ERROR = 1;
+const WEBGPU_OK     = 0;
+const WEBGPU_ERROR  = 1;
+
+const SHADER_MODE_VIEW  = 0;
+const SHADER_MODE_EDIT  = 1;
+
 const UNIFORM_CHANNELS_COUNT = 4;
 const SRC_IMAGE_EMPTY = "data:image/gif;base64,R0lGODlhAQABAPcAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACH5BAEAAP8ALAAAAAABAAEAAAgEAP8FBAA7";
 const fs = new FS();
@@ -95,11 +99,16 @@ const ShaderHub = {
 
         const onLoad = async () => {
             const params = new URLSearchParams( document.location.search );
-            const queryShader = params.get( "view" );
+            const queryShaderView = params.get( "view" );
+            const queryShaderEdit = params.get( "edit" );
             const queryProfile = params.get( "profile" );
-            if( queryShader )
+            if( queryShaderView )
             {
-                await this.createShaderView( queryShader );
+                await this.createShaderView( queryShaderView, SHADER_MODE_VIEW );
+            }
+            else if( queryShaderEdit )
+            {
+                await this.createShaderView( queryShaderEdit, SHADER_MODE_EDIT );
             }
             else if( queryProfile )
             {
@@ -205,7 +214,7 @@ const ShaderHub = {
 
     },
 
-    async createShaderView( shaderUid ) {
+    async createShaderView( shaderUid, mode ) {
 
         // Create shader instance based on shader uid
         // Get all stored shader files (not the code, only the data)
@@ -317,9 +326,9 @@ const ShaderHub = {
 
         document.title = `${ this.shader.name } - ShaderHub`;
 
-        this.editor = new LX.CodeEditor( codeArea, {
+        this.editor = await new LX.CodeEditor( codeArea, {
             fileExplorer: false,
-            files: this.shader.files,
+            filesAsync: this.shader.files,
             statusShowEditorIndentation: false,
             statusShowEditorLanguage: false,
             statusShowEditorFilename: false,
@@ -329,12 +338,12 @@ const ShaderHub = {
                 this.loadedFiles[ currentTab ] = code;
                 await this.createRenderPipeline( true, true );
             },
-            onFilesLoaded: async () => {
+            onFilesLoaded: async ( loadedTabs ) => {
 
                 for( const f of this.shader.files )
                 {
                     const name = f[ 1 ];
-                    this.loadedFiles[ name ] = this.editor.loadedTabs[ name ].lines.join( "\n" );
+                    this.loadedFiles[ name ] = loadedTabs[ name ].lines.join( "\n" );
                 }
 
                 editor.processLines();
@@ -349,7 +358,7 @@ const ShaderHub = {
             },
             onCreateFile: ( instance ) => {
                 const commonIdx = this.shader.files.length - 1;
-                const name = `common${ commonIdx }-${ this.shader.uid }.wgsl`;
+                const name = `common${ commonIdx }.wgsl`;
 
                 this.loadedFiles[ name ] = "";
                 this.shader.files.push( name );
@@ -373,7 +382,44 @@ const ShaderHub = {
             const shaderOptions = LX.makeContainer( [`auto`, "auto"], "ml-auto flex flex-row p-1 gap-1 self-center items-center", ``, shaderNameAuthorOptionsContainer );
             if( fs.user )
             {
-                shaderOptions.appendChild( new LX.Button( null, "Save Shader", this.saveShader.bind( this ), { icon: "Save", iconPosition: "start" } ).root );
+                const shaderOptionsButton = new LX.Button( null, "ShaderOptions", async () => {
+
+                    const dmOptions = [ ]
+
+                    if( mode === SHADER_MODE_EDIT )
+                    {
+                        // Detect if the shader already exists in the DB
+                        let result = null;
+
+                        try {
+                            result = await fs.getDocument( FS.SHADERS_COLLECTION_ID, this.shader.uid );
+                        } catch (error) {
+                            // Doesn't exist
+                        }
+
+                        dmOptions.push( ...[
+                            { name: "Save Shader", icon: "Save", callback: this.saveShader.bind( this, result ) },
+                        ] );
+
+                        if( result )
+                        {
+                            dmOptions.push( ...[
+                                { name: "Update Preview", icon: "ImageUp", callback: async () => {} },
+                                null,
+                                { name: "Delete Shader", icon: "Trash2", className: "fg-error", callback: async () => {} },
+                            ] );
+                        }
+                    }
+                    else
+                    {
+                        dmOptions.push( ...[
+                            { name: "Remix Shader", icon: "GitFork", callback: this.remixShader.bind( this ) }
+                        ] );
+                    }
+
+                    new LX.DropdownMenu( shaderOptionsButton.root, dmOptions, { side: "bottom", align: "end" });
+                }, { icon: "Menu" } );
+                shaderOptions.appendChild( shaderOptionsButton.root );
             }
             else
             {
@@ -472,24 +518,21 @@ const ShaderHub = {
     async createNewShader() {
 
         // Only crete a new shader view, nothing to save now
-        window.location.href = `${ window.location.origin + window.location.pathname }?view=new`;
+        window.location.href = `${ window.location.origin + window.location.pathname }?edit=new`;
     },
 
-    async saveShader() {
+    async saveShader( existingShader ) {
 
         if( !fs.user )
         {
+            // Shouldn't happen..
             return;
         }
 
-        // Detect if the shader already exists in the DB
+        if( existingShader )
         {
-            const result = await fs.getDocument( FS.SHADERS_COLLECTION_ID, this.shader.uid );
-            if( result )
-            {
-                this.overrideShader( result );
-                return;
-            }
+            this.overrideShader( existingShader );
+            return;
         }
 
         const dialog = new LX.Dialog( "New Shader", ( p ) => {
@@ -520,12 +563,7 @@ const ShaderHub = {
                 } );
 
                 // Upload canvas snapshot
-                {
-                    const blob = await this.snapshotCanvas();
-                    const previewName = `${ shaderName.replaceAll( " ", "_" ) }_preview.png`;
-                    const file = new File( [ blob ], previewName, { type: "image/png" });
-                    await fs.createFile( file );
-                }
+                this.updateShaderPreview( shaderName );
 
                 this.shader.uid = result[ "$id" ];
                 this.shader.name = shaderName;
@@ -539,42 +577,68 @@ const ShaderHub = {
 
     async overrideShader( shaderMetadata ) {
 
-        // Delete old file first
+        // Delete old files first
         const fileIdString = shaderMetadata[ "file_id" ];
-        const fileId = fileIdString.split( "," )[ 0 ];
-        await fs.deleteFile( fileId );
-
-        // Create new file with the current code
-        const filename = "main.wgsl";
-        const code = this.loadedFiles[ filename ].replaceAll( '\r', '' );
-        const arraybuffer = new TextEncoder().encode( code );
-        const file = new File( [ arraybuffer ], filename, { type: "text/plain" });
-        let result = await fs.createFile( file );
-
-        // Update file reference in the DB
-        const newFileId = result[ "$id" ];
-        result = await fs.updateDocument( FS.SHADERS_COLLECTION_ID, this.shader.uid, {
-            "file_id": newFileId,
-        } );
-
-        // Upload canvas snapshot
+        const fileIds = fileIdString.split( "," );
+        for( const fid of fileIds )
         {
-            // Delete old preview first
-            const previewName = `${ this.shader.name.replaceAll( " ", "_" ) }_preview.png`;
-            const result = await fs.listFiles( [ Query.equal( "name", previewName ) ] );
-            if( result.total > 0 )
-            {
-                const fileId = result.files[ 0 ][ "$id" ];
-                await fs.deleteFile( fileId );
-            }
-
-            // Create new one
-            const blob = await this.snapshotCanvas();
-            const file = new File( [ blob ], previewName, { type: "image/png" });
-            await fs.createFile( file );
+            await fs.deleteFile( fid );
         }
 
+        let newFileId = "";
+
+        // Create new COMMON files with the current code
+        for( let i = 0; i < this.shader.files.length - 1; ++i )
+        {
+            const filename = `common${ i }.wgsl`;
+            const code = this.loadedFiles[ filename ].replaceAll( '\r', '' );
+            const arraybuffer = new TextEncoder().encode( code );
+            const file = new File( [ arraybuffer ], filename, { type: "text/plain" });
+            let result = await fs.createFile( file );
+            newFileId += `${ result[ "$id" ] },`;
+        }
+
+        // Create new MAIN files with the current code
+        {
+            const filename = "main.wgsl";
+            const code = this.loadedFiles[ filename ].replaceAll( '\r', '' );
+            const arraybuffer = new TextEncoder().encode( code );
+            const file = new File( [ arraybuffer ], filename, { type: "text/plain" });
+            let result = await fs.createFile( file );
+            newFileId += result[ "$id" ];
+        }
+
+        // Update files reference in the DB
+        {
+            await fs.updateDocument( FS.SHADERS_COLLECTION_ID, this.shader.uid, {
+                "file_id": newFileId,
+            } );
+        }
+
+        // Update canvas snapshot
+        // this.updateShaderPreview( this.shader.name );
+
         LX.toast( `✅ Shader updated`, `Shader: ${ this.shader.name } by ${ fs.user.name }`, { position: "top-right" } );
+    },
+
+    async updateShaderPreview( shaderName ) {
+        // Delete old preview first if necessary
+        const previewName = `${ shaderName.replaceAll( " ", "_" ) }_preview.png`;
+        const result = await fs.listFiles( [ Query.equal( "name", previewName ) ] );
+        if( result.total > 0 )
+        {
+            const fileId = result.files[ 0 ][ "$id" ];
+            await fs.deleteFile( fileId );
+        }
+
+        // Create new one
+        const blob = await this.snapshotCanvas();
+        const file = new File( [ blob ], previewName, { type: "image/png" });
+        await fs.createFile( file );
+    },
+
+    async remixShader() {
+
     },
 
     async initGraphics( canvas ) {
@@ -776,7 +840,7 @@ const ShaderHub = {
 
             for( let i = 0; i < this.shader.files.length - 1; ++i )
             {
-                const name = `common${ i }-${ this.shader.uid }.wgsl`;
+                const name = `common${ i }.wgsl`;
                 const code = this.loadedFiles[ name ];
                 if( code )
                 {
@@ -793,7 +857,7 @@ const ShaderHub = {
         {
             const mainImageIndex = templateCodeLines.indexOf( "$main_image" );
             console.assert( mainImageIndex > -1 );
-            const mainName = this.shader.files[ 0 ][ 1 ]; // First Name of the first file
+            const mainName = this.shader.files.at( -1 )[ 1 ]; // First Name of the last file
             const mainImageLines = this.loadedFiles[ mainName ].replaceAll( '\r', '' ).split( "\n" );
             templateCodeLines.splice( mainImageIndex, 1, ...mainImageLines );
         }
