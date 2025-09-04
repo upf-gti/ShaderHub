@@ -1,5 +1,5 @@
 * {
-	font-family: var(--global-code-font);
+	font-family: var(--global-code-font) !important;
 }
 
 .notifications ol .lextoast .lextoastcontent .desc {
@@ -51,7 +51,7 @@
 .shader-item {
     grid-column-end: span 1;
     grid-row-end: span 1;
-    aspect-ratio: 1 / 0.75;
+    aspect-ratio: 1 / 0.8;
 }
 
 .channel-list {
