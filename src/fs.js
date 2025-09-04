@@ -18,6 +18,10 @@ class FS {
         this.storage = new Appwrite.Storage( this.client );
     }
 
+    getUserId() {
+        return this.user[ "$id" ];
+    }
+
     async detectAutoLogin() {
         try {
             this.user = await this.account.get();

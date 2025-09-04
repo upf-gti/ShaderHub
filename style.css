@@ -2,6 +2,9 @@
 	font-family: var(--global-code-font) !important;
 }
 
+.text-underline { text-decoration: underline }
+.hover\:text-underline:hover { text-decoration: underline }
+
 .notifications ol .lextoast .lextoastcontent .desc {
 	transition: all 0.5s cubic-bezier(.42, .97, .52, 1.19);
 }
@@ -52,6 +55,10 @@
     grid-column-end: span 1;
     grid-row-end: span 1;
     aspect-ratio: 1 / 0.8;
+}
+
+.shader-item.shader-profile {
+    aspect-ratio: 1 / 0.725;
 }
 
 .channel-list {

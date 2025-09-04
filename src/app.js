@@ -72,7 +72,7 @@ const ShaderHub = {
                 new LX.DropdownMenu( loginOptionsButton, [
                     fs.user.name,
                     null,
-                    { name: "Profile", icon: "User", callback: () => window.location.href = `${ window.location.origin + window.location.pathname }?profile=${ fs.user["$id"] }` },
+                    { name: "Profile", icon: "User", callback: this.openProfile.bind( this, fs.getUserId() ) },
                     { name: "Logout", icon: "LogOut", className: "fg-error", callback: async () => {
                         await fs.logout();
                         loginOptionsButton.innerHTML = "Login";
@@ -145,9 +145,10 @@ const ShaderHub = {
             const authorId = document[ "author_id" ];
             if( authorId )
             {
-                const result = await fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_id", authorId) ] );
+                const result = await fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_id", authorId ) ] );
                 const author = result.documents[ 0 ][ "user_name" ];
                 shaderInfo.author = author;
+                shaderInfo.authorId = authorId;
             }
             else
             {
@@ -189,15 +190,24 @@ const ShaderHub = {
                 <div class="w-full">
                     <div class="text-lg font-bold"><span style="font-family:var(--global-code-font);">${ shader.name }</span></div>
                     <div class="text-sm font-light"><span style="font-family:var(--global-code-font);">by
-                        ${ !shader.anonAuthor ? "<a href=''>" : "" }<span class="font-bold">${ shader.author }</span>${ !shader.anonAuthor ? "</a>" : "" }</span>
+                        ${ !shader.anonAuthor ? "<a class='dodgerblue cursor-pointer hover:text-underline'>" : "" }<span class="font-bold">${ shader.author }</span>${ !shader.anonAuthor ? "</a>" : "" }</span>
                     </div>
                 </div>
-                <div class=""><a href="">
+                <div class="">
                     <div class="">
                         ${ LX.makeIcon( "CircleUserRound", { svgClass: "xxl fg-secondary" } ).innerHTML }
                     </div>
-                </a></div>`, shaderItem );
+                </div>`, shaderItem );
                 // <img alt="avatar" width="32" height="32" decoding="async" data-nimg="1" class="rounded-full" src="https://imgproxy.compute.toys/insecure/width:64/plain/https://hkisrufjmjfdgyqbbcwa.supabase.co/storage/v1/object/public/avatar/f91bbd73-7734-49a9-99ce-460774d4ccc0/avatar.jpg">
+
+            const hyperlink = shaderDesc.querySelector( "a" );
+            if( hyperlink )
+            {
+                hyperlink.addEventListener( "click", (e) => {
+                    e.preventDefault();
+                    this.openProfile( shader.authorId )
+                } )
+            }
 
             shaderPreview.addEventListener( "click", ( e ) => {
                 window.location.href = `${ window.location.origin + window.location.pathname }?view=${ shader.uid }`;
@@ -212,6 +222,82 @@ const ShaderHub = {
 
     async createProfileView( userID ) {
 
+        var [ topArea, bottomArea ] = this.area.split({ type: "vertical", sizes: ["calc(100% - 48px)", null], resize: false });
+        topArea.root.className += " overflow-scroll";
+        bottomArea.root.className += " items-center content-center";
+        
+        // Shaderhub footer
+        LX.makeContainer( [`auto`, "auto"], "fg-primary text-lg flex flex-row gap-2 ", `
+            ${ LX.makeIcon("Github@solid", {svgClass:"lg"} ).innerHTML }<a class="decoration-none fg-secondary" href="https://github.com/upf-gti/ShaderHub">Code on Github</a>`, bottomArea );
+
+        const users = await fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_id", userID ) ] );
+        if( users.total === 0 )
+        {
+            LX.makeContainer( ["100%", "auto"], "mt-8 text-xxl font-medium justify-center text-center", "No user found.", topArea );
+            return;
+        }
+
+        const user = users.documents[ 0 ];
+        const userName = user[ "user_name" ];
+        const ownProfile = ( userID === fs.getUserId() );
+
+        document.title = `${ userName } - ShaderHub`;
+
+        const infoContainer = LX.makeContainer( ["100%", "auto"], "gap-8 p-8 justify-center", `
+           <div class="text-xxl font-bold"><span style="font-family:var(--global-code-font);">${ userName }</span></div>
+        `, topArea );
+        const listContainer = LX.makeContainer( ["100%", "auto"], "grid shader-list gap-8 p-8 justify-center", "", topArea );
+
+        const result = await fs.listDocuments( FS.SHADERS_COLLECTION_ID, [
+            Query.equal( "author_id", userID )
+        ] );
+
+        if( result.total === 0 )
+        {
+            LX.makeContainer( ["100%", "auto"], "mt-8 text-xxl font-medium justify-center text-center", "No shaders found.", topArea );
+            return;
+        }
+
+        for( const document of result.documents )
+        {
+            const name = document.name;
+
+            const shaderInfo = {
+                name,
+                uid: document[ "$id" ]
+            };
+
+            const previewName = `${ name.replaceAll( " ", "_" ) }_preview.png`;
+            const result = await fs.listFiles( [ Query.equal( "name", previewName ) ] );
+            if( result.total > 0 )
+            {
+                shaderInfo.preview = await fs.getFileUrl( result.files[ 0 ][ "$id" ] );
+            }
+
+            const shaderItem = LX.makeElement( "li", "shader-item shader-profile rounded-lg bg-secondary hover:bg-tertiary overflow-hidden flex flex-col h-auto", "", listContainer );
+            const shaderPreview = LX.makeElement( "img", "rounded-t-lg bg-secondary hover:bg-tertiary w-full border-none cursor-pointer", "", shaderItem );
+            shaderPreview.src = shaderInfo.preview ?? "images/shader_preview.png";
+            const shaderDesc = LX.makeContainer( ["100%", "100%"], "flex flex-row rounded-b-lg gap-6 p-4 items-center select-none", `
+                <div class="w-full">
+                    <div class="text-lg font-bold"><span style="font-family:var(--global-code-font);">${ shaderInfo.name }</span></div>
+                </div>
+                <div class="">
+                    <div class="">
+                        ${ LX.makeIcon( "CircleUserRound", { svgClass: "xxl fg-secondary" } ).innerHTML }
+                    </div>
+                </div>`, shaderItem );
+                // <img alt="avatar" width="32" height="32" decoding="async" data-nimg="1" class="rounded-full" src="https://imgproxy.compute.toys/insecure/width:64/plain/https://hkisrufjmjfdgyqbbcwa.supabase.co/storage/v1/object/public/avatar/f91bbd73-7734-49a9-99ce-460774d4ccc0/avatar.jpg">
+
+            shaderPreview.addEventListener( "click", ( e ) => {
+                const mode = ownProfile ? "edit" : "view";
+                window.location.href = `${ window.location.origin + window.location.pathname }?${ mode }=${ shaderInfo.uid }`;
+            } );
+        }
+
+        if( listContainer.childElementCount === 0 )
+        {
+            LX.makeContainer( ["100%", "auto"], "mt-8 text-xxl font-medium justify-center text-center", "No shaders found.", topArea );
+        }
     },
 
     async createShaderView( shaderUid, mode ) {
@@ -255,6 +341,7 @@ const ShaderHub = {
                 const users = await fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_id", authorId ) ] );
                 const authorName = users.documents[ 0 ][ "user_name" ];
                 shaderData.author = authorName;
+                shaderData.authorId = authorId;
             }
             else
             {
@@ -376,9 +463,19 @@ const ShaderHub = {
             const shaderNameAuthorOptionsContainer = LX.makeContainer( [`100%`, "auto"], "flex flex-row", `
                 <div class="flex flex-col">
                     <div class="fg-primary text-xxl font-semibold">${ this.shader.name }</div>
-                    <div class="fg-primary text-md">by ${ !this.shader.anonAuthor ? "<a href=''>" : "" }${ this.shader.author }${ !this.shader.anonAuthor ? "</a>" : "" }</div>
+                    <div class="fg-primary text-md">by ${ !this.shader.anonAuthor ? "<a class='dodgerblue cursor-pointer hover:text-underline'>" : "" }${ this.shader.author }${ !this.shader.anonAuthor ? "</a>" : "" }</div>
                 </div>
             `, shaderDataContainer );
+
+            const hyperlink = shaderNameAuthorOptionsContainer.querySelector( "a" );
+            if( hyperlink )
+            {
+                hyperlink.addEventListener( "click", (e) => {
+                    e.preventDefault();
+                    this.openProfile( this.shader.authorId )
+                } )
+            }
+
             const shaderOptions = LX.makeContainer( [`auto`, "auto"], "ml-auto flex flex-row p-1 gap-1 self-center items-center", ``, shaderNameAuthorOptionsContainer );
             if( fs.user )
             {
@@ -515,8 +612,11 @@ const ShaderHub = {
         }
     },
 
-    async createNewShader() {
+    openProfile( userID ) {
+        window.location.href = `${ window.location.origin + window.location.pathname }?profile=${ userID }`;
+    },
 
+    createNewShader() {
         // Only crete a new shader view, nothing to save now
         window.location.href = `${ window.location.origin + window.location.pathname }?edit=new`;
     },
@@ -558,7 +658,7 @@ const ShaderHub = {
                 // Create a new shader in the DB
                 result = await fs.createDocument( FS.SHADERS_COLLECTION_ID, {
                     "name": shaderName,
-                    "author_id": fs.user[ "$id" ],
+                    "author_id": fs.getUserId(),
                     "file_id": fileId,
                 } );
 

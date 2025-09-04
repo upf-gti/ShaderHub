@@ -10,6 +10,7 @@ class Shader {
         this.uniformBuffers = [];
 
         this.author = data.author ?? "anonymous";
+        this.authorId = data.authorId;
         this.anonAuthor = data.anonAuthor ?? false;
         this.description = data.description ?? "";
         this.lastUpdatedDate = "";
