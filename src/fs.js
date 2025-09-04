@@ -40,14 +40,17 @@ class FS {
           .catch( error => console.error( error) );
     }
 
-    async login( mail, password ) {
-        await this.account.createEmailPasswordSession( mail ?? "public@shaderhub.com", password ?? "password123" )
+    async login( mail, password, onlogin, onerror ) {
+        return await this.account.createEmailPasswordSession( mail ?? "public@shaderhub.com", password ?? "password123" )
             .then( async session => {
                 this.user = await this.account.get();
                 this.session = session;
                 console.log( "Login", this.user );
+                if( onlogin ) onlogin( this.user, this.session );
             })
-            .catch( error => console.error( error ) );
+            .catch( error => {
+                if( onerror ) onerror( error?.message );
+            } );
     }
 
     async logout() {

@@ -81,10 +81,7 @@ const ShaderHub = {
             }
             else
             {
-                // For now just use default params, no dialog
-                await fs.login();
-                loginOptionsButton.innerHTML = `<span class="decoration-none fg-secondary">${ fs.user.email }</span>
-                                                ${ LX.makeIcon("ChevronsUpDown", { iconClass: "pl-2" } ).innerHTML }`;
+                this.openLoginDialog( loginOptionsButton );
             }
         } );
 
@@ -616,6 +613,24 @@ const ShaderHub = {
         window.location.href = `${ window.location.origin + window.location.pathname }?profile=${ userID }`;
     },
 
+    openLoginDialog( loginOptionsButton ) {
+
+        const dialog = new LX.Dialog( "New Shader", ( p ) => {
+            const formData = { email: { label: "Email", value: "" }, password: { label: "Password", icon: "Key", value: "", type: "password" } };
+            p.addForm( null, formData, async (value, event) => {
+                await fs.login( value[ "email" ], value[ "password" ], ( user, session ) => {
+                    dialog.close();
+                    loginOptionsButton.innerHTML = `<span class="decoration-none fg-secondary">${ fs.user.email }</span>
+                                                ${ LX.makeIcon("ChevronsUpDown", { iconClass: "pl-2" } ).innerHTML }`;
+                    document.querySelectorAll( ".lextoast" ).forEach( t => t.close() );
+                    LX.toast( `✅ Logged in`, `User: ${ value[ "email" ] }`, { position: "top-right" } );
+                }, (err) => {
+                    LX.toast( `❌ Error`, err, { timeout: -1, position: "top-right" } )
+                } );
+            }, { primaryActionName: "Login", xsecondaryActionName: "Sign Up" });
+        } );
+    },
+
     createNewShader() {
         // Only crete a new shader view, nothing to save now
         window.location.href = `${ window.location.origin + window.location.pathname }?edit=new`;
@@ -672,7 +687,7 @@ const ShaderHub = {
                 dialog.close();
                 LX.toast( `✅ Shader saved`, `Shader: ${ shaderName } by ${ fs.user.name }`, { position: "top-right" } );
             }, {  } );
-        } )        
+        } );
     },
 
     async overrideShader( shaderMetadata ) {
