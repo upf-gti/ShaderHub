@@ -33,11 +33,16 @@ class FS {
         }
     }
 
-    async createAccount( mail, password, name ) {
+    async createAccount( mail, password, name, oncreate, onerror  ) {
         console.assert( mail && password && name );
         await this.account.create('unique()', mail, password, name )
-          .then( response => console.log( response ) )
-          .catch( error => console.error( error) );
+            .then( user => {
+                if( oncreate ) oncreate( user );
+            } )
+            .catch( error => {
+                console.error( error );
+                if( onerror ) onerror( error?.message );
+            } );
     }
 
     async login( mail, password, onlogin, onerror ) {

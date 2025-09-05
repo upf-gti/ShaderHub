@@ -10,8 +10,13 @@ const WEBGPU_ERROR  = 1;
 const SHADER_MODE_VIEW  = 0;
 const SHADER_MODE_EDIT  = 1;
 
+const USERNAME_MIN_LENGTH = 3;
+const PASSWORD_MIN_LENGTH = 8;
+
 const UNIFORM_CHANNELS_COUNT = 4;
+
 const SRC_IMAGE_EMPTY = "data:image/gif;base64,R0lGODlhAQABAPcAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACH5BAEAAP8ALAAAAAABAAEAAAgEAP8FBAA7";
+
 const fs = new FS();
 const Query = Appwrite.Query;
 
@@ -62,8 +67,21 @@ const ShaderHub = {
             }
         ]);
 
-        const loginOptionsButton = LX.makeContainer( [`auto`, "auto"], "flex flex-row p-1 gap-1 rounded-lg fg-primary hover:bg-tertiary text-md self-center items-center cursor-pointer", `
+        if( !fs.user )
+        {
+            const signupContainer = LX.makeContainer( [`auto`, "auto"], "flex flex-row p-1 gap-1 self-center items-center", "", menubar.root );
+            signupContainer.id = "signupContainer";
+            const signupOptionsButton = LX.makeContainer( [`auto`, "auto"], "p-1 rounded-lg fg-primary hover:bg-tertiary text-md self-center items-center cursor-pointer", "Create account", signupContainer );
+            signupOptionsButton.addEventListener( "click", async (e) => {
+                e.preventDefault();
+                this.openSignUpDialog( signupOptionsButton );
+            } );
+            LX.makeContainer( [`auto`, "0.75rem"], "mx-2 border-right border-colored fg-quaternary self-center items-center", "", signupContainer );
+        }
+
+        const loginOptionsButton = LX.makeContainer( [`auto`, "auto"], "flex flex-row gap-1 p-1 rounded-lg fg-primary hover:bg-tertiary text-md self-center items-center cursor-pointer", `
             ${ fs.user ? `<span class="decoration-none fg-secondary">${ fs.user.email }</span>${ LX.makeIcon("ChevronsUpDown", { iconClass: "pl-2" } ).innerHTML }` : "Login" }`, menubar.root );
+        loginOptionsButton.id = "loginOptionsButton";
         loginOptionsButton.addEventListener( "click", async (e) => {
             e.preventDefault();
 
@@ -76,12 +94,13 @@ const ShaderHub = {
                     { name: "Logout", icon: "LogOut", className: "fg-error", callback: async () => {
                         await fs.logout();
                         loginOptionsButton.innerHTML = "Login";
+                        document.getElementById( "signupContainer" ).classList.remove( "hidden" );
                     } },
                 ], { side: "bottom", align: "end" });
             }
             else
             {
-                this.openLoginDialog( loginOptionsButton );
+                this.openLoginDialog();
             }
         } );
 
@@ -613,23 +632,89 @@ const ShaderHub = {
         window.location.href = `${ window.location.origin + window.location.pathname }?profile=${ userID }`;
     },
 
-    openLoginDialog( loginOptionsButton ) {
+    openLoginDialog() {
 
         const dialog = new LX.Dialog( "Login", ( p ) => {
             const formData = { email: { label: "Email", value: "", icon: "AtSign" }, password: { label: "Password", icon: "Key", value: "", type: "password" } };
             const form = p.addForm( null, formData, async (value, event) => {
-                await fs.login( value[ "email" ], value[ "password" ], ( user, session ) => {
+                await fs.login( value.email, value.password, ( user, session ) => {
                     dialog.close();
-                    loginOptionsButton.innerHTML = `<span class="decoration-none fg-secondary">${ fs.user.email }</span>
+                    document.getElementById( "loginOptionsButton" ).innerHTML = `<span class="decoration-none fg-secondary">${ fs.user.email }</span>
                                                 ${ LX.makeIcon("ChevronsUpDown", { iconClass: "pl-2" } ).innerHTML }`;
+                    document.getElementById( "signupContainer" ).classList.add( "hidden" );
                     document.querySelectorAll( ".lextoast" ).forEach( t => t.close() );
-                    LX.toast( `✅ Logged in`, `User: ${ value[ "email" ] }`, { position: "top-right" } );
+                    LX.toast( `✅ Logged in`, `User: ${ value.email }`, { position: "top-right" } );
                 }, (err) => {
                     LX.toast( `❌ Error`, err, { timeout: -1, position: "top-right" } )
                 } );
             }, { primaryActionName: "Login" });
-            form.root.querySelector( "button" ).classList.add( "mt-2" )
-        } );
+            form.root.querySelector( "button" ).classList.add( "mt-2" );
+        }, { modal: true } );
+    },
+
+    openSignUpDialog() {
+
+        const dialog = new LX.Dialog( "Create account", ( p ) => {
+
+            const namePattern = LX.buildTextPattern( { minLength: USERNAME_MIN_LENGTH } );
+            const passwordPattern = LX.buildTextPattern( { minLength: PASSWORD_MIN_LENGTH, digit: true } );
+            const formData = {
+                name: { label: "Name", value: "", icon: "User", xpattern: namePattern },
+                email: { label: "Email", value: "", icon: "AtSign" },
+                password: { label: "Password", value: "", type: "password", icon: "Key", xpattern: passwordPattern },
+                confirmPassword: { label: "Confirm password", value: "", type: "password", icon: "Key" }
+            };
+            const form = p.addForm( null, formData, async (value, event) => {
+
+                errorMsg.set( "" );
+
+                if( !( value.name.match( new RegExp( namePattern ) ) ) )
+                {
+                    errorMsg.set( `❌ Name is too short. Please use at least ${ USERNAME_MIN_LENGTH } characters.` );
+                    return;
+                }
+                else if( !( value.email.match( /^[^\s@]+@[^\s@]+\.[^\s@]+$/ ) ) )
+                {
+                    errorMsg.set( "❌ Please enter a valid email address." );
+                    return;
+                }
+                else if( value.password.length < PASSWORD_MIN_LENGTH )
+                {
+                    errorMsg.set( `❌ Password is too short. Please use at least ${ PASSWORD_MIN_LENGTH } characters.` );
+                    return;
+                }
+                else if( !( value.password.match( new RegExp( passwordPattern ) ) ) )
+                {
+                    errorMsg.set( `❌ Password must contain at least 1 digit.` );
+                    return;
+                }
+                else if( value.password !== value.confirmPassword )
+                {
+                    errorMsg.set( "❌ The password and confirmation fields must match." );
+                    return;
+                }
+
+                await fs.createAccount( value.email, value.password, value.name, async ( user ) => {
+                    dialog.close();
+                    document.querySelectorAll( ".lextoast" ).forEach( t => t.close() );
+                    LX.toast( `✅ Account created!`, `You can now login with your email: ${ value.email }`, { position: "top-right" } );
+
+                    // Update DB
+                    {
+                        const result = await fs.createDocument( FS.USERS_COLLECTION_ID, {
+                            "user_id": user[ "$id" ],
+                            "user_name": value.name
+                        } );
+                    }
+
+                    this.openLoginDialog();
+                }, (err) => {
+                    errorMsg.set( `❌ ${ err }` );
+                } );
+            }, { primaryActionName: "SignUp" });
+            form.root.querySelector( "button" ).classList.add( "mt-2" );
+            const errorMsg = p.addTextArea( null, "", null, { inputClass: "fg-secondary", disabled: true, fitHeight: true } );
+        }, { modal: true } );
     },
 
     createNewShader() {

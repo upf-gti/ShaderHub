@@ -8,8 +8,9 @@ Roadmap:
 - [x] Profile page
 - [x] Login dialog
 - [x] Manage Common shader files (FS)
-- [ ] Register dialog
-- [ ] Submit form for Login
-- [ ] Create account (FS)
+- [x] Register dialog
+- [x] Create account (FS)
+- [ ] Submit form for Login (LX)
+- [ ] Give more info on form validation errors (LX)
 - [ ] Remix Shader
 - [ ] Compute shaders
