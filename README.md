@@ -10,7 +10,10 @@ Roadmap:
 - [x] Manage Common shader files (FS)
 - [x] Register dialog
 - [x] Create account (FS)
+- [ ] Use Sheet on mobile screens instead of menubar
 - [ ] Submit form for Login (LX)
 - [ ] Give more info on form validation errors (LX)
 - [ ] Remix Shader
+- [ ] Add mouse info as uniform
 - [ ] Compute shaders
+- [ ] Export GIF/pngs

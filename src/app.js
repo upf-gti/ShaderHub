@@ -1,6 +1,6 @@
 import { LX } from 'lexgui';
 // import 'lexgui/extensions/codeeditor.js';
-import './codeeditor.js';
+import './extra/codeeditor.js';
 import { FS } from './fs.js';
 import { Shader } from './shader.js';
 
@@ -19,6 +19,7 @@ const SRC_IMAGE_EMPTY = "data:image/gif;base64,R0lGODlhAQABAPcAAAAAAAAAAAAAAAAAA
 
 const fs = new FS();
 const Query = Appwrite.Query;
+const mobile = navigator && /Android|iPhone/i.test( navigator.userAgent );
 
 function capitalizeFirstLetter(val) {
     return String(val).charAt(0).toUpperCase() + String(val).slice(1);
@@ -42,70 +43,112 @@ const ShaderHub = {
         await fs.detectAutoLogin();
 
         const starterTheme = LX.getTheme();
-        const menubar = this.area.addMenubar([
-            {
-                name: "New", callback: () => this.createNewShader()
-            },
-            {
-                name: "Browse", callback: () => window.location.href = `${ window.location.origin + window.location.pathname }`
-            },
-        ]);
-
-        // const searchButton = new LX.Button(null, 
-        //     `<span class="px-2 mr-auto">Search shaders...</span>`,
-        //     () => { },
-        //     { width: "256px", className: "right", buttonClass: "border fg-tertiary bg-secondary" }
-        // );
-        // menubar.root.appendChild( searchButton.root );
-
-        menubar.addButtons([
+        const menubarOptions = [];
+        const menubarButtons = [
             {
                 title: "Switch Theme",
                 icon: starterTheme == "dark" ? "Moon" : "Sun",
                 swap: starterTheme == "dark" ? "Sun" : "Moon",
                 callback: (value, event) => { LX.switchTheme() }
             }
-        ]);
+        ];
 
-        if( !fs.user )
+        if( !mobile )
         {
-            const signupContainer = LX.makeContainer( [`auto`, "auto"], "flex flex-row p-1 gap-1 self-center items-center", "", menubar.root );
-            signupContainer.id = "signupContainer";
-            const signupOptionsButton = LX.makeContainer( [`auto`, "auto"], "p-1 rounded-lg fg-primary hover:bg-tertiary text-md self-center items-center cursor-pointer", "Create account", signupContainer );
-            signupOptionsButton.addEventListener( "click", async (e) => {
-                e.preventDefault();
-                this.openSignUpDialog( signupOptionsButton );
-            } );
-            LX.makeContainer( [`auto`, "0.75rem"], "mx-2 border-right border-colored fg-quaternary self-center items-center", "", signupContainer );
+            menubarOptions.push(
+                {
+                    name: "New", callback: () => this.createNewShader()
+                },
+                {
+                    name: "Browse", callback: () => window.location.href = `${ window.location.origin + window.location.pathname }`
+                }
+            );
         }
 
-        const loginOptionsButton = LX.makeContainer( [`auto`, "auto"], "flex flex-row gap-1 p-1 rounded-lg fg-primary hover:bg-tertiary text-md self-center items-center cursor-pointer", `
-            ${ fs.user ? `<span class="decoration-none fg-secondary">${ fs.user.email }</span>${ LX.makeIcon("ChevronsUpDown", { iconClass: "pl-2" } ).innerHTML }` : "Login" }`, menubar.root );
-        loginOptionsButton.id = "loginOptionsButton";
-        loginOptionsButton.addEventListener( "click", async (e) => {
-            e.preventDefault();
+        const menubar = this.area.addMenubar( menubarOptions );
 
-            if( fs.user )
-            {
-                new LX.DropdownMenu( loginOptionsButton, [
-                    fs.user.name,
-                    null,
-                    { name: "Profile", icon: "User", callback: this.openProfile.bind( this, fs.getUserId() ) },
-                    { name: "Logout", icon: "LogOut", className: "fg-error", callback: async () => {
+        if( mobile )
+        {
+            const sidebarOptions = {
+                headerTitle: fs.user ? fs.user.name : "Guest",
+                headerSubtitle: fs.user ? fs.user.email : undefined,
+                headerImage: "images/favicon.png",
+                skipFooter: true,
+                collapsed: false,
+                collapsable: false,
+                displaySelected: true
+            };
+
+            const sidebarCallback = m => {
+                if( fs.user )
+                {
+                    m.add( "Profile", { icon: "User", callback: this.openProfile.bind( this, fs.getUserId() ) } );
+                    m.add( "Browse", { icon: "Search", callback: () => window.location.href = `${ window.location.origin + window.location.pathname }` } );
+                    m.add( "Logout", { icon: "LogOut", callback: async () => {
                         await fs.logout();
                         loginOptionsButton.innerHTML = "Login";
                         document.getElementById( "signupContainer" ).classList.remove( "hidden" );
-                    } },
-                ], { side: "bottom", align: "end" });
+                    } } );
+                    m.separator();
+                }
+                else
+                {
+                    m.add( "Login", { icon: "LogIn", callback: this.openLoginDialog.bind( this ) } );
+                    m.add( "Create account", { icon: "UserPlus", callback: this.openSignUpDialog.bind( this ) } );
+                }
+
+                m.add( "New Shader", { icon: "UserPlus", callback: this.createNewShader.bind( this ) } );
             }
-            else
+
+            const sheetArea = new LX.Area({ skipAppend: true });
+            sheetArea.addSidebar( sidebarCallback, sidebarOptions );
+
+            menubar.addButtons( menubarButtons );
+
+            menubar.setButtonIcon( "Menu", "Menu", () => window.__currentSheet = new LX.Sheet("256px", [ sheetArea ], { side: "right" } ) );
+        }
+        else
+        {
+            menubar.addButtons( menubarButtons );
+
+            if( !fs.user )
             {
-                this.openLoginDialog();
+                const signupContainer = LX.makeContainer( [`auto`, "auto"], "flex flex-row p-1 gap-1 self-center items-center", "", menubar.root );
+                signupContainer.id = "signupContainer";
+                const signupOptionsButton = LX.makeContainer( [`auto`, "auto"], "p-1 rounded-lg fg-primary hover:bg-tertiary text-md self-center items-center cursor-pointer", "Create account", signupContainer );
+                signupOptionsButton.addEventListener( "click", async (e) => {
+                    e.preventDefault();
+                    this.openSignUpDialog();
+                } );
+                LX.makeContainer( [`auto`, "0.75rem"], "mx-2 border-right border-colored fg-quaternary self-center items-center", "", signupContainer );
             }
-        } );
+
+            const loginOptionsButton = LX.makeContainer( [`auto`, "auto"], "flex flex-row gap-1 p-1 mr-2 rounded-lg fg-primary hover:bg-tertiary text-md self-center items-center cursor-pointer", `
+                ${ fs.user ? `<span class="decoration-none fg-secondary">${ fs.user.email }</span>${ LX.makeIcon("ChevronsUpDown", { iconClass: "pl-2" } ).innerHTML }` : "Login" }`, menubar.root );
+            loginOptionsButton.id = "loginOptionsButton";
+            loginOptionsButton.addEventListener( "click", async (e) => {
+                e.preventDefault();
+                if( fs.user )
+                {
+                    new LX.DropdownMenu( loginOptionsButton, [
+                        fs.user.name,
+                        null,
+                        { name: "Profile", icon: "User", callback: this.openProfile.bind( this, fs.getUserId() ) },
+                        { name: "Logout", icon: "LogOut", className: "fg-error", callback: async () => {
+                            await fs.logout();
+                            loginOptionsButton.innerHTML = "Login";
+                            document.getElementById( "signupContainer" ).classList.remove( "hidden" );
+                        } },
+                    ], { side: "bottom", align: "end" });
+                }
+                else
+                {
+                    this.openLoginDialog();
+                }
+            } );
+        }
 
         menubar.setButtonImage("ShaderHub", `images/icon_${ starterTheme }.png`, null, { float: "left" } );
-        menubar.setButtonIcon("Github", "Github@solid", () => { window.open("https://github.com/upf-gti/ShaderHub") } );
 
         LX.addSignal( "@on_new_color_scheme", ( el, value ) => {
             menubar.setButtonImage("ShaderHub", `images/icon_${ value }.png`, null, { float: "left" } );
@@ -192,7 +235,7 @@ const ShaderHub = {
         bottomArea.root.className += " items-center content-center";
 
         // Shaderhub footer
-        LX.makeContainer( [`auto`, "auto"], "fg-primary text-lg flex flex-row gap-2 ", `
+        LX.makeContainer( [`auto`, "auto"], "fg-primary text-lg flex flex-row gap-2 self-center align-center ml-auto mr-auto", `
             ${ LX.makeIcon("Github@solid", {svgClass:"lg"} ).innerHTML }<a class="decoration-none fg-secondary" href="https://github.com/upf-gti/ShaderHub">Code on Github</a>`, bottomArea );
 
         const listContainer = LX.makeContainer( ["100%", "auto"], "grid shader-list gap-8 p-8 justify-center", "", topArea );
@@ -243,7 +286,7 @@ const ShaderHub = {
         bottomArea.root.className += " items-center content-center";
         
         // Shaderhub footer
-        LX.makeContainer( [`auto`, "auto"], "fg-primary text-lg flex flex-row gap-2 ", `
+        LX.makeContainer( [`auto`, "auto"], "fg-primary text-lg flex flex-row gap-2 self-center align-center ml-auto mr-auto", `
             ${ LX.makeIcon("Github@solid", {svgClass:"lg"} ).innerHTML }<a class="decoration-none fg-secondary" href="https://github.com/upf-gti/ShaderHub">Code on Github</a>`, bottomArea );
 
         const users = await fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_id", userID ) ] );
