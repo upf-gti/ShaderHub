@@ -639,11 +639,11 @@ const ShaderHub = {
                 const dialog = new LX.Dialog( `Uniforms [${ this.shader.uniforms.length }]`, ( p ) => {
                     // Put all the stuff in the dialog panel
                     this.customParametersPanel.refresh( p );
+
+                    // TODO: Edit dialog title on change number of uniforms
+                    // ...
+
                 }, { modal: false, draggable: true } );
-                // const customUniformCount = this.shader.uniforms.length;
-                // this.shader.uniforms.push( { name: "uniform_" + (customUniformCount+1), value: 0, min: 0, max: 1 } )
-                // this.customParametersPanel.refresh();
-                // this.createRenderPipeline( true, true );
             }, { icon: "AppWindowMac", className: "self-center", buttonClass: "bg-none", title: "Expand Window", tooltip: true, width: "38px" } );
             uniformsHeader.appendChild( dialogizePopoverButton.root );
 
@@ -683,7 +683,7 @@ const ShaderHub = {
                         overridePanel.addButton( null, "RemoveUniformButton", ( v ) => {
                             const idx = this.shader.uniforms.indexOf( u );
                             this.shader.uniforms.splice( idx, 1 );
-                            overridePanel.refresh();
+                            this.customParametersPanel.refresh( overridePanel );
                             this.createRenderPipeline( true, true );
                         }, { width: "6%", icon: "X", buttonClass: "bg-none", title: "Remove Uniform", tooltip: true } );
                     }
