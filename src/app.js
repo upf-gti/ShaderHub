@@ -621,8 +621,8 @@ const ShaderHub = {
             panel.addLabel( "0.0", { signal: "@elapsed-time", xclassName: "ml-auto", xinputClass: "text-end" } );
             panel.endLine( "items-center h-full" );
 
-            const customParametersContainer = LX.makeContainer( [`${ Math.min( 540, window.innerWidth - 72 ) }px`, "auto"], "p-2", "" );
-            LX.makeContainer( ["auto", "auto"], "p-2", `Uniforms [${ this.shader.uniforms.length }]`, customParametersContainer );
+            const customParametersContainer = LX.makeContainer( [`${ Math.min( 600, window.innerWidth - 72 ) }px`, "auto"], "p-2", "" );
+            const uniformsCountTitle = LX.makeContainer( ["auto", "auto"], "p-2", `Uniforms [${ this.shader.uniforms.length }]`, customParametersContainer );
 
             {
                 this.customParametersPanel = new LX.Panel({ className: "custom-parameters-panel w-full" });
@@ -632,9 +632,11 @@ const ShaderHub = {
 
                     this.customParametersPanel.clear();
 
+                    uniformsCountTitle.innerHTML = `Uniforms [${ this.shader.uniforms.length }]`;
+
                     for( let u of this.shader.uniforms )
                     {
-                        this.customParametersPanel.sameLine( 4 );
+                        this.customParametersPanel.sameLine( 5 );
                         this.customParametersPanel.addText( null, u.name, ( v ) => {
                             u.name = v;
                             this.createRenderPipeline( true, true );
@@ -643,7 +645,7 @@ const ShaderHub = {
                             u.min = v;
                             uRangeComponent.setLimits( u.min, u.max );
                             this._parametersDirty = true;
-                        }, { width: "20%", skipReset: true, step: 0.1 } );
+                        }, { nameWidth: "40%", width: "17%", skipReset: true, step: 0.1 } );
                         const uRangeComponent = this.customParametersPanel.addRange( null, u.value, ( v ) => {
                             u.value = v;
                             this._parametersDirty = true;
@@ -652,13 +654,20 @@ const ShaderHub = {
                             u.max = v;
                             uRangeComponent.setLimits( u.min, u.max );
                             this._parametersDirty = true;
-                        }, { width: "20%", skipReset: true, step: 0.1 } );
+                        }, { nameWidth: "40%", width: "17%", skipReset: true, step: 0.1 } );
+                        this.customParametersPanel.addButton( null, "RemoveUniformButton", ( v ) => {
+                            const idx = this.shader.uniforms.indexOf( u );
+                            this.shader.uniforms.splice( idx, 1 );
+                            this.customParametersPanel.refresh();
+                            this.createRenderPipeline( true, true );
+                        }, { width: "6%", icon: "X", buttonClass: "bg-none", title: "Remove Uniform", tooltip: true } );
                     }
 
                     this.customParametersPanel.addButton( null, "AddNewCustomUniform", () => {
                         const customUniformCount = this.shader.uniforms.length;
                         this.shader.uniforms.push( { name: "uniform_" + (customUniformCount+1), value: 0, min: 0, max: 1 } )
                         this.customParametersPanel.refresh();
+                        this.createRenderPipeline( true, true );
                     }, { icon: "Plus", className: "self-center", buttonClass: "bg-none", title: "Add New Uniform", tooltip: true, width: "38px" } );
                 }
 
