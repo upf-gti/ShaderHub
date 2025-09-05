@@ -616,7 +616,7 @@ const ShaderHub = {
             canvasControlsArea.root.className += " px-2 rounded-b-lg bg-secondary";
             const panel = canvasControlsArea.addPanel( { className: "flex flex-row" } );
             panel.sameLine();
-            panel.addButton( null, "ResetTime", () => { this.elapsedTime = 0 }, { icon: "SkipBack", title: "Reset time", tooltip: true } );
+            panel.addButton( null, "ResetTime", this.resetShaderElapsedTime.bind( this ), { icon: "SkipBack", title: "Reset time", tooltip: true } );
             panel.addButton( null, "PauseTime", () => { this.timePaused = !this.timePaused }, { icon: "Pause", title: "Pause/Resume", tooltip: true, swap: "Play" } );
             panel.addLabel( "0.0", { signal: "@elapsed-time", xclassName: "ml-auto", xinputClass: "text-end" } );
             panel.endLine( "items-center h-full" );
@@ -1337,6 +1337,12 @@ const ShaderHub = {
         const blob = await this.snapshotCanvas();
         const url = URL.createObjectURL( blob );
         window.open(url);
+    },
+
+    resetShaderElapsedTime() {
+
+        this.elapsedTime = 0;
+        LX.emit( "@elapsed-time", `${ this.elapsedTime.toFixed( 2 ) }s` );
     },
 
     quitIfWebGPUNotAvailable( adapter, device ) {
