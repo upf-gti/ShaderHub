@@ -86,8 +86,6 @@ const ShaderHub = {
                     m.add( "Browse", { icon: "Search", callback: () => window.location.href = `${ window.location.origin + window.location.pathname }` } );
                     m.add( "Logout", { icon: "LogOut", callback: async () => {
                         await fs.logout();
-                        loginOptionsButton.innerHTML = "Login";
-                        document.getElementById( "signupContainer" ).classList.remove( "hidden" );
                     } } );
                     m.separator();
                 }
@@ -637,42 +635,55 @@ const ShaderHub = {
                 this.createRenderPipeline( true, true );
             }, { icon: "Plus", className: "ml-auto self-center", buttonClass: "bg-none", title: "Add New Uniform", tooltip: true, width: "38px" } );
             uniformsHeader.appendChild( addUniformButton.root );
+            const dialogizePopoverButton = new LX.Button( null, "DialogizePopoverButton", () => {
+                const dialog = new LX.Dialog( `Uniforms [${ this.shader.uniforms.length }]`, ( p ) => {
+                    // Put all the stuff in the dialog panel
+                    this.customParametersPanel.refresh( p );
+                }, { modal: false, draggable: true } );
+                // const customUniformCount = this.shader.uniforms.length;
+                // this.shader.uniforms.push( { name: "uniform_" + (customUniformCount+1), value: 0, min: 0, max: 1 } )
+                // this.customParametersPanel.refresh();
+                // this.createRenderPipeline( true, true );
+            }, { icon: "AppWindowMac", className: "self-center", buttonClass: "bg-none", title: "Expand Window", tooltip: true, width: "38px" } );
+            uniformsHeader.appendChild( dialogizePopoverButton.root );
 
             {
                 this.customParametersPanel = new LX.Panel({ className: "custom-parameters-panel w-full" });
                 customParametersContainer.appendChild( this.customParametersPanel.root );
 
-                this.customParametersPanel.refresh = () => {
+                this.customParametersPanel.refresh = ( overridePanel ) => {
 
-                    this.customParametersPanel.clear();
+                    overridePanel = overridePanel ?? this.customParametersPanel;
+
+                    overridePanel.clear();
 
                     uniformsCountTitle.innerHTML = `Uniforms [${ this.shader.uniforms.length }]`;
 
                     for( let u of this.shader.uniforms )
                     {
-                        this.customParametersPanel.sameLine( 5 );
-                        this.customParametersPanel.addText( null, u.name, ( v ) => {
+                        overridePanel.sameLine( 5 );
+                        overridePanel.addText( null, u.name, ( v ) => {
                             u.name = v;
                             this.createRenderPipeline( true, true );
                         }, { width: "25%", skipReset: true } );
-                        this.customParametersPanel.addNumber( "Min", u.min, ( v ) => {
+                        overridePanel.addNumber( "Min", u.min, ( v ) => {
                             u.min = v;
                             uRangeComponent.setLimits( u.min, u.max );
                             this._parametersDirty = true;
                         }, { nameWidth: "40%", width: "17%", skipReset: true, step: 0.1 } );
-                        const uRangeComponent = this.customParametersPanel.addRange( null, u.value, ( v ) => {
+                        const uRangeComponent = overridePanel.addRange( null, u.value, ( v ) => {
                             u.value = v;
                             this._parametersDirty = true;
                         }, { className: "contrast", width: "35%", skipReset: true, min: u.min, max: u.max, step: 0.1 } );
-                        this.customParametersPanel.addNumber( "Max", u.max, ( v ) => {
+                        overridePanel.addNumber( "Max", u.max, ( v ) => {
                             u.max = v;
                             uRangeComponent.setLimits( u.min, u.max );
                             this._parametersDirty = true;
                         }, { nameWidth: "40%", width: "17%", skipReset: true, step: 0.1 } );
-                        this.customParametersPanel.addButton( null, "RemoveUniformButton", ( v ) => {
+                        overridePanel.addButton( null, "RemoveUniformButton", ( v ) => {
                             const idx = this.shader.uniforms.indexOf( u );
                             this.shader.uniforms.splice( idx, 1 );
-                            this.customParametersPanel.refresh();
+                            overridePanel.refresh();
                             this.createRenderPipeline( true, true );
                         }, { width: "6%", icon: "X", buttonClass: "bg-none", title: "Remove Uniform", tooltip: true } );
                     }
@@ -700,9 +711,17 @@ const ShaderHub = {
             const form = p.addForm( null, formData, async (value, event) => {
                 await fs.login( value.email, value.password, ( user, session ) => {
                     dialog.close();
-                    document.getElementById( "loginOptionsButton" ).innerHTML = `<span class="decoration-none fg-secondary">${ fs.user.email }</span>
-                                                ${ LX.makeIcon("ChevronsUpDown", { iconClass: "pl-2" } ).innerHTML }`;
-                    document.getElementById( "signupContainer" ).classList.add( "hidden" );
+                    const loginButton = document.getElementById( "loginOptionsButton" );
+                    if( loginButton )
+                    {
+                        loginButton.innerHTML = `<span class="decoration-none fg-secondary">${ fs.user.email }</span>
+                                                    ${ LX.makeIcon("ChevronsUpDown", { iconClass: "pl-2" } ).innerHTML }`;
+                    }
+                    const signupContainer = document.getElementById( "signupContainer" );
+                    if( signupContainer )
+                    {
+                        signupContainer.classList.add( "hidden" );
+                    }
                     document.querySelectorAll( ".lextoast" ).forEach( t => t.close() );
                     LX.toast( `✅ Logged in`, `User: ${ value.email }`, { position: "top-right" } );
                 }, (err) => {
