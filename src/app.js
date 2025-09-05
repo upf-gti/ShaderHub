@@ -621,8 +621,22 @@ const ShaderHub = {
             panel.addLabel( "0.0", { signal: "@elapsed-time", xclassName: "ml-auto", xinputClass: "text-end" } );
             panel.endLine( "items-center h-full" );
 
-            const customParametersContainer = LX.makeContainer( [`${ Math.min( 600, window.innerWidth - 72 ) }px`, "auto"], "p-2", "" );
-            const uniformsCountTitle = LX.makeContainer( ["auto", "auto"], "p-2", `Uniforms [${ this.shader.uniforms.length }]`, customParametersContainer );
+            const customParametersContainer = LX.makeContainer(
+                [`${ Math.min( 600, window.innerWidth - 72 ) }px`, "auto"],
+                "overflow-scroll",
+                "",
+                null,
+                { maxHeight: "256px"}
+            );
+            const uniformsHeader = LX.makeContainer( ["auto", "auto"], "flex flex-row p-2 items-center", "", customParametersContainer );
+            const uniformsCountTitle = LX.makeContainer( ["auto", "auto"], "", `Uniforms [${ this.shader.uniforms.length }]`, uniformsHeader );
+            const addUniformButton = new LX.Button( null, "AddNewCustomUniform", () => {
+                const customUniformCount = this.shader.uniforms.length;
+                this.shader.uniforms.push( { name: "uniform_" + (customUniformCount+1), value: 0, min: 0, max: 1 } )
+                this.customParametersPanel.refresh();
+                this.createRenderPipeline( true, true );
+            }, { icon: "Plus", className: "ml-auto self-center", buttonClass: "bg-none", title: "Add New Uniform", tooltip: true, width: "38px" } );
+            uniformsHeader.appendChild( addUniformButton.root );
 
             {
                 this.customParametersPanel = new LX.Panel({ className: "custom-parameters-panel w-full" });
@@ -662,13 +676,6 @@ const ShaderHub = {
                             this.createRenderPipeline( true, true );
                         }, { width: "6%", icon: "X", buttonClass: "bg-none", title: "Remove Uniform", tooltip: true } );
                     }
-
-                    this.customParametersPanel.addButton( null, "AddNewCustomUniform", () => {
-                        const customUniformCount = this.shader.uniforms.length;
-                        this.shader.uniforms.push( { name: "uniform_" + (customUniformCount+1), value: 0, min: 0, max: 1 } )
-                        this.customParametersPanel.refresh();
-                        this.createRenderPipeline( true, true );
-                    }, { icon: "Plus", className: "self-center", buttonClass: "bg-none", title: "Add New Uniform", tooltip: true, width: "38px" } );
                 }
 
                 this.customParametersPanel.refresh();
