@@ -347,6 +347,8 @@ class CodeEditor {
         this.skipTabs = options.skipTabs ?? false;
         this.useFileExplorer = ( options.fileExplorer ?? false ) && !this.skipTabs;
         this.useAutoComplete = options.autocomplete ?? true;
+        this.allowClosingTabs = options.allowClosingTabs ?? true;
+        this.allowLoadingFiles = options.allowLoadingFiles ?? true;
 
         // File explorer
         if( this.useFileExplorer )
@@ -377,8 +379,7 @@ class CodeEditor {
                             this.loadTab( event.node.id );
                             break;
                         case LX.TreeEvent.NODE_DELETED:
-                            this.tabs.delete( event.node.id );
-                            delete this.loadedTabs[ event.node.id ];
+                            this.closeTab( event.node.id );
                             break;
                         // case LX.TreeEvent.NODE_CONTEXTMENU:
                         //     LX.addContextMenu( event.multiple ? "Selected Nodes" : event.node.id, event.value, m => {
@@ -1290,7 +1291,7 @@ class CodeEditor {
             for( let url of options.files )
             {
                 const finalUrl = url.constructor === Array ? url[ 0 ] : url;
-                const finalFileName = url.constructor === Array ? url[ 1 ] : url;
+                const finalFileName = url.constructor === Array ? url[ 1 ] : undefined;
 
                 await this.loadFile( finalUrl, { filename: finalFileName, async: loadAsync, callback: ( name, text ) => {
                     filesLoaded++;
@@ -1856,10 +1857,12 @@ class CodeEditor {
 
         this.processFocus( false );
 
-        new LX.DropdownMenu( e.target, [
+        const dmOptions = [
             { name: "Create file", icon: "FilePlus", callback: this._onCreateNewFile.bind( this ) },
-            { name: "Load file", icon: "FileUp", callback: this.loadTabFromFile.bind( this ) },
-        ], { side: "bottom", align: "start" });
+            { name: "Load file", icon: "FileUp", disabled: !this.allowLoadingFiles, callback: this.loadTabFromFile.bind( this ) }
+        ];
+
+        new LX.DropdownMenu( e.target, dmOptions, { side: "bottom", align: "start" });
     }
 
     _onCreateNewFile() {
@@ -1872,7 +1875,7 @@ class CodeEditor {
         }
 
         const name = options.name ?? "unnamed.js";
-        this.addTab( name, true, name, { language: options.language ?? "JavaScript" } );
+        this.addTab( name, true, name, { indexOffset: options.indexOffset, language: options.language ?? "JavaScript" } );
     }
 
     _onSelectTab( isNewTabButton, event, name ) {
@@ -1921,19 +1924,19 @@ class CodeEditor {
         }
 
         new LX.DropdownMenu( event.target, [
-            { name: "Close", kbd: "MWB", callback: () => { this.tabs.delete( name ) } },
-            { name: "Close Others", callback: () => {
+            { name: "Close", kbd: "MWB", disabled: !this.allowClosingTabs, callback: () => { this.closeTab( name ) } },
+            { name: "Close Others", disabled: !this.allowClosingTabs, callback: () => {
                 for( const [ key, data ] of Object.entries( this.tabs.tabs ) )
                 {
                     if( key === '+' || key === name ) continue;
-                    this.tabs.delete( key )
+                    this.closeTab( key )
                 }
             } },
-            { name: "Close All", callback: () => {
+            { name: "Close All", disabled: !this.allowClosingTabs, callback: () => {
                 for( const [ key, data ] of Object.entries( this.tabs.tabs ) )
                 {
                     if( key === '+' ) continue;
-                    this.tabs.delete( key )
+                    this.closeTab( key )
                 }
             } },
             null,
@@ -2015,7 +2018,8 @@ class CodeEditor {
                 icon: tabIcon,
                 onSelect: this._onSelectTab.bind( this, isNewTabButton ),
                 onContextMenu: this._onContextMenuTab.bind( this, isNewTabButton ),
-                allowDelete: true
+                allowDelete: this.allowClosingTabs,
+                indexOffset: options.indexOffset
             } );
         }
 
@@ -2155,7 +2159,7 @@ class CodeEditor {
             icon: tabIcon,
             onSelect: this._onSelectTab.bind( this, isNewTabButton ),
             onContextMenu: this._onContextMenuTab.bind( this, isNewTabButton ),
-            allowDelete: true
+            allowDelete: this.allowClosingTabs
         });
 
         // Move into the sizer..
@@ -2172,6 +2176,11 @@ class CodeEditor {
     }
 
     closeTab( name, eraseAll ) {
+
+        if( !this.allowClosingTabs )
+        {
+            return;
+        }
 
         this.tabs.delete( name );
 

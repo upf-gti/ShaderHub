@@ -2,9 +2,6 @@
 	font-family: var(--global-code-font) !important;
 }
 
-.text-underline { text-decoration: underline }
-.hover\:text-underline:hover { text-decoration: underline }
-
 .notifications ol .lextoast .lextoastcontent .desc {
 	transition: all 0.5s cubic-bezier(.42, .97, .52, 1.19);
 }

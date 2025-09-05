@@ -430,6 +430,8 @@ const ShaderHub = {
         document.title = `${ this.shader.name } - ShaderHub`;
 
         this.editor = await new LX.CodeEditor( codeArea, {
+            allowClosingTabs: false,
+            allowLoadingFiles: false,
             fileExplorer: false,
             filesAsync: this.shader.files,
             statusShowEditorIndentation: false,
@@ -464,9 +466,9 @@ const ShaderHub = {
                 const name = `common${ commonIdx }.wgsl`;
 
                 this.loadedFiles[ name ] = "";
-                this.shader.files.push( name );
+                this.shader.files.splice( -1, 0, [ "", name ] );
 
-                return { name, language: "WGSL" };
+                return { name, language: "WGSL", indexOffset: -2 };
             }
         });
 
