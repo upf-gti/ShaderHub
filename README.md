@@ -18,12 +18,12 @@ Roadmap:
 - [x] Upload uniforms to DB
 - [x] Edit description/Upload to DB
 - [x] Add Tick frames uniform
+- [x] Add common uniforms list
 - [ ] Add mouse info uniform 
 - [ ] Delete code tabs
+- [ ] Remix Shader
+- [ ] Change uniforms type
+- [ ] Compute shaders
+- [ ] Export GIF/pngs
 - [ ] Submit form for Login (LX)
 - [ ] Give more info on form validation errors (LX)
-- [ ] Remix Shader
-- [ ] Add common uniforms list
-- [ ] Compute shaders
-- [ ] Change uniforms type
-- [ ] Export GIF/pngs
