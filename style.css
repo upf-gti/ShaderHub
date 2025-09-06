@@ -99,8 +99,8 @@
     	overflow-y: auto;
 	}
 
-	.channel-list {
-		grid-template-columns:repeat(1, 1fr);
+	.shader-edit-content {
+		display: none;
 	}
 
 	.lexdialog {

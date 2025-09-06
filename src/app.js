@@ -437,7 +437,7 @@ const ShaderHub = {
         };
 
         var [ leftArea, rightArea ] = this.area.split({ sizes: ["50%", "50%"] });
-        rightArea.root.className += " p-2";
+        rightArea.root.className += " p-2 shader-edit-content";
         leftArea.root.className += " p-2";
         leftArea.onresize = function (bounding) {};
 
@@ -502,7 +502,7 @@ const ShaderHub = {
                     await this.initGraphics( canvas );
                 });
             },
-            onCreateFile: ( instance ) => {
+            onCreateFile: ( editor ) => {
                 const commonIdx = this.shader.files.length - 1;
                 const name = `common${ commonIdx }.wgsl`;
 
@@ -544,36 +544,25 @@ const ShaderHub = {
 
                     if( mode === SHADER_MODE_EDIT )
                     {
-                        // Detect if the shader already exists in the DB
-                        let result = null;
+                        let result = await this.shaderExists();
 
-                        try {
-                            result = await fs.getDocument( FS.SHADERS_COLLECTION_ID, this.shader.uid );
-                        } catch (error) {
-                            // Doesn't exist
-                        }
-
-                        dmOptions.push( ...[
-                            { name: "Save Shader", icon: "Save", callback: this.saveShader.bind( this, result ) },
-                        ] );
+                        dmOptions.push( mobile ? 0 : { name: "Save Shader", icon: "Save", callback: this.saveShader.bind( this, result ) } );
 
                         if( result )
                         {
-                            dmOptions.push( ...[
-                                { name: "Update Preview", icon: "ImageUp", callback: async () => {} },
-                                null,
+                            dmOptions.push(
+                                mobile ? 0 : { name: "Update Preview", icon: "ImageUp", callback: async () => {} },
+                                mobile ? 0 : null,
                                 { name: "Delete Shader", icon: "Trash2", className: "fg-error", callback: async () => {} },
-                            ] );
+                            );
                         }
                     }
                     else
                     {
-                        dmOptions.push( ...[
-                            { name: "Remix Shader", icon: "GitFork", callback: this.remixShader.bind( this ) }
-                        ] );
+                        dmOptions.push( mobile ? 0 : { name: "Remix Shader", icon: "GitFork", callback: this.remixShader.bind( this ) } );
                     }
 
-                    new LX.DropdownMenu( shaderOptionsButton.root, dmOptions, { side: "bottom", align: "end" });
+                    new LX.DropdownMenu( shaderOptionsButton.root, dmOptions.filter( o => o !== 0 ), { side: "bottom", align: "end" });
                 }, { icon: "Menu" } );
                 shaderOptions.appendChild( shaderOptionsButton.root );
             }
@@ -845,7 +834,7 @@ const ShaderHub = {
 
         if( !fs.user )
         {
-            // Shouldn't happen..
+            console.warn( "Login to save your shader!" );
             return;
         }
 
@@ -861,7 +850,7 @@ const ShaderHub = {
                 shaderName = v;
             }, { pattern: LX.buildTextPattern( { minLength: 3 } ) } );
             p.addSeparator();
-            p.addButton( null, "SaveShader", async () => {
+            p.addButton( null, "ConfirmSaveButton", async () => {
                 if( !shaderName.length || !textInput.valid( shaderName ) )
                 {
                     return;
@@ -1356,6 +1345,15 @@ const ShaderHub = {
         }
 
         return { valid: true, module };
+    },
+
+
+    async shaderExists() {
+        try {
+            return await fs.getDocument( FS.SHADERS_COLLECTION_ID, this.shader.uid );
+        } catch (error) {
+            // Doesn't exist...
+        }
     },
 
     async loadChannelFromFile( file, channel ) {
