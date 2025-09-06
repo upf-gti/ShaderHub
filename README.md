@@ -13,8 +13,11 @@ Roadmap:
 - [x] Use Sheet+Sidebar on mobile screens instead of menubar buttons
 - [x] Remove uniforms
 - [x] Uniforms popover to Dialog
+- [x] Shader views without edit interface in mobile, only canvas + shader data
+- [x] Compile button to save all
+- [ ] Delete code tabs
+- [ ] Edit description/Upload to DB
 - [ ] Upload/Read uniforms from DB
-- [ ] Shader views without edit interface in mobile, only canvas + shader data
 - [ ] Submit form for Login (LX)
 - [ ] Give more info on form validation errors (LX)
 - [ ] Remix Shader

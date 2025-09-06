@@ -478,13 +478,15 @@ const ShaderHub = {
             statusShowEditorIndentation: false,
             statusShowEditorLanguage: false,
             statusShowEditorFilename: false,
-            onsave: async ( code ) => {
-                this.editor.processLines();
-                const currentTab = this.editor.getSelectedTabName();
-                this.loadedFiles[ currentTab ] = code;
-                await this.createRenderPipeline( true, true );
+            onCreateStatusPanel: ( p ) => {
+                const customTabInfoButtonsPanel = new LX.Panel( { className: "flex flex-row items-center", height: "auto" } );
+                customTabInfoButtonsPanel.addButton( null, "CompileShaderButton", this.compileShader.bind( this ), { icon: "Play", width: "32px", title: "Compile", tooltip: true } );
+                p.root.prepend( customTabInfoButtonsPanel.root );
             },
-            onFilesLoaded: async ( loadedTabs ) => {
+            onCtrlSpace: this.compileShader.bind( this ),
+            onSave: this.compileShader.bind( this ),
+            onRun: this.compileShader.bind( this ),
+            onFilesLoaded: async ( editor, loadedTabs ) => {
 
                 for( const f of this.shader.files )
                 {
@@ -723,7 +725,7 @@ const ShaderHub = {
                     document.querySelectorAll( ".lextoast" ).forEach( t => t.close() );
                     LX.toast( `✅ Logged in`, `User: ${ value.email }`, { position: "top-right" } );
                 }, (err) => {
-                    LX.toast( `❌ Error`, err, { timeout: -1, position: "top-right" } )
+                    LX.toast( `❌ Error`, err, { timeout: -1, position: "top-right" } );
                 } );
             }, { primaryActionName: "Login" });
             form.root.querySelector( "button" ).classList.add( "mt-2" );
@@ -1347,6 +1349,18 @@ const ShaderHub = {
         return { valid: true, module };
     },
 
+    async compileShader() {
+
+        this.editor.processLines();
+
+        for( const tabName of Object.keys( this.editor.tabs.tabs ) )
+        {
+            const code = this.editor.tabs.tabs[ tabName ].lines.join( '\n' );
+            this.loadedFiles[ tabName ] = code;
+        }
+
+        await this.createRenderPipeline( true, true );
+    },
 
     async shaderExists() {
         try {
