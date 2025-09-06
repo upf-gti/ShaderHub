@@ -395,7 +395,7 @@ const ShaderHub = {
                 files,
                 channels: JSON.parse( result[ "channels" ] ),
                 uniforms: JSON.parse( result[ "uniforms" ] ),
-                description: result.description
+                description: result.description ?? ""
             };
 
             const authorId = result[ "author_id" ];
@@ -559,7 +559,7 @@ const ShaderHub = {
                         if( result )
                         {
                             dmOptions.push(
-                                mobile ? 0 : { name: "Update Preview", icon: "ImageUp", callback: async () => {} },
+                                mobile ? 0 : { name: "Update Preview", icon: "ImageUp", callback: this.updateShaderPreview.bind( this, this.shader.name, true ) },
                                 mobile ? 0 : null,
                                 { name: "Delete Shader", icon: "Trash2", className: "fg-error", callback: async () => {} },
                             );
@@ -579,7 +579,18 @@ const ShaderHub = {
                 LX.makeContainer( [`auto`, "auto"], "fg-secondary text-md", "Login to save your shader", shaderOptions );
             }
             // const shaderDate = LX.makeContainer( [`auto`, "auto"], "fg-primary text-lg", this.shader.lastUpdatedDate, shaderDataContainer );
-            const shaderDesc = LX.makeContainer( [`auto`, "auto"], "fg-primary mt-4 text-lg break-words", this.shader.description, shaderDataContainer );
+
+            const ownProfile = ( this.shader.authorId === fs.getUserId() );
+            if( ownProfile )
+            {
+                const textArea = new LX.TextArea( null, this.shader.description, (v) => this.shader.description = v, { resize: false, className: "h-full", inputClass: "bg-tertiary h-full" } );
+                shaderDataContainer.appendChild( textArea.root );
+            }
+            else
+            {
+                // Non editable description
+                LX.makeContainer( [`auto`, "auto"], "fg-primary mt-4 text-lg break-words", this.shader.description, shaderDataContainer );
+            }
         }
 
         var [ canvasArea, canvasControlsArea ] = graphicsArea.split({ type: "vertical", sizes: ["calc(100% - 48px)", null], resize: false });
@@ -904,11 +915,12 @@ const ShaderHub = {
                     "name": shaderName,
                     "author_id": fs.getUserId(),
                     "file_id": fileId,
+                    "description": this.shader.description,
                     "uniforms": JSON.stringify( this.shader.uniforms )
                 } );
 
                 // Upload canvas snapshot
-                this.updateShaderPreview( shaderName );
+                this.updateShaderPreview( shaderName, false );
 
                 this.shader.uid = result[ "$id" ];
                 this.shader.name = shaderName;
@@ -957,17 +969,18 @@ const ShaderHub = {
         {
             await fs.updateDocument( FS.SHADERS_COLLECTION_ID, this.shader.uid, {
                 "file_id": newFileId,
+                "description": this.shader.description,
                 "uniforms": JSON.stringify( this.shader.uniforms )
             } );
         }
 
         // Update canvas snapshot
-        this.updateShaderPreview( this.shader.name );
+        this.updateShaderPreview( this.shader.name, false );
 
         LX.toast( `✅ Shader updated`, `Shader: ${ this.shader.name } by ${ fs.user.name }`, { position: "top-right" } );
     },
 
-    async updateShaderPreview( shaderName ) {
+    async updateShaderPreview( shaderName, showFeedback = true ) {
         // Delete old preview first if necessary
         const previewName = `${ shaderName.replaceAll( " ", "_" ) }_preview.png`;
         const result = await fs.listFiles( [ Query.equal( "name", previewName ) ] );
@@ -982,7 +995,10 @@ const ShaderHub = {
         const file = new File( [ blob ], previewName, { type: "image/png" });
         await fs.createFile( file );
 
-        LX.toast( `✅ Shader preview updated`, `Shader: ${ shaderName } by ${ fs.user.name }`, { position: "top-right" } );
+        if( showFeedback )
+        {
+            LX.toast( `✅ Shader preview updated`, `Shader: ${ shaderName } by ${ fs.user.name }`, { position: "top-right" } );
+        }
     },
 
     async remixShader() {

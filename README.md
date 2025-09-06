@@ -16,8 +16,8 @@ Roadmap:
 - [x] Shader views without edit interface in mobile, only canvas + shader data
 - [x] Compile button to save all
 - [x] Upload uniforms to DB
+- [x] Edit description/Upload to DB
 - [ ] Delete code tabs
-- [ ] Edit description/Upload to DB
 - [ ] Submit form for Login (LX)
 - [ ] Give more info on form validation errors (LX)
 - [ ] Remix Shader

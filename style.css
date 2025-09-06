@@ -11,13 +11,8 @@
 	white-space: normal;
 }
 
-.channel-title {
-	background-color: var(--global-blur-background);
-	--webkit-backdrop-filter: blur(8px);
-	backdrop-filter: blur(8px);
-	border-bottom-left-radius: 8px;
-	border-bottom-right-radius: 8px;
-	text-align: center;
+.lextextarea {
+	height: inherit;
 }
 
 .lexmenubar {
@@ -46,6 +41,15 @@
 
 .custom-parameters-panel .lexnumber input {
 	field-sizing: content;
+}
+
+.channel-title {
+	background-color: var(--global-blur-background);
+	--webkit-backdrop-filter: blur(8px);
+	backdrop-filter: blur(8px);
+	border-bottom-left-radius: 8px;
+	border-bottom-right-radius: 8px;
+	text-align: center;
 }
 
 .shader-item {
