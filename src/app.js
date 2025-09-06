@@ -16,6 +16,7 @@ const PASSWORD_MIN_LENGTH = 8;
 const UNIFORM_CHANNELS_COUNT = 4;
 const DEFAULT_UNIFORMS_LIST = [
     { name: "iTime", type: "f32" },
+    { name: "iFrame", type: "i32" },
     { name: "iResolution", type: "vec2f" },
 ];
 const DEFAULT_UNIFORM_NAMES = DEFAULT_UNIFORMS_LIST.map( u => u.name );
@@ -37,6 +38,7 @@ const ShaderHub = {
     loadedImages: {},
     uniformChannels: [],
 
+    frameCount: 0,
     lastTime: 0,
     elapsedTime: 0,
     timePaused: false,
@@ -1038,6 +1040,11 @@ const ShaderHub = {
                 usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
             });
 
+            this.frameCountBuffer = this.device.createBuffer({
+                size: 4,
+                usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
+            });
+
             this.resolutionBuffer = this.device.createBuffer({
                 size: 8,
                 usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
@@ -1072,13 +1079,21 @@ const ShaderHub = {
 
             if( !this.timePaused )
             {
-                this.elapsedTime += ( dt / 1000 );
-
                 this.device.queue.writeBuffer(
                     this.timeBuffer,
                     0,
                     new Float32Array([ this.elapsedTime ])
                 );
+
+                this.elapsedTime += ( dt / 1000 );
+
+                this.device.queue.writeBuffer(
+                    this.frameCountBuffer,
+                    0,
+                    new Int32Array([ this.frameCount ])
+                );
+
+                this.frameCount++;
 
                 LX.emit( "@elapsed-time", `${ this.elapsedTime.toFixed( 2 ) }s` );
             }
@@ -1149,11 +1164,13 @@ const ShaderHub = {
             let bindingIndex = 0;
 
             // Default Uniform bindings
-            const defaultBindingsIndex = templateCodeLines.indexOf( "$default_bindings" );
-            console.assert( defaultBindingsIndex > -1 );
-            templateCodeLines.splice( defaultBindingsIndex, 1, ...DEFAULT_UNIFORMS_LIST.map( ( u, index ) => {
-                return `@group(0) @binding(${ bindingIndex++ }) var<uniform> ${ u.name } : ${ u.type };`;
-            } ).filter( u => u !== undefined ) );
+            {
+                const defaultBindingsIndex = templateCodeLines.indexOf( "$default_bindings" );
+                console.assert( defaultBindingsIndex > -1 );
+                templateCodeLines.splice( defaultBindingsIndex, 1, ...DEFAULT_UNIFORMS_LIST.map( ( u, index ) => {
+                    return `@group(0) @binding(${ bindingIndex++ }) var<uniform> ${ u.name } : ${ u.type };`;
+                } ).filter( u => u !== undefined ) );
+            }
 
             // Custom Uniform bindings
             {
@@ -1186,6 +1203,13 @@ const ShaderHub = {
 
             // Process dummies so using them isn't mandatory
             {
+                const defaultDummiesIndex = templateCodeLines.indexOf( "$default_dummies" );
+                console.assert( defaultDummiesIndex > -1 );
+                templateCodeLines.splice( defaultDummiesIndex, 1, ...DEFAULT_UNIFORMS_LIST.map( ( u, index ) => {
+                    if( !u ) return;
+                    return `    let u${ u.name }Dummy: ${ u.type } = ${ u.name };`;
+                } ).filter( u => u !== undefined ) );
+
                 const customDummiesIndex = templateCodeLines.indexOf( "$custom_dummies" );
                 console.assert( customDummiesIndex > -1 );
                 templateCodeLines.splice( customDummiesIndex, 1, ...this.shader.uniforms.map( ( u, index ) => {
@@ -1281,6 +1305,12 @@ const ShaderHub = {
                 binding: bindingIndex++,
                 resource: {
                     buffer: this.timeBuffer,
+                }
+            },
+            {
+                binding: bindingIndex++,
+                resource: {
+                    buffer: this.frameCountBuffer,
                 }
             },
             {
@@ -1500,7 +1530,21 @@ const ShaderHub = {
 
     resetShaderElapsedTime() {
 
+        this.frameCount = 0;
         this.elapsedTime = 0;
+
+        this.device.queue.writeBuffer(
+            this.timeBuffer,
+            0,
+            new Float32Array([ this.elapsedTime ])
+        );
+
+        this.device.queue.writeBuffer(
+            this.frameCountBuffer,
+            0,
+            new Int32Array([ this.frameCount ])
+        );
+
         LX.emit( "@elapsed-time", `${ this.elapsedTime.toFixed( 2 ) }s` );
     },
 

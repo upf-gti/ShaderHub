@@ -17,11 +17,12 @@ Roadmap:
 - [x] Compile button to save all
 - [x] Upload uniforms to DB
 - [x] Edit description/Upload to DB
+- [x] Add Tick frames uniform
+- [ ] Add mouse info uniform 
 - [ ] Delete code tabs
 - [ ] Submit form for Login (LX)
 - [ ] Give more info on form validation errors (LX)
 - [ ] Remix Shader
-- [ ] Add more common uniforms: mouse info, Tick frames
 - [ ] Add common uniforms list
 - [ ] Compute shaders
 - [ ] Change uniforms type

@@ -38,6 +38,7 @@ $main_image
 @fragment
 fn frag_main(@location(0) fragUV : vec2f, @location(1) fragCoord : vec2f) -> @location(0) vec4f {
 
+$default_dummies
 $custom_dummies
 $texture_dummies
 
