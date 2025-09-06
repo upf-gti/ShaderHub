@@ -272,7 +272,8 @@ const ShaderHub = {
             }
 
             shaderPreview.addEventListener( "click", ( e ) => {
-                window.location.href = `${ window.location.origin + window.location.pathname }?view=${ shader.uid }`;
+                const mode = ( shader.authorId === fs.getUserId() ) ? "edit" : "view";
+                window.location.href = `${ window.location.origin + window.location.pathname }?${ mode }=${ shader.uid }`;
             } );
         }
 
@@ -703,9 +704,9 @@ const ShaderHub = {
                         // Updates to the popover
                         uniformsCountTitle.innerHTML = `Uniforms [${ this.shader.uniforms.length }]`;
 
-                        if( this._lastUniformsPopover )
+                        if( LX.Popover.activeElement )
                         {
-                            this._lastUniformsPopover._adjustPosition();
+                            LX.Popover.activeElement._adjustPosition();
                         }
                     }
                 }
@@ -725,7 +726,7 @@ const ShaderHub = {
                 // Refresh content first
                 this.customParametersPanel.refresh();
 
-                this._lastUniformsPopover = new LX.Popover( event.target, [ customParametersContainer ], { align: "end" } );
+                new LX.Popover( event.target, [ customParametersContainer ], { align: "end" } );
 
             }, { icon: "Settings2", title: "Custom Parameters", tooltip: true } );
 
@@ -903,6 +904,7 @@ const ShaderHub = {
                     "name": shaderName,
                     "author_id": fs.getUserId(),
                     "file_id": fileId,
+                    "uniforms": JSON.stringify( this.shader.uniforms )
                 } );
 
                 // Upload canvas snapshot
@@ -955,11 +957,12 @@ const ShaderHub = {
         {
             await fs.updateDocument( FS.SHADERS_COLLECTION_ID, this.shader.uid, {
                 "file_id": newFileId,
+                "uniforms": JSON.stringify( this.shader.uniforms )
             } );
         }
 
         // Update canvas snapshot
-        // this.updateShaderPreview( this.shader.name );
+        this.updateShaderPreview( this.shader.name );
 
         LX.toast( `✅ Shader updated`, `Shader: ${ this.shader.name } by ${ fs.user.name }`, { position: "top-right" } );
     },
@@ -978,6 +981,8 @@ const ShaderHub = {
         const blob = await this.snapshotCanvas();
         const file = new File( [ blob ], previewName, { type: "image/png" });
         await fs.createFile( file );
+
+        LX.toast( `✅ Shader preview updated`, `Shader: ${ shaderName } by ${ fs.user.name }`, { position: "top-right" } );
     },
 
     async remixShader() {
