@@ -19,7 +19,7 @@ Roadmap:
 - [x] Edit description/Upload to DB
 - [x] Add Tick frames uniform
 - [x] Add common uniforms list
-- [ ] Add mouse info uniform 
+- [x] Add mouse info uniform
 - [ ] Delete code tabs
 - [ ] Remix Shader
 - [ ] Change uniforms type

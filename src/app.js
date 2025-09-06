@@ -19,6 +19,7 @@ const DEFAULT_UNIFORMS_LIST = [
     { name: "iTimeDelta", type: "f32", info: "Render time (s)" },
     { name: "iFrame", type: "i32", info: "Shader playback frame" },
     { name: "iResolution", type: "vec2f", info: "Viewport resolution (px)" },
+    { name: "iMouse", type: "vec3f", info: "xy: Mouse coords (px), z: click" },
     { name: "iChannel0..3", type: "texture_2d<f32>", info: "Texture input channel", skipBindings: true },
 ];
 const DEFAULT_UNIFORM_NAMES = DEFAULT_UNIFORMS_LIST.map( u => u.name );
@@ -40,6 +41,7 @@ const ShaderHub = {
     loadedImages: {},
     uniformChannels: [],
 
+    mousePosition: [ 0, 0 ],
     frameCount: 0,
     lastTime: 0,
     elapsedTime: 0,
@@ -621,6 +623,25 @@ const ShaderHub = {
             }
         });
 
+        canvas.addEventListener("mousedown", (e) => {
+            e.preventDefault();
+            this._mouseDown = e;
+            this.mousePosition = [ e.offsetX, e.offsetY ];
+        });
+
+        canvas.addEventListener("mouseup", (e) => {
+            e.preventDefault();
+            this._mouseDown = undefined;
+        });
+
+        canvas.addEventListener("mousemove", (e) => {
+            if( this._mouseDown )
+            {
+                e.preventDefault();
+                this.mousePosition = [ e.offsetX, e.offsetY ];
+            }
+        });
+
         // Add shader controls data
         {
             canvasControlsArea.root.className += " px-2 rounded-b-lg bg-secondary";
@@ -663,8 +684,8 @@ const ShaderHub = {
                         for( let u of DEFAULT_UNIFORMS_LIST )
                         {
                             this.defaultParametersPanel.sameLine( 2, "justify-between" );
-                            this.defaultParametersPanel.addLabel( `${ u.name } : ${ u.type }`, { className: "w-full" } );
-                            this.defaultParametersPanel.addLabel( u.info, { className: "w-full", inputClass: "text-end" } );
+                            this.defaultParametersPanel.addLabel( `${ u.name } : ${ u.type }`, { className: "w-full p-0" } );
+                            this.defaultParametersPanel.addLabel( u.info, { className: "w-full p-0", inputClass: "text-end" } );
                         }
                     }
 
@@ -1098,6 +1119,11 @@ const ShaderHub = {
                 size: 8,
                 usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
             });
+
+            this.mouseBuffer = this.device.createBuffer({
+                size: 12,
+                usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
+            });
         }
 
         // Load any necessary texture channels for the current shader
@@ -1171,6 +1197,12 @@ const ShaderHub = {
                 this.resolutionBuffer,
                 0,
                 new Float32Array([ this.gpuCanvas.offsetWidth, this.gpuCanvas.offsetHeight ])
+            );
+
+            this.device.queue.writeBuffer(
+                this.mouseBuffer,
+                0,
+                new Float32Array([ this.mousePosition[ 0 ], this.mousePosition[ 1 ], this._mouseDown ? 1.0 : 0.0 ])
             );
 
             this.lastTime = now;
@@ -1380,6 +1412,12 @@ const ShaderHub = {
                 binding: bindingIndex++,
                 resource: {
                     buffer: this.resolutionBuffer,
+                }
+            },
+            {
+                binding: bindingIndex++,
+                resource: {
+                    buffer: this.mouseBuffer,
                 }
             }
         ]
