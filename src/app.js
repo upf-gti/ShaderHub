@@ -16,8 +16,10 @@ const PASSWORD_MIN_LENGTH = 8;
 const UNIFORM_CHANNELS_COUNT = 4;
 const DEFAULT_UNIFORMS_LIST = [
     { name: "iTime", type: "f32", info: "Shader playback time (s)" },
+    { name: "iTimeDelta", type: "f32", info: "Render time (s)" },
     { name: "iFrame", type: "i32", info: "Shader playback frame" },
     { name: "iResolution", type: "vec2f", info: "Viewport resolution (px)" },
+    { name: "iChannel0..3", type: "texture_2d<f32>", info: "Texture input channel", skipBindings: true },
 ];
 const DEFAULT_UNIFORM_NAMES = DEFAULT_UNIFORMS_LIST.map( u => u.name );
 
@@ -583,7 +585,7 @@ const ShaderHub = {
             // const shaderDate = LX.makeContainer( [`auto`, "auto"], "fg-primary text-lg", this.shader.lastUpdatedDate, shaderDataContainer );
 
             const ownProfile = ( this.shader.authorId === fs.getUserId() );
-            if( ownProfile )
+            if( ownProfile || ( shaderUid === "new" ) )
             {
                 const textArea = new LX.TextArea( null, this.shader.description, (v) => this.shader.description = v, { resize: false, className: "h-full", inputClass: "bg-tertiary h-full" } );
                 shaderDataContainer.appendChild( textArea.root );
@@ -640,7 +642,7 @@ const ShaderHub = {
             // Default Uniforms list info
             {
                 const defaultParametersContainer = LX.makeContainer(
-                    [ `${ Math.min( 500, window.innerWidth - 64 ) }px`, "auto" ],
+                    [ `${ Math.min( 600, window.innerWidth - 64 ) }px`, "auto" ],
                     "overflow-scroll",
                     "",
                     null,
@@ -661,8 +663,8 @@ const ShaderHub = {
                         for( let u of DEFAULT_UNIFORMS_LIST )
                         {
                             this.defaultParametersPanel.sameLine( 2, "justify-between" );
-                            this.defaultParametersPanel.addLabel( `${ u.name } : ${ u.type }` );
-                            this.defaultParametersPanel.addLabel( u.info, { inputClass: "text-end" } );
+                            this.defaultParametersPanel.addLabel( `${ u.name } : ${ u.type }`, { className: "w-full" } );
+                            this.defaultParametersPanel.addLabel( u.info, { className: "w-full", inputClass: "text-end" } );
                         }
                     }
 
@@ -1082,6 +1084,11 @@ const ShaderHub = {
                 usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
             });
 
+            this.timeDeltaBuffer = this.device.createBuffer({
+                size: 4,
+                usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
+            });
+
             this.frameCountBuffer = this.device.createBuffer({
                 size: 4,
                 usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
@@ -1117,17 +1124,24 @@ const ShaderHub = {
         const frame = () => {
 
             const now = LX.getTime();
-            const dt = now - this.lastTime;
+
+            this.timeDelta = ( now - this.lastTime ) / 1000;
 
             if( !this.timePaused )
             {
+                this.device.queue.writeBuffer(
+                    this.timeDeltaBuffer,
+                    0,
+                    new Float32Array([ this.timeDelta ])
+                );
+
                 this.device.queue.writeBuffer(
                     this.timeBuffer,
                     0,
                     new Float32Array([ this.elapsedTime ])
                 );
 
-                this.elapsedTime += ( dt / 1000 );
+                this.elapsedTime += this.timeDelta;
 
                 this.device.queue.writeBuffer(
                     this.frameCountBuffer,
@@ -1210,6 +1224,7 @@ const ShaderHub = {
                 const defaultBindingsIndex = templateCodeLines.indexOf( "$default_bindings" );
                 console.assert( defaultBindingsIndex > -1 );
                 templateCodeLines.splice( defaultBindingsIndex, 1, ...DEFAULT_UNIFORMS_LIST.map( ( u, index ) => {
+                    if( u.skipBindings ?? false ) return;
                     return `@group(0) @binding(${ bindingIndex++ }) var<uniform> ${ u.name } : ${ u.type };`;
                 } ).filter( u => u !== undefined ) );
             }
@@ -1248,7 +1263,7 @@ const ShaderHub = {
                 const defaultDummiesIndex = templateCodeLines.indexOf( "$default_dummies" );
                 console.assert( defaultDummiesIndex > -1 );
                 templateCodeLines.splice( defaultDummiesIndex, 1, ...DEFAULT_UNIFORMS_LIST.map( ( u, index ) => {
-                    if( !u ) return;
+                    if( u.skipBindings ?? false ) return;
                     return `    let u${ u.name }Dummy: ${ u.type } = ${ u.name };`;
                 } ).filter( u => u !== undefined ) );
 
@@ -1347,6 +1362,12 @@ const ShaderHub = {
                 binding: bindingIndex++,
                 resource: {
                     buffer: this.timeBuffer,
+                }
+            },
+            {
+                binding: bindingIndex++,
+                resource: {
+                    buffer: this.timeDeltaBuffer,
                 }
             },
             {
@@ -1574,6 +1595,13 @@ const ShaderHub = {
 
         this.frameCount = 0;
         this.elapsedTime = 0;
+        this.timeDelta = 0;
+
+        this.device.queue.writeBuffer(
+            this.timeDeltaBuffer,
+            0,
+            new Float32Array([ this.timeDelta ])
+        );
 
         this.device.queue.writeBuffer(
             this.timeBuffer,
