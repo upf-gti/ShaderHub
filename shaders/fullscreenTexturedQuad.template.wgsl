@@ -1,10 +1,4 @@
-// struct Params {
-//     iTime : f32
-// }
-
-// @group(0) @binding(0) var<uniform> params : Params;
-@group(0) @binding(0) var<uniform> iTime : f32;
-@group(0) @binding(1) var<uniform> iResolution : vec2f;
+$default_bindings
 $custom_bindings
 $texture_bindings
 
@@ -39,14 +33,12 @@ fn vert_main(@builtin(vertex_index) VertexIndex : u32) -> VertexOutput {
 const PI : f32 = 3.14159265359;
 
 $common
-
 $main_image
 
 @fragment
 fn frag_main(@location(0) fragUV : vec2f, @location(1) fragCoord : vec2f) -> @location(0) vec4f {
 
 $custom_dummies
-
 $texture_dummies
 
     return mainImage(fragUV, fragCoord);

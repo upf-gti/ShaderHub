@@ -14,6 +14,11 @@ const USERNAME_MIN_LENGTH = 3;
 const PASSWORD_MIN_LENGTH = 8;
 
 const UNIFORM_CHANNELS_COUNT = 4;
+const DEFAULT_UNIFORMS_LIST = [
+    { name: "iTime", type: "f32" },
+    { name: "iResolution", type: "vec2f" },
+];
+const DEFAULT_UNIFORM_NAMES = DEFAULT_UNIFORMS_LIST.map( u => u.name );
 
 const SRC_IMAGE_EMPTY = "data:image/gif;base64,R0lGODlhAQABAPcAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACH5BAEAAP8ALAAAAAABAAEAAAgEAP8FBAA7";
 
@@ -610,6 +615,12 @@ const ShaderHub = {
             panel.addLabel( "0.0", { signal: "@elapsed-time", xclassName: "ml-auto", xinputClass: "text-end" } );
             panel.endLine( "items-center h-full" );
 
+            // Mobile version cannot open uniforms box
+            if( mobile )
+            {
+                return;
+            }
+
             const customParametersContainer = LX.makeContainer(
                 ["auto", "auto"],
                 "overflow-scroll",
@@ -621,13 +632,12 @@ const ShaderHub = {
             const uniformsHeader = LX.makeContainer( ["auto", "auto"], "flex flex-row p-2 items-center", "", customParametersContainer );
             const uniformsCountTitle = LX.makeContainer( ["auto", "auto"], "", `Uniforms [${ this.shader.uniforms.length }]`, uniformsHeader );
             const addUniformButton = new LX.Button( null, "AddNewCustomUniform", () => {
-                this.shader.uniforms.push( { name: "uniform_" + ( this.shader.uniforms.length + 1 ), value: 0, min: 0, max: 1 } )
+                this.addUniform();
                 this.customParametersPanel.refresh();
-                this.createRenderPipeline( true, true );
             }, { icon: "Plus", className: "ml-auto self-center", buttonClass: "bg-none", title: "Add New Uniform", tooltip: true, width: "38px" } );
             uniformsHeader.appendChild( addUniformButton.root );
 
-            if( !mobile )
+            // Popover to dialog button
             {
                 const dialogizePopoverButton = new LX.Button( null,
                     "DialogizePopoverButton",
@@ -636,6 +646,7 @@ const ShaderHub = {
                 uniformsHeader.appendChild( dialogizePopoverButton.root );
             }
 
+            // Create the content for the uniforms panel
             {
                 this.customParametersPanel = new LX.Panel({ className: "custom-parameters-panel w-full" });
                 customParametersContainer.appendChild( this.customParametersPanel.root );
@@ -646,14 +657,7 @@ const ShaderHub = {
 
                     overridePanel.clear();
 
-                    if( onRefresh )
-                    {
-                        onRefresh();
-                    }
-                    else
-                    {
-                        uniformsCountTitle.innerHTML = `Uniforms [${ this.shader.uniforms.length }]`;
-                    }
+                    overridePanel.addLabel( "Uniform names must start with i + Capital letter (e.g. iTime)." );
 
                     for( let u of this.shader.uniforms )
                     {
@@ -661,7 +665,7 @@ const ShaderHub = {
                         overridePanel.addText( null, u.name, ( v ) => {
                             u.name = v;
                             this.createRenderPipeline( true, true );
-                        }, { width: "25%", skipReset: true } );
+                        }, { width: "25%", skipReset: true, pattern: "\\b(?!(" + DEFAULT_UNIFORM_NAMES.join("|") + ")\\b)(i[A-Z]\\w*)\\b" } );
                         overridePanel.addNumber( "Min", u.min, ( v ) => {
                             u.min = v;
                             uRangeComponent.setLimits( u.min, u.max );
@@ -677,11 +681,32 @@ const ShaderHub = {
                             this._parametersDirty = true;
                         }, { nameWidth: "40%", width: "17%", skipReset: true, step: 0.1 } );
                         overridePanel.addButton( null, "RemoveUniformButton", ( v ) => {
+                            // Check if the uniforms is used to recompile shaders or not
+                            const allCode = this.getShaderCode( false );
                             const idx = this.shader.uniforms.indexOf( u );
                             this.shader.uniforms.splice( idx, 1 );
                             this.customParametersPanel.refresh( overridePanel );
-                            this.createRenderPipeline( true, true );
+                            if( allCode.match( new RegExp( `\\b${ u.name }\\b` ) ) )
+                            {
+                                this.createRenderPipeline( true, true );
+                            }
                         }, { width: "6%", icon: "X", buttonClass: "bg-none", title: "Remove Uniform", tooltip: true } );
+                    }
+
+                    // Updates probably to the panel at the dialog
+                    if( onRefresh )
+                    {
+                        onRefresh();
+                    }
+                    else
+                    {
+                        // Updates to the popover
+                        uniformsCountTitle.innerHTML = `Uniforms [${ this.shader.uniforms.length }]`;
+
+                        if( this._lastUniformsPopover )
+                        {
+                            this._lastUniformsPopover._adjustPosition();
+                        }
                     }
                 }
 
@@ -689,13 +714,21 @@ const ShaderHub = {
             }
 
             panel.sameLine();
+
             panel.addButton( null, "OpenCustomParams", ( name, event ) => {
+
                 if( this._lastUniformsDialog )
                 {
                     this._lastUniformsDialog.close();
                 }
-                new LX.Popover( event.target, [ customParametersContainer ], { align: "end" } );
+
+                // Refresh content first
+                this.customParametersPanel.refresh();
+
+                this._lastUniformsPopover = new LX.Popover( event.target, [ customParametersContainer ], { align: "end" } );
+
             }, { icon: "Settings2", title: "Custom Parameters", tooltip: true } );
+
             panel.endLine( "items-center h-full ml-auto" );
         }
     },
@@ -813,9 +846,8 @@ const ShaderHub = {
 
         const uniformsHeader = LX.makeContainer( ["auto", "auto"], "flex flex-row items-center", "", dialog.title );
         const addUniformButton = new LX.Button( null, "AddNewCustomUniform", () => {
-            this.shader.uniforms.push( { name: "uniform_" + ( this.shader.uniforms.length + 1 ), value: 0, min: 0, max: 1 } )
+            this.addUniform();
             this.customParametersPanel.refresh( dialog.panel, () => dialog.title.childNodes[ 0 ].textContent = `Uniforms [${ this.shader.uniforms.length }]` );
-            this.createRenderPipeline( true, true );
         }, { icon: "Plus", className: "ml-auto self-center", buttonClass: "bg-none", title: "Add New Uniform", width: "38px" } );
         uniformsHeader.appendChild( addUniformButton.root );
         LX.makeContainer( [`auto`, "0.75rem"], "ml-2 mr-4 border-right border-colored fg-quaternary self-center items-center", "", uniformsHeader );
@@ -1087,62 +1119,66 @@ const ShaderHub = {
         requestAnimationFrame(frame);
     },
 
-    async createRenderPipeline( updateBindGroup = true, showFeedback ) {
+    getShaderCode( includeBindings = true ) {
 
         const templateCodeLines = this.loadedFiles[ "shaders/fullscreenTexturedQuad.template.wgsl" ].replaceAll( '\r', '' ).split( "\n" );
-        const customUniformCount = this.shader.uniforms.length;
 
-        // Custom Uniform bindings
+        if( includeBindings )
         {
-            for( let u of this.shader.uniforms )
+            let bindingIndex = 0;
+
+            // Default Uniform bindings
+            const defaultBindingsIndex = templateCodeLines.indexOf( "$default_bindings" );
+            console.assert( defaultBindingsIndex > -1 );
+            templateCodeLines.splice( defaultBindingsIndex, 1, ...DEFAULT_UNIFORMS_LIST.map( ( u, index ) => {
+                return `@group(0) @binding(${ bindingIndex++ }) var<uniform> ${ u.name } : ${ u.type };`;
+            } ).filter( u => u !== undefined ) );
+
+            // Custom Uniform bindings
             {
-                this.shader.uniformBuffers.push( this.device.createBuffer({
-                    size: 4,
-                    usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
-                }) );
+                for( let u of this.shader.uniforms )
+                {
+                    this.shader.uniformBuffers.push( this.device.createBuffer({
+                        size: 4,
+                        usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
+                    }) );
+                }
+
+                const customBindingsIndex = templateCodeLines.indexOf( "$custom_bindings" );
+                console.assert( customBindingsIndex > -1 );
+                templateCodeLines.splice( customBindingsIndex, 1, ...this.shader.uniforms.map( ( u, index ) => {
+                    if( !u ) return;
+                    return `@group(0) @binding(${ bindingIndex++ }) var<uniform> ${ u.name } : f32;`;
+                } ).filter( u => u !== undefined ) );
             }
 
-            const customBindingsIndex = templateCodeLines.indexOf( "$custom_bindings" );
-            console.assert( customBindingsIndex > -1 );
-            templateCodeLines.splice( customBindingsIndex, 1, ...[
-                ...this.shader.uniforms.map( ( u, index ) => {
+            // Process texture bindings
+            {
+                const textureBindingsIndex = templateCodeLines.indexOf( "$texture_bindings" );
+                console.assert( textureBindingsIndex > -1 );
+                const bindings = this.uniformChannels.map( ( u, index ) => {
                     if( !u ) return;
-                    return `@group(0) @binding(${ 2 + index }) var<uniform> i${ capitalizeFirstLetter( u.name ) } : f32;`;
-                } ).filter( u => u !== undefined )
-            ] );
-        }
+                    return `@group(0) @binding(${ bindingIndex++ }) var iChannel${ index } : texture_2d<f32>;`;
+                } );
+                templateCodeLines.splice( textureBindingsIndex, 1, ...(bindings.length ? [ ...bindings.filter( u => u !== undefined ), `@group(0) @binding(${ bindingIndex++ }) var texSampler : sampler;` ] : []) );
+            }
 
-        // Process texture bindings
-        {
-            const textureBindingsIndex = templateCodeLines.indexOf( "$texture_bindings" );
-            console.assert( textureBindingsIndex > -1 );
-            const bindings = this.uniformChannels.map( ( u, index ) => {
-                if( !u ) return;
-                return `@group(0) @binding(${ 3 + index + customUniformCount }) var iChannel${ index } : texture_2d<f32>;`;
-            } );
-            templateCodeLines.splice( textureBindingsIndex, 1, ...(bindings.length ? [ `@group(0) @binding(${ 2 + customUniformCount }) var texSampler : sampler;`, ...bindings.filter( u => u !== undefined ) ] : []) );
-        }
-
-        // Process dummies so using them isn't mandatory
-        {
-            const customDummiesIndex = templateCodeLines.indexOf( "$custom_dummies" );
-            console.assert( customDummiesIndex > -1 );
-            templateCodeLines.splice( customDummiesIndex, 1, ...[
-                ...this.shader.uniforms.map( ( u, index ) => {
+            // Process dummies so using them isn't mandatory
+            {
+                const customDummiesIndex = templateCodeLines.indexOf( "$custom_dummies" );
+                console.assert( customDummiesIndex > -1 );
+                templateCodeLines.splice( customDummiesIndex, 1, ...this.shader.uniforms.map( ( u, index ) => {
                     if( !u ) return;
-                    const uName = capitalizeFirstLetter( u.name );
-                    return `    let u${ uName }Dummy: f32 = i${ uName };`;
-                } ).filter( u => u !== undefined )
-            ] );
+                    return `    let u${ u.name }Dummy: f32 = ${ u.name };`;
+                } ).filter( u => u !== undefined ) );
 
-            const textureDummiesIndex = templateCodeLines.indexOf( "$texture_dummies" );
-            console.assert( textureDummiesIndex > -1 );
-            templateCodeLines.splice( textureDummiesIndex, 1, ...[
-                ...this.uniformChannels.map( ( u, index ) => {
+                const textureDummiesIndex = templateCodeLines.indexOf( "$texture_dummies" );
+                console.assert( textureDummiesIndex > -1 );
+                templateCodeLines.splice( textureDummiesIndex, 1, ...this.uniformChannels.map( ( u, index ) => {
                     if( !u ) return;
                     return `    let channel${ index }Dummy: vec4f = textureSample(iChannel${ index }, texSampler, fragUV);`;
-                } ).filter( u => u !== undefined )
-            ] );
+                } ).filter( u => u !== undefined ) );
+            }
         }
 
         // Add common blocks
@@ -1173,7 +1209,12 @@ const ShaderHub = {
             templateCodeLines.splice( mainImageIndex, 1, ...mainImageLines );
         }
 
-        const result = await this.validateShader( templateCodeLines.join( "\n" ), showFeedback );
+        return templateCodeLines.join( "\n" );
+    },
+
+    async createRenderPipeline( updateBindGroup = true, showFeedback ) {
+
+        const result = await this.validateShader( this.getShaderCode(), showFeedback );
         if( !result.valid )
         {
             return;
@@ -1252,11 +1293,11 @@ const ShaderHub = {
 
         if( bindings.length )
         {
-            entries.push( { binding: bindingIndex++, resource: this.sampler } );
             entries.push( ...this.uniformChannels.map( ( u, index ) => {
                 if( !u ) return;
-                return { binding: 3 + customUniformCount + index, resource: u.createView() }
+                return { binding: bindingIndex++, resource: u.createView() };
             } ).filter( u => u !== undefined ) );
+            entries.push( { binding: bindingIndex++, resource: this.sampler } );
         }
 
         this.renderBindGroup = this.device.createBindGroup({
@@ -1423,6 +1464,17 @@ const ShaderHub = {
         const blob = await this.snapshotCanvas();
         const url = URL.createObjectURL( blob );
         window.open(url);
+    },
+
+    addUniform( name, value, min, max ) {
+
+        const uName = name ?? `iUniform${ this.shader.uniforms.length + 1 }`;
+        this.shader.uniforms.push( { name: uName, value: value ?? 0, min: min ?? 0, max: max ?? 1 } );
+        const allCode = this.getShaderCode( false );
+        if( allCode.match( new RegExp( `\\b${ uName }\\b` ) ) )
+        {
+            this.createRenderPipeline( true, true );
+        }
     },
 
     resetShaderElapsedTime() {
