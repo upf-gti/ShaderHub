@@ -504,6 +504,21 @@ const ShaderHub = {
                 {
                     const name = f[ 1 ];
                     this.loadedFiles[ name ] = loadedTabs[ name ].lines.join( "\n" );
+                    // Delete lang icon and add close icon
+                    if( name !== "main.wgsl" )
+                    {
+                        const closeIcon = LX.makeIcon( "X", { iconClass: "ml-2" } );
+                        LX.asTooltip( closeIcon, "Delete file" );
+                        closeIcon.addEventListener( "click", (e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            this.shader.files.splice( this.shader.files.indexOf( f ), 1 );
+                            editor.tabs.delete( name );
+                            document.body.querySelectorAll( ".lextooltip" ).forEach( e => e.remove() );
+                            delete this.loadedFiles[ name ];
+                        } );
+                        editor.tabs.tabDOMs[ name ].appendChild( closeIcon );
+                    }
                 }
 
                 editor.processLines();
@@ -519,9 +534,25 @@ const ShaderHub = {
             onCreateFile: ( editor ) => {
                 const commonIdx = this.shader.files.length - 1;
                 const name = `common${ commonIdx }.wgsl`;
+                const file = [ "", name ];
 
                 this.loadedFiles[ name ] = "";
-                this.shader.files.splice( -1, 0, [ "", name ] );
+                this.shader.files.splice( -1, 0, file );
+
+                // Wait for the tab to be created
+                LX.doAsync( () => {
+                    const closeIcon = LX.makeIcon( "X", { iconClass: "ml-2" } );
+                    LX.asTooltip( closeIcon, "Delete file" );
+                    closeIcon.addEventListener( "click", (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        this.shader.files.splice( this.shader.files.indexOf( file ), 1 );
+                        editor.tabs.delete( name );
+                        document.body.querySelectorAll( ".lextooltip" ).forEach( e => e.remove() );
+                        delete this.loadedFiles[ name ];
+                    } );
+                    editor.tabs.tabDOMs[ name ].appendChild( closeIcon );
+                }, 10 );
 
                 return { name, language: "WGSL", indexOffset: -2 };
             }

@@ -27,6 +27,7 @@
 	border-top-left-radius: 8px !important;
 	border-top-right-radius: 8px !important;
 	border: none !important;
+	padding: var(--global-padding-md) 1.25em;
 }
 
 .lexareatabs.row .lexareatab.selected {

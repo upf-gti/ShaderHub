@@ -20,7 +20,7 @@ Roadmap:
 - [x] Add Tick frames uniform
 - [x] Add common uniforms list
 - [x] Add mouse info uniform
-- [ ] Delete code tabs
+- [x] Delete code tabs
 - [ ] Remix Shader
 - [ ] Change uniforms type
 - [ ] Compute shaders
