@@ -189,7 +189,7 @@ const ShaderHub = {
             LX.makeContainer( ["100%", "auto"], "mt-8 text-xxl font-medium justify-center text-center", "No shaders found.", this.area );
             return;
         }
-        
+
         for( const document of result.documents )
         {
             const name = document.name;
@@ -212,7 +212,7 @@ const ShaderHub = {
                 shaderInfo.author = document[ "author_name" ];
                 shaderInfo.anonAuthor = true;
             }
-            
+
             const previewName = `${ name.replaceAll( " ", "_" ) }_preview.png`;
             const result = await fs.listFiles( [ Query.equal( "name", previewName ) ] );
             if( result.total > 0 )
@@ -282,7 +282,7 @@ const ShaderHub = {
         var [ topArea, bottomArea ] = this.area.split({ type: "vertical", sizes: ["calc(100% - 48px)", null], resize: false });
         topArea.root.className += " overflow-scroll";
         bottomArea.root.className += " items-center content-center";
-        
+
         // Shaderhub footer
         LX.makeContainer( [`auto`, "auto"], "fg-primary text-lg flex flex-row gap-2 self-center align-center ml-auto mr-auto", `
             ${ LX.makeIcon("Github@solid", {svgClass:"lg"} ).innerHTML }<a class="decoration-none fg-secondary" href="https://github.com/upf-gti/ShaderHub">Code on Github</a>`, bottomArea );
@@ -620,44 +620,49 @@ const ShaderHub = {
             panel.endLine( "items-center h-full" );
 
             const customParametersContainer = LX.makeContainer(
-                [`${ Math.min( 600, window.innerWidth - 72 ) }px`, "auto"],
+                ["auto", "auto"],
                 "overflow-scroll",
                 "",
                 null,
-                { maxHeight: "256px"}
+                { maxHeight: "256px", maxWidth: `${ window.innerWidth - 64 }px` }
             );
+
             const uniformsHeader = LX.makeContainer( ["auto", "auto"], "flex flex-row p-2 items-center", "", customParametersContainer );
             const uniformsCountTitle = LX.makeContainer( ["auto", "auto"], "", `Uniforms [${ this.shader.uniforms.length }]`, uniformsHeader );
             const addUniformButton = new LX.Button( null, "AddNewCustomUniform", () => {
-                const customUniformCount = this.shader.uniforms.length;
-                this.shader.uniforms.push( { name: "uniform_" + (customUniformCount+1), value: 0, min: 0, max: 1 } )
+                this.shader.uniforms.push( { name: "uniform_" + ( this.shader.uniforms.length + 1 ), value: 0, min: 0, max: 1 } )
                 this.customParametersPanel.refresh();
                 this.createRenderPipeline( true, true );
             }, { icon: "Plus", className: "ml-auto self-center", buttonClass: "bg-none", title: "Add New Uniform", tooltip: true, width: "38px" } );
             uniformsHeader.appendChild( addUniformButton.root );
-            const dialogizePopoverButton = new LX.Button( null, "DialogizePopoverButton", () => {
-                const dialog = new LX.Dialog( `Uniforms [${ this.shader.uniforms.length }]`, ( p ) => {
-                    // Put all the stuff in the dialog panel
-                    this.customParametersPanel.refresh( p );
 
-                    // TODO: Edit dialog title on change number of uniforms
-                    // ...
-
-                }, { modal: false, draggable: true } );
-            }, { icon: "AppWindowMac", className: "self-center", buttonClass: "bg-none", title: "Expand Window", tooltip: true, width: "38px" } );
-            uniformsHeader.appendChild( dialogizePopoverButton.root );
+            if( !mobile )
+            {
+                const dialogizePopoverButton = new LX.Button( null,
+                    "DialogizePopoverButton",
+                    this.openUniformsDialog.bind( this ),
+                    { icon: "AppWindowMac", className: "self-center", buttonClass: "bg-none", title: "Expand Window", tooltip: true, width: "38px" } );
+                uniformsHeader.appendChild( dialogizePopoverButton.root );
+            }
 
             {
                 this.customParametersPanel = new LX.Panel({ className: "custom-parameters-panel w-full" });
                 customParametersContainer.appendChild( this.customParametersPanel.root );
 
-                this.customParametersPanel.refresh = ( overridePanel ) => {
+                this.customParametersPanel.refresh = ( overridePanel, onRefresh ) => {
 
                     overridePanel = overridePanel ?? this.customParametersPanel;
 
                     overridePanel.clear();
 
-                    uniformsCountTitle.innerHTML = `Uniforms [${ this.shader.uniforms.length }]`;
+                    if( onRefresh )
+                    {
+                        onRefresh();
+                    }
+                    else
+                    {
+                        uniformsCountTitle.innerHTML = `Uniforms [${ this.shader.uniforms.length }]`;
+                    }
 
                     for( let u of this.shader.uniforms )
                     {
@@ -694,6 +699,10 @@ const ShaderHub = {
 
             panel.sameLine();
             panel.addButton( null, "OpenCustomParams", ( name, event ) => {
+                if( this._lastUniformsDialog )
+                {
+                    this._lastUniformsDialog.close();
+                }
                 new LX.Popover( event.target, [ customParametersContainer ], { align: "end" } );
             }, { icon: "Settings2", title: "Custom Parameters", tooltip: true } );
             panel.endLine( "items-center h-full ml-auto" );
@@ -797,6 +806,36 @@ const ShaderHub = {
         }, { modal: true } );
     },
 
+    openUniformsDialog() {
+
+        if( this._lastUniformsDialog )
+        {
+            this._lastUniformsDialog.close();
+        }
+
+        const dialog = new LX.Dialog( `Uniforms [${ this.shader.uniforms.length }]`, null, {
+            modal: false, draggable: true, size: [ Math.min( 600, window.innerWidth - 64 ), "auto" ]
+        } );
+
+        // Put all the stuff in the dialog panel
+        this.customParametersPanel.refresh( dialog.panel );
+
+        const uniformsHeader = LX.makeContainer( ["auto", "auto"], "flex flex-row items-center", "", dialog.title );
+        const addUniformButton = new LX.Button( null, "AddNewCustomUniform", () => {
+            this.shader.uniforms.push( { name: "uniform_" + ( this.shader.uniforms.length + 1 ), value: 0, min: 0, max: 1 } )
+            this.customParametersPanel.refresh( dialog.panel, () => dialog.title.childNodes[ 0 ].textContent = `Uniforms [${ this.shader.uniforms.length }]` );
+            this.createRenderPipeline( true, true );
+        }, { icon: "Plus", className: "ml-auto self-center", buttonClass: "bg-none", title: "Add New Uniform", width: "38px" } );
+        uniformsHeader.appendChild( addUniformButton.root );
+        LX.makeContainer( [`auto`, "0.75rem"], "ml-2 mr-4 border-right border-colored fg-quaternary self-center items-center", "", uniformsHeader );
+        const closerButton = dialog.title.querySelector( "a" );
+        uniformsHeader.appendChild( closerButton );
+        // Re-add listener since it lost it changing the parent
+        closerButton.addEventListener( "click", dialog.close );
+
+        this._lastUniformsDialog = dialog;
+    },
+
     createNewShader() {
         // Only crete a new shader view, nothing to save now
         window.location.href = `${ window.location.origin + window.location.pathname }?edit=new`;
@@ -827,7 +866,7 @@ const ShaderHub = {
                 {
                     return;
                 }
-                
+
                 // Upload document and get id
                 const filename = "main.wgsl";
                 const code = this.loadedFiles[ filename ].replaceAll( '\r', '' );
