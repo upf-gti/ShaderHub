@@ -1294,12 +1294,21 @@ const ShaderHub = {
 
             // Custom Uniform bindings
             {
-                for( let u of this.shader.uniforms )
+                if( this.shader.uniforms.length !== this.shader.uniformBuffers.length )
                 {
-                    this.shader.uniformBuffers.push( this.device.createBuffer({
-                        size: 4,
-                        usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
-                    }) );
+                    this.shader.uniformBuffers.length = this.shader.uniforms.length; // Set new length
+
+                    for( let i = 0; i < this.shader.uniformBuffers.length; ++i )
+                    {
+                        const buffer = this.shader.uniformBuffers[ i ];
+                        if( !buffer )
+                        {
+                            this.shader.uniformBuffers[ i ] = this.device.createBuffer({
+                                size: 4,
+                                usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
+                            });
+                        }
+                    }
                 }
 
                 const customBindingsIndex = templateCodeLines.indexOf( "$custom_bindings" );
