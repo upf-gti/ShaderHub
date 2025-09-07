@@ -21,6 +21,8 @@ Roadmap:
 - [x] Add common uniforms list
 - [x] Add mouse info uniform
 - [x] Delete code tabs
+- [x] Upload shader texture channels
+- [ ] Add keyboard uniform as possible texture
 - [ ] Remix Shader
 - [ ] Change uniforms type
 - [ ] Compute shaders

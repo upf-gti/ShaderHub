@@ -63,6 +63,17 @@
     aspect-ratio: 1 / 0.725;
 }
 
+.channel-server-list {
+	grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+	grid-auto-rows: minmax(200px, auto);
+}
+
+.channel-server-list li {
+	/* grid-column-end: span 1;
+    grid-row-end: span 1; */
+	aspect-ratio: 1 / 0.9;
+}
+
 .channel-list {
 	grid-template-columns:repeat(4, 1fr);
 }

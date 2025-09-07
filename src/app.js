@@ -256,9 +256,9 @@ const ShaderHub = {
             shaderPreview.src = shader.preview ?? "images/shader_preview.png";
             const shaderDesc = LX.makeContainer( ["100%", "100%"], "flex flex-row rounded-b-lg gap-6 p-4 items-center select-none", `
                 <div class="w-full">
-                    <div class="text-lg font-bold"><span style="font-family:var(--global-code-font);">${ shader.name }</span></div>
-                    <div class="text-sm font-light"><span style="font-family:var(--global-code-font);">by
-                        ${ !shader.anonAuthor ? "<a class='dodgerblue cursor-pointer hover:text-underline'>" : "" }<span class="font-bold">${ shader.author }</span>${ !shader.anonAuthor ? "</a>" : "" }</span>
+                    <div class="text-lg font-bold">${ shader.name }</div>
+                    <div class="text-sm font-light">by
+                        ${ !shader.anonAuthor ? "<a class='dodgerblue cursor-pointer hover:text-underline'>" : "" }<span class="font-bold">${ shader.author }</span>${ !shader.anonAuthor ? "</a>" : "" }
                     </div>
                 </div>
                 <div class="">
@@ -278,7 +278,7 @@ const ShaderHub = {
             }
 
             shaderPreview.addEventListener( "click", ( e ) => {
-                const mode = ( shader.authorId === fs.getUserId() ) ? "edit" : "view";
+                const mode = ( fs.user && shader.authorId === fs.getUserId() ) ? "edit" : "view";
                 window.location.href = `${ window.location.origin + window.location.pathname }?${ mode }=${ shader.uid }`;
             } );
         }
@@ -313,7 +313,7 @@ const ShaderHub = {
         document.title = `${ userName } - ShaderHub`;
 
         const infoContainer = LX.makeContainer( ["100%", "auto"], "gap-8 p-8 justify-center", `
-           <div class="text-xxl font-bold"><span style="font-family:var(--global-code-font);">${ userName }</span></div>
+           <div class="text-xxl font-bold">${ userName }</span>
         `, topArea );
         const listContainer = LX.makeContainer( ["100%", "auto"], "grid shader-list gap-8 p-8 justify-center", "", topArea );
 
@@ -468,8 +468,7 @@ const ShaderHub = {
                 const channelTitle = LX.makeContainer( ["100%", "auto"], "p-2 absolute text-md bottom-0 channel-title pointer-events-none", `iChannel${ i }`, channelContainer );
                 channelContainer.addEventListener( "click", ( e ) => {
                     e.preventDefault();
-                    // Open popup with the server textures
-                    // ...
+                    this.openAvailableChannels( i );
                 } );
                 channelContainer.addEventListener("contextmenu", ( e ) => {
                     e.preventDefault();
@@ -617,7 +616,7 @@ const ShaderHub = {
             }
             // const shaderDate = LX.makeContainer( [`auto`, "auto"], "fg-primary text-lg", this.shader.lastUpdatedDate, shaderDataContainer );
 
-            const ownProfile = ( this.shader.authorId === fs.getUserId() );
+            const ownProfile = fs.user && ( this.shader.authorId === fs.getUserId() );
             if( ownProfile || ( shaderUid === "new" ) )
             {
                 const textArea = new LX.TextArea( null, this.shader.description, (v) => this.shader.description = v, { resize: false, className: "h-full", inputClass: "bg-tertiary h-full" } );
@@ -731,7 +730,7 @@ const ShaderHub = {
             // Custom Uniforms info
             {
                 const customParametersContainer = LX.makeContainer(
-                    ["auto", "auto"],
+                    [`${ Math.min( 600, window.innerWidth - 64 ) }px`, "auto"],
                     "overflow-scroll",
                     "",
                     null,
@@ -841,6 +840,58 @@ const ShaderHub = {
                 panel.endLine( "items-center h-full ml-auto" );
             }
         }
+    },
+
+    async openAvailableChannels( channelIndex ) {
+
+        this.currentChannelIndex = channelIndex;
+
+        const _createChannelItems = async ( category, container ) => {
+
+            const result = await fs.listDocuments( FS.ASSETS_COLLECTION_ID, [
+                Query.equal( "category", category )
+            ] );
+
+            if( result.total === 0 )
+            {
+                LX.makeContainer( ["100%", "auto"], "mt-8 text-xxl font-medium justify-center text-center", "No channels found.", container );
+                return;
+            }
+
+            for( const document of result.documents )
+            {
+                const channelItem = LX.makeElement( "li", "relative flex rounded-lg bg-secondary hover:bg-tertiary overflow-hidden", "", container );
+                channelItem.style.maxHeight = "200px";
+                const channelPreview = LX.makeElement( "img", "rounded-t-lg bg-secondary hover:bg-tertiary w-full border-none cursor-pointer", "", channelItem );
+                const fileId = document[ "file_id" ];
+                const preview = document[ "preview" ];
+                channelPreview.src = preview ? await fs.getFileUrl( preview ) : ( fileId ? await fs.getFileUrl( fileId ) : "images/shader_preview.png" );
+                const shaderDesc = LX.makeContainer( ["100%", "auto"], "absolute top-0 p-2 w-full bg-blur items-center select-none text-sm font-bold", `
+                    ${ document.name } (uint8)
+                `, channelItem );
+                channelItem.addEventListener( "click", ( e ) => {
+                    e.preventDefault();
+                    this.loadChannelFromFile( fileId, this.currentChannelIndex );
+                    this.currentChannelIndex = undefined;
+                    dialog.close();
+                } );
+            }
+        }
+
+        const area = new LX.Area( { skipAppend: true } );
+        const tabs = area.addTabs( { parentClass: "bg-secondary p-4", sizes: [ "auto", "auto" ], contentClass: "bg-secondary p-4 pt-0" } );
+
+        const texturesContainer = LX.makeContainer( [ "100%", "100%" ], "grid channel-server-list gap-4 p-4 border rounded-lg justify-center overflow-scroll" );
+        await _createChannelItems( "texture", texturesContainer );
+        tabs.add( "Textures", texturesContainer, { selected: true } );
+
+        const miscContainer = LX.makeContainer( [ "100%", "100%" ], "grid channel-server-list gap-4 p-4 border rounded-lg justify-center overflow-scroll" );
+        await _createChannelItems( "misc", miscContainer );
+        tabs.add( "Misc", miscContainer, { xselected: true } );
+
+        let dialog = new LX.Dialog( `Channel${ channelIndex } input:`, (p) => {
+            p.attach( area );
+        }, { modal: false, close: true, minimize: false, size: [`${ Math.min( 1280, window.innerWidth - 64 ) }px`, "512px"], draggable: true });
     },
 
     openProfile( userID ) {
@@ -1014,7 +1065,8 @@ const ShaderHub = {
                     "author_id": fs.getUserId(),
                     "file_id": fileId,
                     "description": this.shader.description,
-                    "uniforms": JSON.stringify( this.shader.uniforms )
+                    "channels": JSON.stringify( this.shader.channels ),
+                    "uniforms": JSON.stringify( this.shader.uniforms ),
                 } );
 
                 // Upload canvas snapshot
@@ -1068,6 +1120,7 @@ const ShaderHub = {
             await fs.updateDocument( FS.SHADERS_COLLECTION_ID, this.shader.uid, {
                 "file_id": newFileId,
                 "description": this.shader.description,
+                "channels": JSON.stringify( this.shader.channels ),
                 "uniforms": JSON.stringify( this.shader.uniforms )
             } );
         }
@@ -1502,6 +1555,11 @@ const ShaderHub = {
 
     async createTexture( fileId, channel ) {
 
+        if( !fileId )
+        {
+            return;
+        }
+
         const url = await fs.getFileUrl( fileId );
         const data = await fs.requestFile( url );
         const imageBitmap = await createImageBitmap( await new Blob([data]) );
@@ -1608,6 +1666,8 @@ const ShaderHub = {
         const mustUpdateRenderPipeline = ( this.uniformChannels[ channel ] === undefined );
 
         await this.createTexture( file, channel );
+
+        this.shader.channels[ channel ] = file;
 
         if( mustUpdateRenderPipeline )
         {

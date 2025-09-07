@@ -7,6 +7,7 @@ class FS {
     static BUCKET_ID = "68b70c6b0004ae91e454";
     static SHADERS_COLLECTION_ID = "shaders";
     static USERS_COLLECTION_ID = "users";
+    static ASSETS_COLLECTION_ID = "assets";
 
     constructor() {
         this.client = new Appwrite.Client()
