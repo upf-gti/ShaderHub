@@ -24,7 +24,7 @@ Roadmap:
 - [x] Upload shader texture channels
 - [x] Create Custom Uniform from editor text selection
 - [x] Remix Shader
-- [ ] Delete Shader
+- [x] Delete Shader
 - [ ] Modify Shader name
 - [ ] Add keyboard uniform as possible texture
 - [ ] Change uniforms type

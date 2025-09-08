@@ -1132,6 +1132,45 @@ const ShaderHub = {
 
     async deleteShader() {
 
+        let result = await this.shaderExists();
+        if( !result )
+        {
+            return;
+        }
+
+        const innerDelete = async () => {
+
+            // DB entry
+            await fs.deleteDocument( FS.SHADERS_COLLECTION_ID, this.shader.uid );
+
+            // Shader files
+            const fileIdString = result[ "file_id" ];
+            const fileIds = fileIdString.split( "," );
+            for( const fid of fileIds )
+            {
+                await fs.deleteFile( fid );
+            }
+
+            // Preview
+            const previewName = `${ this.shader.name.replaceAll( " ", "_" ) }_preview.png`;
+            result = await fs.listFiles( [ Query.equal( "name", previewName ) ] );
+            if( result.total > 0 )
+            {
+                await fs.deleteFile( result.files[ 0 ][ "$id" ] );
+            }
+
+            LX.toast( `✅ Shader deleted`, `Shader: ${ this.shader.name } by ${ fs.user.name }`, { position: "top-right" } );
+
+        };
+
+        const dialog = new LX.Dialog( "Delete shader", (p) => {
+            p.root.classList.add( "p-2" );
+            p.addTextArea( null, "Are you sure? This action cannot be undone.", null, { disabled: true } );
+            p.addSeparator();
+            p.sameLine( 2 );
+            p.addButton( null, "Cancel", () => dialog.close(), { width: "50%", buttonClass: "bg-error fg-white" } );
+            p.addButton( null, "Continue", innerDelete.bind( this ), { width: "50%", buttonClass: "contrast" } );
+        }, { modal: true } );
     },
 
     async remixShader() {
