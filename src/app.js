@@ -7,9 +7,6 @@ import { Shader } from './shader.js';
 const WEBGPU_OK     = 0;
 const WEBGPU_ERROR  = 1;
 
-const SHADER_MODE_VIEW  = 0;
-const SHADER_MODE_EDIT  = 1;
-
 const USERNAME_MIN_LENGTH = 3;
 const PASSWORD_MIN_LENGTH = 8;
 
@@ -167,16 +164,11 @@ const ShaderHub = {
 
         const onLoad = async () => {
             const params = new URLSearchParams( document.location.search );
-            const queryShaderView = params.get( "view" );
-            const queryShaderEdit = params.get( "edit" );
+            const queryShader = params.get( "shader" );
             const queryProfile = params.get( "profile" );
-            if( queryShaderView )
+            if( queryShader )
             {
-                await this.createShaderView( queryShaderView, SHADER_MODE_VIEW );
-            }
-            else if( queryShaderEdit )
-            {
-                await this.createShaderView( queryShaderEdit, SHADER_MODE_EDIT );
+                await this.createShaderView( queryShader );
             }
             else if( queryProfile )
             {
@@ -278,8 +270,7 @@ const ShaderHub = {
             }
 
             shaderPreview.addEventListener( "click", ( e ) => {
-                const mode = ( fs.user && shader.authorId === fs.getUserId() ) ? "edit" : "view";
-                window.location.href = `${ window.location.origin + window.location.pathname }?${ mode }=${ shader.uid }`;
+                window.location.href = `${ window.location.origin + window.location.pathname }?shader=${ shader.uid }`;
             } );
         }
 
@@ -358,8 +349,7 @@ const ShaderHub = {
                 // <img alt="avatar" width="32" height="32" decoding="async" data-nimg="1" class="rounded-full" src="https://imgproxy.compute.toys/insecure/width:64/plain/https://hkisrufjmjfdgyqbbcwa.supabase.co/storage/v1/object/public/avatar/f91bbd73-7734-49a9-99ce-460774d4ccc0/avatar.jpg">
 
             shaderPreview.addEventListener( "click", ( e ) => {
-                const mode = ownProfile ? "edit" : "view";
-                window.location.href = `${ window.location.origin + window.location.pathname }?${ mode }=${ shaderInfo.uid }`;
+                window.location.href = `${ window.location.origin + window.location.pathname }?shader=${ shaderInfo.uid }`;
             } );
         }
 
@@ -369,7 +359,7 @@ const ShaderHub = {
         }
     },
 
-    async createShaderView( shaderUid, mode ) {
+    async createShaderView( shaderUid ) {
 
         // Create shader instance based on shader uid
         // Get all stored shader files (not the code, only the data)
@@ -448,12 +438,12 @@ const ShaderHub = {
             event.returnValue = "";
         };
 
-        var [ leftArea, rightArea ] = this.area.split({ sizes: ["50%", "50%"] });
+        let [ leftArea, rightArea ] = this.area.split({ sizes: ["50%", "50%"] });
         rightArea.root.className += " p-2 shader-edit-content";
         leftArea.root.className += " p-2";
         leftArea.onresize = function (bounding) {};
 
-        var [ codeArea, shaderSettingsArea ] = rightArea.split({ type: "vertical", sizes: ["80%", null], resize: false });
+        let [ codeArea, shaderSettingsArea ] = rightArea.split({ type: "vertical", sizes: ["80%", null], resize: false });
         codeArea.root.className += " rounded-lg overflow-hidden";
 
         // Add input channels UI
@@ -479,7 +469,7 @@ const ShaderHub = {
             }
         }
 
-        document.title = `${ this.shader.name } - ShaderHub`;
+        document.title = `${ this.shader.name } (${ this.shader.author }) - ShaderHub`;
 
         this.editor = await new LX.CodeEditor( codeArea, {
             allowClosingTabs: false,
@@ -554,6 +544,26 @@ const ShaderHub = {
                 }, 10 );
 
                 return { name, language: "WGSL", indexOffset: -2 };
+            },
+            onContextMenu: ( editor, content, event ) => {
+
+                const word = content.trim().match( /([A-Za-z0-9_]+)/g )[ 0 ];
+                if( !word )
+                {
+                    return;
+                }
+
+                const options = [];
+                const USED_UNIFORM_NAMES = [ ...DEFAULT_UNIFORM_NAMES, ...this.shader.uniforms.map( u => u.name ) ];
+                const regex = new RegExp( "\\b(?!(" + USED_UNIFORM_NAMES.join("|") + ")\\b)(i[A-Z]\\w*)\\b" );
+                
+                options.push( { path: "Create Uniform", disabled: !regex.test( word ), callback: async () => {
+                    await this.addUniform( word );
+                    await this.compileShader();
+                    this.openCustomUniforms();
+                } } );
+
+                return options;
             }
         });
 
@@ -579,14 +589,16 @@ const ShaderHub = {
                 } )
             }
 
+            const ownProfile = fs.user && ( this.shader.authorId === fs.getUserId() );
             const shaderOptions = LX.makeContainer( [`auto`, "auto"], "ml-auto flex flex-row p-1 gap-1 self-center items-center", ``, shaderNameAuthorOptionsContainer );
+
             if( fs.user )
             {
                 const shaderOptionsButton = new LX.Button( null, "ShaderOptions", async () => {
 
                     const dmOptions = [ ]
 
-                    if( mode === SHADER_MODE_EDIT )
+                    if( ownProfile )
                     {
                         let result = await this.shaderExists();
 
@@ -597,7 +609,7 @@ const ShaderHub = {
                             dmOptions.push(
                                 mobile ? 0 : { name: "Update Preview", icon: "ImageUp", callback: this.updateShaderPreview.bind( this, this.shader.name, true ) },
                                 mobile ? 0 : null,
-                                { name: "Delete Shader", icon: "Trash2", className: "fg-error", callback: async () => {} },
+                                { name: "Delete Shader", icon: "Trash2", className: "fg-error", callback: this.deleteShader.bind( this ) },
                             );
                         }
                     }
@@ -612,11 +624,11 @@ const ShaderHub = {
             }
             else
             {
-                LX.makeContainer( [`auto`, "auto"], "fg-secondary text-md", "Login to save your shader", shaderOptions );
+                LX.makeContainer( [`auto`, "auto"], "fg-secondary text-md", "Login to save/remix this shader", shaderOptions );
             }
             // const shaderDate = LX.makeContainer( [`auto`, "auto"], "fg-primary text-lg", this.shader.lastUpdatedDate, shaderDataContainer );
 
-            const ownProfile = fs.user && ( this.shader.authorId === fs.getUserId() );
+            
             if( ownProfile || ( shaderUid === "new" ) )
             {
                 const textArea = new LX.TextArea( null, this.shader.description, (v) => this.shader.description = v, { resize: false, className: "h-full", inputClass: "bg-tertiary h-full" } );
@@ -629,7 +641,7 @@ const ShaderHub = {
             }
         }
 
-        var [ canvasArea, canvasControlsArea ] = graphicsArea.split({ type: "vertical", sizes: ["calc(100% - 48px)", null], resize: false });
+        let [ canvasArea, canvasControlsArea ] = graphicsArea.split({ type: "vertical", sizes: ["calc(100% - 48px)", null], resize: false });
 
         const canvas = document.createElement("canvas");
         canvas.className = "w-full h-full rounded-t-lg";
@@ -823,18 +835,8 @@ const ShaderHub = {
 
                 panel.sameLine();
 
-                panel.addButton( null, "OpenCustomParams", ( name, event ) => {
-
-                    if( this._lastUniformsDialog )
-                    {
-                        this._lastUniformsDialog.close();
-                    }
-
-                    // Refresh content first
-                    this.customParametersPanel.refresh();
-
-                    new LX.Popover( event.target, [ customParametersContainer ], { align: "end" } );
-
+                this.openCustomParamsButton = panel.addButton( null, "OpenCustomParams", ( name, event ) => {
+                    this.openCustomUniforms( event.target );
                 }, { icon: "Settings2", title: "Custom Parameters", tooltip: true } );
 
                 panel.endLine( "items-center h-full ml-auto" );
@@ -1022,7 +1024,33 @@ const ShaderHub = {
 
     createNewShader() {
         // Only crete a new shader view, nothing to save now
-        window.location.href = `${ window.location.origin + window.location.pathname }?edit=new`;
+        window.location.href = `${ window.location.origin + window.location.pathname }?shader=new`;
+    },
+
+    async saveShaderFiles() {
+
+        let newFileId = "";
+
+        // Create new COMMON files with the current code
+        for( let i = 0; i < this.shader.files.length - 1; ++i )
+        {
+            const filename = `common${ i }.wgsl`;
+            const code = this.loadedFiles[ filename ].replaceAll( '\r', '' );
+            const arraybuffer = new TextEncoder().encode( code );
+            const file = new File( [ arraybuffer ], filename, { type: "text/plain" });
+            let result = await fs.createFile( file );
+            newFileId += `${ result[ "$id" ] },`;
+        }
+
+        // Upload document and get id
+        const filename = "main.wgsl";
+        const code = this.loadedFiles[ filename ].replaceAll( '\r', '' );
+        const arraybuffer = new TextEncoder().encode( code );
+        const file = new File( [ arraybuffer ], filename, { type: "text/plain" });
+        let result = await fs.createFile( file );
+        newFileId += result[ "$id" ];
+
+        return newFileId;
     },
 
     async saveShader( existingShader ) {
@@ -1051,26 +1079,20 @@ const ShaderHub = {
                     return;
                 }
 
-                // Upload document and get id
-                const filename = "main.wgsl";
-                const code = this.loadedFiles[ filename ].replaceAll( '\r', '' );
-                const arraybuffer = new TextEncoder().encode( code );
-                const file = new File( [ arraybuffer ], filename, { type: "text/plain" });
-                let result = await fs.createFile( file );
-                const fileId = result[ "$id" ];
+                const newFileId = await this.saveShaderFiles();
 
                 // Create a new shader in the DB
                 result = await fs.createDocument( FS.SHADERS_COLLECTION_ID, {
                     "name": shaderName,
                     "author_id": fs.getUserId(),
-                    "file_id": fileId,
+                    "file_id": newFileId,
                     "description": this.shader.description,
                     "channels": JSON.stringify( this.shader.channels ),
                     "uniforms": JSON.stringify( this.shader.uniforms ),
                 } );
 
                 // Upload canvas snapshot
-                this.updateShaderPreview( shaderName, false );
+                await this.updateShaderPreview( shaderName, false );
 
                 this.shader.uid = result[ "$id" ];
                 this.shader.name = shaderName;
@@ -1092,43 +1114,52 @@ const ShaderHub = {
             await fs.deleteFile( fid );
         }
 
-        let newFileId = "";
-
-        // Create new COMMON files with the current code
-        for( let i = 0; i < this.shader.files.length - 1; ++i )
-        {
-            const filename = `common${ i }.wgsl`;
-            const code = this.loadedFiles[ filename ].replaceAll( '\r', '' );
-            const arraybuffer = new TextEncoder().encode( code );
-            const file = new File( [ arraybuffer ], filename, { type: "text/plain" });
-            let result = await fs.createFile( file );
-            newFileId += `${ result[ "$id" ] },`;
-        }
-
-        // Create new MAIN files with the current code
-        {
-            const filename = "main.wgsl";
-            const code = this.loadedFiles[ filename ].replaceAll( '\r', '' );
-            const arraybuffer = new TextEncoder().encode( code );
-            const file = new File( [ arraybuffer ], filename, { type: "text/plain" });
-            let result = await fs.createFile( file );
-            newFileId += result[ "$id" ];
-        }
+        const newFileId = await this.saveShaderFiles();
 
         // Update files reference in the DB
-        {
-            await fs.updateDocument( FS.SHADERS_COLLECTION_ID, this.shader.uid, {
-                "file_id": newFileId,
-                "description": this.shader.description,
-                "channels": JSON.stringify( this.shader.channels ),
-                "uniforms": JSON.stringify( this.shader.uniforms )
-            } );
-        }
+        await fs.updateDocument( FS.SHADERS_COLLECTION_ID, this.shader.uid, {
+            "file_id": newFileId,
+            "description": this.shader.description,
+            "channels": JSON.stringify( this.shader.channels ),
+            "uniforms": JSON.stringify( this.shader.uniforms )
+        } );
 
         // Update canvas snapshot
-        this.updateShaderPreview( this.shader.name, false );
+        await this.updateShaderPreview( this.shader.name, false );
 
         LX.toast( `✅ Shader updated`, `Shader: ${ this.shader.name } by ${ fs.user.name }`, { position: "top-right" } );
+    },
+
+    async deleteShader() {
+
+    },
+
+    async remixShader() {
+
+        // Save the shader with you as the author id
+        // Create a new col to store original_id so it can be shown in the page
+        // Get the new shader id, and reload page in shader view with that id
+
+        const shaderName = `${ this.shader.name } (remix from ${ this.shader.author }'s)`;
+        const shaderUid = this.shader.uid;
+        const newFileId = await this.saveShaderFiles();
+
+        // Create a new shader in the DB
+        result = await fs.createDocument( FS.SHADERS_COLLECTION_ID, {
+            "name": shaderName,
+            "author_id": fs.getUserId(),
+            "original_id": shaderUid,
+            "file_id": newFileId,
+            "description": this.shader.description,
+            "channels": JSON.stringify( this.shader.channels ),
+            "uniforms": JSON.stringify( this.shader.uniforms ),
+        } );
+
+        // Upload canvas snapshot
+        await this.updateShaderPreview( shaderName, false );
+
+        // Go to shader edit view with the new shader
+        window.location.href = `${ window.location.origin + window.location.pathname }?shader=${ result[ "$id" ] }`;
     },
 
     async updateShaderPreview( shaderName, showFeedback = true ) {
@@ -1150,10 +1181,6 @@ const ShaderHub = {
         {
             LX.toast( `✅ Shader preview updated`, `Shader: ${ shaderName } by ${ fs.user.name }`, { position: "top-right" } );
         }
-    },
-
-    async remixShader() {
-
     },
 
     async initGraphics( canvas ) {
@@ -1485,33 +1512,23 @@ const ShaderHub = {
         const entries = [
             {
                 binding: bindingIndex++,
-                resource: {
-                    buffer: this.timeBuffer,
-                }
+                resource: { buffer: this.timeBuffer }
             },
             {
                 binding: bindingIndex++,
-                resource: {
-                    buffer: this.timeDeltaBuffer,
-                }
+                resource: { buffer: this.timeDeltaBuffer }
             },
             {
                 binding: bindingIndex++,
-                resource: {
-                    buffer: this.frameCountBuffer,
-                }
+                resource: { buffer: this.frameCountBuffer }
             },
             {
                 binding: bindingIndex++,
-                resource: {
-                    buffer: this.resolutionBuffer,
-                }
+                resource: { buffer: this.resolutionBuffer }
             },
             {
                 binding: bindingIndex++,
-                resource: {
-                    buffer: this.mouseBuffer,
-                }
+                resource: { buffer: this.mouseBuffer }
             }
         ]
 
@@ -1691,34 +1708,7 @@ const ShaderHub = {
         await this.createRenderPipeline( true, true );
     },
 
-    async snapshotCanvas( outWidth, outHeight ) {
-
-        const width = outWidth ?? 640;
-        const height = outHeight ?? 360;
-        const blob = await (() => {return new Promise((resolve) =>
-            this.gpuCanvas.toBlob((blob) => resolve(blob), "image/png")
-        )})();
-        const bitmap = await createImageBitmap( blob );
-
-        const snapCanvas = document.createElement("canvas");
-        snapCanvas.width = width;
-        snapCanvas.height = height;
-        const ctx = snapCanvas.getContext("2d");
-        ctx.drawImage( bitmap, 0, 0, width, height );
-
-        return new Promise((resolve) =>
-            snapCanvas.toBlob((blob) => resolve(blob), "image/png")
-        );
-    },
-
-    async getCanvasSnapshot() {
-
-        const blob = await this.snapshotCanvas();
-        const url = URL.createObjectURL( blob );
-        window.open(url);
-    },
-
-    addUniform( name, value, min, max ) {
+    async addUniform( name, value, min, max ) {
 
         const uName = name ?? `iUniform${ this.shader.uniforms.length + 1 }`;
         this.shader.uniforms.push( { name: uName, value: value ?? 0, min: min ?? 0, max: max ?? 1 } );
@@ -1727,6 +1717,21 @@ const ShaderHub = {
         {
             this.createRenderPipeline( true, true );
         }
+    },
+
+    openCustomUniforms( target ) {
+
+        target = target ?? this.openCustomParamsButton.root;
+
+        if( this._lastUniformsDialog )
+        {
+            this._lastUniformsDialog.close();
+        }
+
+        // Refresh content first
+        this.customParametersPanel.refresh();
+
+        new LX.Popover( target, [ this.customParametersPanel.root.parentElement ], { align: "end" } );
     },
 
     resetShaderElapsedTime() {
@@ -1754,6 +1759,33 @@ const ShaderHub = {
         );
 
         LX.emit( "@elapsed-time", `${ this.elapsedTime.toFixed( 2 ) }s` );
+    },
+
+    async snapshotCanvas( outWidth, outHeight ) {
+
+        const width = outWidth ?? 640;
+        const height = outHeight ?? 360;
+        const blob = await (() => {return new Promise((resolve) =>
+            this.gpuCanvas.toBlob((blob) => resolve(blob), "image/png")
+        )})();
+        const bitmap = await createImageBitmap( blob );
+
+        const snapCanvas = document.createElement("canvas");
+        snapCanvas.width = width;
+        snapCanvas.height = height;
+        const ctx = snapCanvas.getContext("2d");
+        ctx.drawImage( bitmap, 0, 0, width, height );
+
+        return new Promise((resolve) =>
+            snapCanvas.toBlob((blob) => resolve(blob), "image/png")
+        );
+    },
+
+    async getCanvasSnapshot() {
+
+        const blob = await this.snapshotCanvas();
+        const url = URL.createObjectURL( blob );
+        window.open(url);
     },
 
     quitIfWebGPUNotAvailable( adapter, device ) {

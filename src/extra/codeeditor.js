@@ -356,6 +356,7 @@ class CodeEditor {
         this.onRun = options.onRun ?? options.onrun;     // LEGACY onrun
         this.onCtrlSpace = options.onCtrlSpace;
         this.onCreateStatusPanel = options.onCreateStatusPanel;
+        this.onContextMenu = options.onContextMenu;
 
         // File explorer
         if( this.useFileExplorer )
@@ -2308,22 +2309,65 @@ class CodeEditor {
             e.preventDefault();
 
             if( !this.canOpenContextMenu )
+            {
                 return;
+            }
 
             LX.addContextMenu( null, e, m => {
                 m.add( "Copy", () => {  this._copyContent( cursor ); } );
+
                 if( !this.disableEdition )
                 {
                     m.add( "Cut", () => {  this._cutContent( cursor ); } );
                     m.add( "Paste", () => {  this._pasteContent( cursor ); } );
+                }
+
+                if( !this.onContextMenu )
+                {
+                    return;
+                }
+
+                let content = null;
+
+                if( cursor.selection )
+                {
+                    // Some selections don't depend on mouse up..
+                    if( cursor.selection ) cursor.selection.invertIfNecessary();
+
+                    const separator = "_NEWLINE_";
+                    let code = this.code.lines.join( separator );
+
+                    // Get linear start index
+                    let index = 0;
+
+                    for( let i = 0; i <= cursor.selection.fromY; i++ )
+                    {
+                        index += ( i == cursor.selection.fromY ? cursor.selection.fromX : this.code.lines[ i ].length );
+                    }
+
+                    index += cursor.selection.fromY * separator.length;
+                    const num_chars = cursor.selection.chars + ( cursor.selection.toY - cursor.selection.fromY ) * separator.length;
+                    const text = code.substr( index, num_chars );
+                    content = text.split( separator ).join('\n');
+                }
+
+                const options = this.onContextMenu( this, content, e );
+                if( options.length )
+                {
                     m.add( "" );
-                    m.add( "Format/JSON", () => {
-                        let json = this.toJSONFormat( this.getText() );
-                        if( !json )
-                            return;
-                        this.code.lines = json.split( "\n" );
-                        this.processLines();
-                    } );
+
+                    for( const o of options )
+                    {
+                        m.add( o.path, { disabled: o.disabled, callback: o.callback } );
+                    }
+
+                    // m.add( "Format/JSON", () => {
+                    //     let json = this.toJSONFormat( this.getText() );
+                    //     if( !json )
+                    //         return;
+                    //     this.code.lines = json.split( "\n" );
+                    //     this.processLines();
+                    // } );
                 }
             });
 

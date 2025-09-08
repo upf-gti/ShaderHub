@@ -22,12 +22,14 @@ Roadmap:
 - [x] Add mouse info uniform
 - [x] Delete code tabs
 - [x] Upload shader texture channels
-- [ ] Create Custom Uniform from editor text selection
+- [x] Create Custom Uniform from editor text selection
+- [x] Remix Shader
+- [ ] Delete Shader
 - [ ] Modify Shader name
-- [ ] Remix Shader
 - [ ] Add keyboard uniform as possible texture
 - [ ] Change uniforms type
 - [ ] Support creating Compute shaders
 - [ ] Export GIF/pngs
 - [ ] Submit form for Login (LX)
 - [ ] Give more info on form validation errors (LX)
+- [ ] Shader stats
