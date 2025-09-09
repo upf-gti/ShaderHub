@@ -143,8 +143,9 @@ const ShaderHub = {
             }
 
             const loginOptionsButton = LX.makeContainer( [`auto`, "auto"], "flex flex-row gap-1 p-1 mr-2 rounded-lg fg-primary hover:bg-tertiary text-md self-center items-center cursor-pointer", `
-                ${ fs.user ? `<span class="decoration-none fg-secondary">${ fs.user.email }</span>${ LX.makeIcon("ChevronsUpDown", { iconClass: "pl-2" } ).innerHTML }
-                    <span class="rounded-full w-6 h-6 bg-accent text-center content-center">${ fs.user.name[ 0 ].toUpperCase() }</span>` : "Login" }`, menubar.root );
+                ${ fs.user ? `<span class="decoration-none fg-secondary">${ fs.user.email }</span>
+                    <span class="ml-1 rounded-full w-6 h-6 bg-accent text-center leading-tight content-center">${ fs.user.name[ 0 ].toUpperCase() }</span>
+                    ${ LX.makeIcon("ChevronsUpDown", { iconClass: "pl-2" } ).innerHTML }` : "Login" }`, menubar.root );
             loginOptionsButton.id = "loginOptionsButton";
             loginOptionsButton.addEventListener( "click", async (e) => {
                 e.preventDefault();
