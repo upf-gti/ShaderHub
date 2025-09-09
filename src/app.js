@@ -17,7 +17,7 @@ const DEFAULT_UNIFORMS_LIST = [
     { name: "iFrame", type: "i32", info: "Shader playback frame" },
     { name: "iResolution", type: "vec2f", info: "Viewport resolution (px)" },
     { name: "iMouse", type: "vec3f", info: "xy: Mouse coords (px), z: click" },
-    { name: "iChannel0..3", type: "texture_2d<f32>", info: "Texture input channel", skipBindings: true },
+    { name: "iChannel0..3", type: "texture_2d<f32>", info: "Texture input channel", skipBindings: true }
 ];
 const DEFAULT_UNIFORM_NAMES = DEFAULT_UNIFORMS_LIST.map( u => u.name );
 
@@ -44,6 +44,18 @@ function getDate() {
     return `${ "0".repeat( 2 - day.length ) }${ day }-${ "0".repeat( 2 - month.length ) }${ month }-${ year }`;
 }
 
+const CODE2ASCII = {};
+
+for (let i = 0; i < 26; i++) CODE2ASCII["Key" + String.fromCharCode(65 + i)] = 65 + i;  // Letters A–Z → ASCII uppercase
+for (let i = 0; i < 10; i++) CODE2ASCII["Digit" + i] = 48 + i;                          // Digits 0–9 → ASCII '0'–'9'
+for (let i = 0; i < 10; i++) CODE2ASCII["Numpad" + i] = 48 + i;                         // Numpad digits. same as ASCII '0'–'9'
+for (let i = 1; i <= 12; i++) CODE2ASCII["F" + i] = 111 + i;                            // Function keys → assign numbers starting from 112 (legacy F1..F12 codes)
+
+// Common symbols (matching US layout ASCII)
+Object.assign(CODE2ASCII, { "Space": 32, "Enter": 13, "Tab": 9, "Backspace": 8, "Escape": 27, "Minus": 45, "Equal": 61, "BracketLeft": 91, "BracketRight": 93, "Backslash": 92, "Semicolon": 59, "Quote": 39, "Backquote": 96, "Comma": 44, "Period": 46, "Slash": 47 });
+// Arrows and controls (matching old keyCodes)
+Object.assign(CODE2ASCII, { "ArrowLeft": 37, "ArrowUp": 38, "ArrowRight": 39, "ArrowDown": 40, "Insert": 45, "Delete": 46, "Home": 36, "End": 35, "PageUp": 33, "PageDown": 34 });
+
 const ShaderHub = {
 
     shaderList: [],
@@ -51,7 +63,11 @@ const ShaderHub = {
     loadedImages: {},
     uniformChannels: [],
 
+    keyState: new Map(),
+    keyToggleState: new Map(),
+    keyPressed: new Map(),
     mousePosition: [ 0, 0 ],
+
     frameCount: 0,
     lastTime: 0,
     elapsedTime: 0,
@@ -706,6 +722,7 @@ const ShaderHub = {
 
         const canvas = document.createElement("canvas");
         canvas.className = "w-full h-full rounded-t-lg";
+        canvas.tabIndex = "1";
         canvasArea.attach( canvas );
 
         canvas.addEventListener("dragover", (e) => {
@@ -725,6 +742,30 @@ const ShaderHub = {
                 console.warn("Dropped file is not an image:", file.type);
             }
         });
+
+        let lastDownTarget = null;
+        let generateKbTexture = true;
+        document.addEventListener('mousedown', (e) => {
+            lastDownTarget = e.target;
+        }, false);
+
+        document.addEventListener('keydown', async (e) => {
+            if (lastDownTarget == canvas) {
+                this.keyState.set( CODE2ASCII[ e.code ], true );
+                if( generateKbTexture ) await this.createKeyboardTexture();
+                generateKbTexture = false;
+            }
+        }, false);
+
+        document.addEventListener('keyup', async (e) => {
+            if (lastDownTarget == canvas) {
+                this.keyState.set( CODE2ASCII[ e.code ], false );
+                this.keyToggleState.set( CODE2ASCII[ e.code ], !( this.keyToggleState.get( CODE2ASCII[ e.code ] ) ?? false ) );
+                this.keyPressed.set( CODE2ASCII[ e.code ], true );
+                await this.createKeyboardTexture();
+                generateKbTexture = true;
+            }
+        }, false);
 
         canvas.addEventListener("mousedown", (e) => {
             e.preventDefault();
@@ -1344,6 +1385,8 @@ const ShaderHub = {
                 size: 12,
                 usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
             });
+
+            await this.createKeyboardTexture( true );
         }
 
         // Load any necessary texture channels for the current shader
@@ -1367,7 +1410,7 @@ const ShaderHub = {
             await this.createRenderBindGroup();
         }
 
-        const frame = () => {
+        const frame = async () => {
 
             const now = LX.getTime();
 
@@ -1456,6 +1499,14 @@ const ShaderHub = {
 
                 this.device.queue.submit( [ commandEncoder.finish() ] );
             }
+
+            // Clean input
+            // for( const [ name, value ] of this.keyPressed )
+            // {
+            //     this.keyPressed.set( name, false );
+            // }
+
+            // console.log(this.keyPressed.get(37))
 
             requestAnimationFrame(frame);
         }
@@ -1691,7 +1742,7 @@ const ShaderHub = {
         const imageBitmap = await createImageBitmap( await new Blob([data]) );
         const dimensions = [ imageBitmap.width, imageBitmap.height ];
         const imageTexture = this.device.createTexture({
-            size: [  imageBitmap.width, imageBitmap.height, 1],
+            size: [ imageBitmap.width, imageBitmap.height, 1 ],
             format: 'rgba8unorm',
             usage:
                 GPUTextureUsage.TEXTURE_BINDING |
@@ -1715,6 +1766,58 @@ const ShaderHub = {
         }
 
         return imageTexture;
+    },
+
+    async createKeyboardTexture( updateChannelPreview = false ) {
+
+        const dimensions = [ 256, 2 ];
+        const data = [];
+
+        // Key state
+        for( let w = 0; w < dimensions[ 0 ]; w++ )
+        {
+            data.push( 255 * ( this.keyState.get( w ) === true ? 1 : 0 ), 0, 0, 255 );
+        }
+
+        // Key toggle state
+        for( let w = 0; w < dimensions[ 0 ]; w++ )
+        {
+            data.push( 255 * ( this.keyToggleState.get( w ) === true ? 1 : 0 ), 0, 0, 255 );
+        }
+
+        // Key pressed
+        // for( let w = 0; w < dimensions[ 0 ]; w++ )
+        // {
+        //     data.push( 255 * ( this.keyPressed.get( w ) === true ? 1 : 0 ), 0, 0, 255 );
+        // }
+
+        const imageData = new ImageData( new Uint8ClampedArray( data ), dimensions[ 0 ], dimensions[ 1 ] );
+        const imageBitmap = await createImageBitmap( imageData );
+        const imageTexture = this.device.createTexture({
+            size: [ imageBitmap.width, imageBitmap.height, 1 ],
+            format: 'rgba8unorm',
+            usage:
+                GPUTextureUsage.TEXTURE_BINDING |
+                GPUTextureUsage.COPY_DST |
+                GPUTextureUsage.RENDER_ATTACHMENT,
+        });
+
+        this.device.queue.copyExternalImageToTexture(
+            { source: imageBitmap },
+            { texture: imageTexture },
+            dimensions
+        );
+
+        // this.loadedImages[ "keyboard" ] = imageTexture;
+
+        this.uniformChannels[ 1 ] = imageTexture;
+
+        if( updateChannelPreview )
+        {
+            this.channelsContainer.childNodes[ 1 ].querySelector( "img" ).src = "https://w7.pngwing.com/pngs/328/825/png-transparent-computer-keyboard-computer-icons-keyboard-shortcut-computer-monitors-computer-hardware-keyboard-miscellaneous-electronics-text-thumbnail.png";
+        }
+
+        await this.createRenderBindGroup();
     },
 
     async validateShader( code, showFeedback ) {
