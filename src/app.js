@@ -391,9 +391,11 @@ const ShaderHub = {
 
     async createShaderView( shaderUid ) {
 
+        const isNewShader = ( shaderUid === "new" );
+
         // Create shader instance based on shader uid
         // Get all stored shader files (not the code, only the data)
-        if( shaderUid !== "new" )
+        if( !isNewShader )
         {
             let result;
 
@@ -458,7 +460,8 @@ const ShaderHub = {
                 uid: "EMPTY_ID",
                 files: [ [ "shaders/main.template.wgsl", "main.wgsl" ] ],
                 author: fs.user?.name ?? "Anonymous",
-                anonAuthor: true
+                anonAuthor: true,
+                creationDate: getDate()
             };
 
             this.shader = new Shader( shaderData );
@@ -482,10 +485,12 @@ const ShaderHub = {
             this.channelsContainer = LX.makeContainer( ["100%", "100%"], "channel-list grid gap-2 pt-2 items-center justify-center bg-primary", "", shaderSettingsArea );
             for( let i = 0; i < UNIFORM_CHANNELS_COUNT; i++ )
             {
-                const channelContainer = LX.makeContainer( ["100%", "100%"], "relative rounded-lg bg-secondary hover:bg-tertiary cursor-pointer overflow-hidden", "", this.channelsContainer );
+                const channelContainer = LX.makeContainer( ["100%", "100%"], "relative text-center content-center rounded-lg bg-secondary hover:bg-tertiary cursor-pointer overflow-hidden", "", this.channelsContainer );
                 channelContainer.style.minHeight = "100px";
-                const channelImage = LX.makeElement( "img", "rounded-lg bg-secondary hover:bg-tertiary w-full h-full border-none", "", channelContainer );
+                const channelImage = LX.makeElement( "img", "rounded-lg bg-secondary hover:bg-tertiary border-none", "", channelContainer );
                 channelImage.src = SRC_IMAGE_EMPTY;
+                channelImage.style.width = "95%";
+                channelImage.style.height = "95%";
                 const channelTitle = LX.makeContainer( ["100%", "auto"], "p-2 absolute text-md bottom-0 channel-title pointer-events-none", `iChannel${ i }`, channelContainer );
                 channelContainer.addEventListener( "click", ( e ) => {
                     e.preventDefault();
@@ -609,7 +614,7 @@ const ShaderHub = {
             const shaderNameAuthorOptionsContainer = LX.makeContainer( [`100%`, "auto"], "flex flex-row", `
                 <div class="flex flex-col">
                     <div class="flex flex-row items-center">
-                        ${ ownProfile ? LX.makeIcon("Edit", { svgClass: "mr-2 cursor-pointer hover:fg-primary" } ).innerHTML : "" }
+                        ${ ( ownProfile || isNewShader ) ? LX.makeIcon("Edit", { svgClass: "mr-2 cursor-pointer hover:fg-primary" } ).innerHTML : "" }
                         <div class="fg-primary text-xxl font-semibold">${ this.shader.name }</div>
                     </div>
                     <div class="fg-secondary text-md">created by ${ !this.shader.anonAuthor ? "<a class='dodgerblue cursor-pointer hover:text-underline'>" : "" }${ this.shader.author }${ !this.shader.anonAuthor ? "</a>" : "" }
@@ -653,7 +658,7 @@ const ShaderHub = {
 
                     const dmOptions = [ ]
 
-                    if( ownProfile )
+                    if( ownProfile || isNewShader )
                     {
                         let result = await this.shaderExists();
 
@@ -681,17 +686,9 @@ const ShaderHub = {
             {
                 LX.makeContainer( [`auto`, "auto"], "fg-secondary text-md", "Login to save/remix this shader", shaderOptions );
             }
-            // const shaderDate = LX.makeContainer( [`auto`, "auto"], "fg-primary text-lg", this.shader.lastUpdatedDate, shaderDataContainer );
 
-            
-            if( 0 )// && ownProfile || ( shaderUid === "new" ) )
+            // Editable description
             {
-                const textArea = new LX.TextArea( null, this.shader.description, (v) => this.shader.description = v, { resize: false, className: "h-full", inputClass: "bg-tertiary h-full" } );
-                shaderDataContainer.appendChild( textArea.root );
-            }
-            else
-            {
-                // Non editable description
                 const descContainer = LX.makeContainer( [`auto`, "auto"], "fg-primary mt-2 flex flex-row items-center", `
                     <div class="w-auto">${ ( ownProfile || ( shaderUid === "new" ) ) ? LX.makeIcon("Edit", { svgClass: "mr-3 cursor-pointer hover:fg-primary" } ).innerHTML : "" }</div>
                     <div class="desc-content w-full text-md break-words">${ this.shader.description }</div>
@@ -725,24 +722,6 @@ const ShaderHub = {
         canvas.tabIndex = "1";
         canvasArea.attach( canvas );
 
-        canvas.addEventListener("dragover", (e) => {
-            e.preventDefault();
-            e.dataTransfer.dropEffect = "copy"; // shows a copy cursor
-        });
-
-        canvas.addEventListener("drop", async (e) => {
-            e.preventDefault();
-
-            const file = e.dataTransfer.files[0];
-            if (!file) return;
-            if (file.type.startsWith("image/")) {
-                await this.createTexture( file, 0 );
-                await this.createRenderBindGroup();
-            } else {
-                console.warn("Dropped file is not an image:", file.type);
-            }
-        });
-
         let lastDownTarget = null;
         let generateKbTexture = true;
         document.addEventListener('mousedown', (e) => {
@@ -762,6 +741,7 @@ const ShaderHub = {
                 this.keyState.set( CODE2ASCII[ e.code ], false );
                 this.keyToggleState.set( CODE2ASCII[ e.code ], !( this.keyToggleState.get( CODE2ASCII[ e.code ] ) ?? false ) );
                 this.keyPressed.set( CODE2ASCII[ e.code ], true );
+                this._anyKeyPressed = true;
                 await this.createKeyboardTexture();
                 generateKbTexture = true;
             }
@@ -966,16 +946,29 @@ const ShaderHub = {
             {
                 const channelItem = LX.makeElement( "li", "relative flex rounded-lg bg-secondary hover:bg-tertiary overflow-hidden", "", container );
                 channelItem.style.maxHeight = "200px";
-                const channelPreview = LX.makeElement( "img", "rounded-t-lg bg-secondary hover:bg-tertiary w-full border-none cursor-pointer", "", channelItem );
+                const channelPreview = LX.makeElement( "img", "w-full h-full rounded-t-lg bg-secondary hover:bg-tertiary border-none cursor-pointer", "", channelItem );
                 const fileId = document[ "file_id" ];
                 const preview = document[ "preview" ];
                 channelPreview.src = preview ? await fs.getFileUrl( preview ) : ( fileId ? await fs.getFileUrl( fileId ) : "images/shader_preview.png" );
                 const shaderDesc = LX.makeContainer( ["100%", "auto"], "absolute top-0 p-2 w-full bg-blur items-center select-none text-sm font-bold", `
                     ${ document.name } (uint8)
                 `, channelItem );
-                channelItem.addEventListener( "click", ( e ) => {
+                channelItem.addEventListener( "click", async ( e ) => {
                     e.preventDefault();
-                    this.loadChannelFromFile( fileId, this.currentChannelIndex );
+                    if( category === "misc" )
+                    {
+                        switch( document.name )
+                        {
+                            case "keyboard":
+                            await this.createKeyboardTexture( this.currentChannelIndex, true );
+                            break;
+                        }
+                    }
+                    else if( category === "texture" ) // Use this image as a texture
+                    {
+                        this.loadChannelFromFile( fileId, this.currentChannelIndex );
+                    }
+
                     this.currentChannelIndex = undefined;
                     dialog.close();
                 } );
@@ -1175,13 +1168,15 @@ const ShaderHub = {
             return;
         }
 
-        const dialog = new LX.Dialog( "New Shader", ( p ) => {
-            let shaderName = "";
+        const dialog = new LX.Dialog( "Confirm Shader name", ( p ) => {
+            let shaderName = this.shader.name;
             const textInput = p.addText( "Name", shaderName, ( v ) => {
                 shaderName = v;
             }, { pattern: LX.buildTextPattern( { minLength: 3 } ) } );
             p.addSeparator();
-            p.addButton( null, "ConfirmSaveButton", async () => {
+            p.sameLine( 2 );
+            p.addButton( null, "Cancel", () => dialog.close(), { width: "50%", buttonClass: "bg-error fg-white" } );
+            p.addButton( null, "Confirm", async () => {
                 if( !shaderName.length || !textInput.valid( shaderName ) )
                 {
                     return;
@@ -1190,7 +1185,7 @@ const ShaderHub = {
                 const newFileId = await this.saveShaderFiles();
 
                 // Create a new shader in the DB
-                result = await fs.createDocument( FS.SHADERS_COLLECTION_ID, {
+                const result = await fs.createDocument( FS.SHADERS_COLLECTION_ID, {
                     "name": shaderName,
                     "author_id": fs.getUserId(),
                     "file_id": newFileId,
@@ -1208,7 +1203,7 @@ const ShaderHub = {
                 // Close dialog on succeed and show toast
                 dialog.close();
                 LX.toast( `✅ Shader saved`, `Shader: ${ shaderName } by ${ fs.user.name }`, { position: "top-right" } );
-            }, {  } );
+            }, { width: "50%", buttonClass: "contrast" } );
         } );
     },
 
@@ -1385,29 +1380,38 @@ const ShaderHub = {
                 size: 12,
                 usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
             });
-
-            await this.createKeyboardTexture( true );
         }
+
+        this.sampler = this.device.createSampler({
+            magFilter: 'linear',
+            minFilter: 'linear',
+        });
+
+        let usesKeyboardChannel = false;
 
         // Load any necessary texture channels for the current shader
         for( let i = 0; i < this.shader.channels?.length ?? 0; ++i )
         {
+            if( this.shader.channels[ i ] === "keyboard" )
+            {
+                usesKeyboardChannel = true;
+                continue;
+            }
+
             await this.createTexture( this.shader.channels[ i ], i );
         }
 
         // Create render pipeline based on editor shaders
+        // If uses keyboard, it will create the pipeline after the texture
+        if( !usesKeyboardChannel )
         {
-            await this.createRenderPipeline( false, true );
+            await this.createRenderPipeline( true, true );
         }
-
-        // Create bind group
+        else
         {
-            this.sampler = this.device.createSampler({
-                magFilter: 'linear',
-                minFilter: 'linear',
-            });
-
-            await this.createRenderBindGroup();
+            // In case any channel is using it, it will be used in that
+            // channel and update the channel image src
+            await this.createKeyboardTexture( undefined, true );
         }
 
         const frame = async () => {
@@ -1500,13 +1504,18 @@ const ShaderHub = {
                 this.device.queue.submit( [ commandEncoder.finish() ] );
             }
 
-            // Clean input
-            // for( const [ name, value ] of this.keyPressed )
-            // {
-            //     this.keyPressed.set( name, false );
-            // }
+            if( this._anyKeyPressed )
+            {
+                // event consumed, Clean input
+                for( const [ name, value ] of this.keyPressed )
+                {
+                    this.keyPressed.set( name, false );
+                }
 
-            // console.log(this.keyPressed.get(37))
+                await this.createKeyboardTexture();
+
+                this._anyKeyPressed = false;
+            }
 
             requestAnimationFrame(frame);
         }
@@ -1768,9 +1777,9 @@ const ShaderHub = {
         return imageTexture;
     },
 
-    async createKeyboardTexture( updateChannelPreview = false ) {
+    async createKeyboardTexture( channel, updatePreview ) {
 
-        const dimensions = [ 256, 2 ];
+        const dimensions = [ 256, 3 ];
         const data = [];
 
         // Key state
@@ -1786,10 +1795,10 @@ const ShaderHub = {
         }
 
         // Key pressed
-        // for( let w = 0; w < dimensions[ 0 ]; w++ )
-        // {
-        //     data.push( 255 * ( this.keyPressed.get( w ) === true ? 1 : 0 ), 0, 0, 255 );
-        // }
+        for( let w = 0; w < dimensions[ 0 ]; w++ )
+        {
+            data.push( 255 * ( this.keyPressed.get( w ) === true ? 1 : 0 ), 0, 0, 255 );
+        }
 
         const imageData = new ImageData( new Uint8ClampedArray( data ), dimensions[ 0 ], dimensions[ 1 ] );
         const imageBitmap = await createImageBitmap( imageData );
@@ -1808,16 +1817,26 @@ const ShaderHub = {
             dimensions
         );
 
-        // this.loadedImages[ "keyboard" ] = imageTexture;
+        const imageName = "keyboard";
+        const usedChannel = this.shader.channels.indexOf( imageName );
 
-        this.uniformChannels[ 1 ] = imageTexture;
-
-        if( updateChannelPreview )
+        if( ( channel === undefined ) && usedChannel > -1 )
         {
-            this.channelsContainer.childNodes[ 1 ].querySelector( "img" ).src = "https://w7.pngwing.com/pngs/328/825/png-transparent-computer-keyboard-computer-icons-keyboard-shortcut-computer-monitors-computer-hardware-keyboard-miscellaneous-electronics-text-thumbnail.png";
+            channel = usedChannel;
         }
 
-        await this.createRenderBindGroup();
+        if( channel !== undefined )
+        {
+            this.uniformChannels[ channel ] = imageTexture;
+            this.shader.channels[ channel ] = imageName;
+            
+            await this.createRenderPipeline();
+
+            if( updatePreview )
+            {
+                this.channelsContainer.childNodes[ channel ].querySelector( "img" ).src = await fs.getFileUrl( "68c04102000cc75e3d61" );
+            }
+        }
     },
 
     async validateShader( code, showFeedback ) {
