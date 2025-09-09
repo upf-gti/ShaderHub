@@ -26,7 +26,7 @@ Roadmap:
 - [x] Remix Shader
 - [x] Delete Shader
 - [x] Modify Shader name, description
-- [ ] Add keyboard uniform as possible texture
+- [x] Add keyboard uniform as possible texture
 - [ ] Change uniforms type
 - [ ] Support creating Compute shaders
 - [ ] Export GIF/pngs

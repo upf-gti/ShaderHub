@@ -16,7 +16,7 @@ const DEFAULT_UNIFORMS_LIST = [
     { name: "iTimeDelta", type: "f32", info: "Render time (s)" },
     { name: "iFrame", type: "i32", info: "Shader playback frame" },
     { name: "iResolution", type: "vec2f", info: "Viewport resolution (px)" },
-    { name: "iMouse", type: "vec3f", info: "xy: Mouse coords (px), z: click" },
+    { name: "iMouse", type: "vec4f", info: "Mouse data" },
     { name: "iChannel0..3", type: "texture_2d<f32>", info: "Texture input channel", skipBindings: true }
 ];
 const DEFAULT_UNIFORM_NAMES = DEFAULT_UNIFORMS_LIST.map( u => u.name );
@@ -67,6 +67,7 @@ const ShaderHub = {
     keyToggleState: new Map(),
     keyPressed: new Map(),
     mousePosition: [ 0, 0 ],
+    lastMousePosition: [ 0, 0 ],
 
     frameCount: 0,
     lastTime: 0,
@@ -257,6 +258,8 @@ const ShaderHub = {
 
             this.shaderList.push( shaderInfo );
         }
+
+        this.shaderList = this.shaderList.sort( (a, b) => a.name.localeCompare( b.name ) );
 
         await onLoad();
     },
@@ -750,7 +753,9 @@ const ShaderHub = {
         canvas.addEventListener("mousedown", (e) => {
             e.preventDefault();
             this._mouseDown = e;
-            this.mousePosition = [ e.offsetX, e.offsetY ];
+            this.mousePosition = [ e.offsetX, this.gpuCanvas.offsetHeight - e.offsetY ];
+            this.lastMousePosition = [ ...this.mousePosition ];
+            this._mousePressed = true;
         });
 
         canvas.addEventListener("mouseup", (e) => {
@@ -762,7 +767,7 @@ const ShaderHub = {
             if( this._mouseDown )
             {
                 e.preventDefault();
-                this.mousePosition = [ e.offsetX, e.offsetY ];
+                this.mousePosition = [ e.offsetX, this.gpuCanvas.offsetHeight - e.offsetY ];
             }
         });
 
@@ -1377,7 +1382,7 @@ const ShaderHub = {
             });
 
             this.mouseBuffer = this.device.createBuffer({
-                size: 12,
+                size: 16,
                 usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
             });
         }
@@ -1469,7 +1474,9 @@ const ShaderHub = {
             this.device.queue.writeBuffer(
                 this.mouseBuffer,
                 0,
-                new Float32Array([ this.mousePosition[ 0 ], this.mousePosition[ 1 ], this._mouseDown ? 1.0 : 0.0 ])
+                new Float32Array([
+                    this.mousePosition[ 0 ], this.mousePosition[ 1 ],
+                    this.lastMousePosition[ 0 ] * ( this._mouseDown ? 1.0 : -1.0 ), this.lastMousePosition[ 1 ] * ( this._mousePressed ? 1.0 : -1.0 ) ])
             );
 
             this.lastTime = now;
@@ -1516,6 +1523,8 @@ const ShaderHub = {
 
                 this._anyKeyPressed = false;
             }
+
+            this._mousePressed = false;
 
             requestAnimationFrame(frame);
         }
