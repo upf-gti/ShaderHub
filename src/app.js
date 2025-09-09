@@ -721,6 +721,22 @@ const ShaderHub = {
         canvas.tabIndex = "1";
         canvasArea.attach( canvas );
 
+        document.addEventListener('fullscreenchange', (e) => {
+            // document.fullscreenElement will point to the element that
+            // is in fullscreen mode if there is one. If there isn't one,
+            // the value of the property is null.
+            if (document.fullscreenElement) {
+                const canvas = document.fullscreenElement;
+                console.assert( canvas.constructor === HTMLCanvasElement );
+                LX.doAsync( () => {
+                    canvas.width = window.screen.width;
+                    canvas.height = window.screen.height;
+                }, 1000 )
+            } else {
+                console.log("Leaving fullscreen mode.");
+            }
+        });
+
         let lastDownTarget = null;
         let generateKbTexture = true;
         document.addEventListener('mousedown', (e) => {
@@ -1005,6 +1021,18 @@ const ShaderHub = {
         let dialog = new LX.Dialog( `Channel${ channelIndex } input:`, (p) => {
             p.attach( area );
         }, { modal: false, close: true, minimize: false, size: [`${ Math.min( 1280, window.innerWidth - 64 ) }px`, "512px"], draggable: true });
+    },
+
+    requestFullscreen() {
+
+        if( this.gpuCanvas.requestFullscreen )
+        {
+            this.gpuCanvas.requestFullscreen();
+        }
+        else if( this.gpuCanvas.webkitRequestFullscreen() ) // Safari
+        {
+            this.gpuCanvas.webkitRequestFullscreen();
+        }
     },
 
     openProfile( userID ) {
