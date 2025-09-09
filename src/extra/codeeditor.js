@@ -1155,7 +1155,7 @@ class CodeEditor {
                 if( e.metaKey ) // Apple devices (Command)
                 {
                     e.preventDefault();
-                    this.actions[ 'End' ].callback( ln, cursor );
+                    this.actions[ 'End' ].callback( ln, cursor, e );
                 }
                 else if( e.ctrlKey ) // Next word
                 {
