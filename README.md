@@ -25,7 +25,7 @@ Roadmap:
 - [x] Create Custom Uniform from editor text selection
 - [x] Remix Shader
 - [x] Delete Shader
-- [x] Modify Shader name
+- [x] Modify Shader name, description
 - [ ] Add keyboard uniform as possible texture
 - [ ] Change uniforms type
 - [ ] Support creating Compute shaders

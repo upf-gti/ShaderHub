@@ -668,7 +668,7 @@ const ShaderHub = {
             // const shaderDate = LX.makeContainer( [`auto`, "auto"], "fg-primary text-lg", this.shader.lastUpdatedDate, shaderDataContainer );
 
             
-            if( ownProfile || ( shaderUid === "new" ) )
+            if( 0 )// && ownProfile || ( shaderUid === "new" ) )
             {
                 const textArea = new LX.TextArea( null, this.shader.description, (v) => this.shader.description = v, { resize: false, className: "h-full", inputClass: "bg-tertiary h-full" } );
                 shaderDataContainer.appendChild( textArea.root );
@@ -676,7 +676,29 @@ const ShaderHub = {
             else
             {
                 // Non editable description
-                LX.makeContainer( [`auto`, "auto"], "fg-primary mt-4 text-lg break-words", this.shader.description, shaderDataContainer );
+                const descContainer = LX.makeContainer( [`auto`, "auto"], "fg-primary mt-2 flex flex-row items-center", `
+                    <div class="w-auto">${ ( ownProfile || ( shaderUid === "new" ) ) ? LX.makeIcon("Edit", { svgClass: "mr-3 cursor-pointer hover:fg-primary" } ).innerHTML : "" }</div>
+                    <div class="desc-content w-full text-md break-words">${ this.shader.description }</div>
+                    `, shaderDataContainer );
+
+                const editButton = descContainer.querySelector( "svg" );
+                if( editButton )
+                {
+                    editButton.addEventListener( "click", (e) => {
+                        if( this._editingDescription ) return;
+                        e.preventDefault();
+                        const text = descContainer.querySelector( ".desc-content" );
+                        const input = new LX.TextArea( null, text.innerHTML, async (v) => {
+                            text.innerHTML = v;
+                            input.root.replaceWith( text );
+                            this.shader.description = v;
+                            this._editingDescription = false;
+                        }, { width: "100%", resize: false, className: "h-full", inputClass: "bg-tertiary h-full" , fitHeight: true } );
+                        text.replaceWith( input.root );
+                        LX.doAsync( () => input.root.focus() );
+                        this._editingDescription = true;
+                    } )
+                }
             }
         }
 
