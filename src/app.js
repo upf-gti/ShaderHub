@@ -518,11 +518,7 @@ const ShaderHub = {
             statusShowEditorIndentation: false,
             statusShowEditorLanguage: false,
             statusShowEditorFilename: false,
-            onCreateStatusPanel: ( p ) => {
-                const customTabInfoButtonsPanel = new LX.Panel( { className: "flex flex-row items-center", height: "auto" } );
-                customTabInfoButtonsPanel.addButton( null, "CompileShaderButton", this.compileShader.bind( this ), { icon: "Play", width: "32px", title: "Compile", tooltip: true } );
-                p.root.prepend( customTabInfoButtonsPanel.root );
-            },
+            onCreateStatusPanel: this.createStatusBarButtons.bind( this ),
             onCtrlSpace: this.compileShader.bind( this ),
             onSave: this.compileShader.bind( this ),
             onRun: this.compileShader.bind( this ),
@@ -788,147 +784,162 @@ const ShaderHub = {
             }
 
             panel.sameLine();
+            panel.addButton( null, "Record", ( name, event ) => {
+                // TODO: Record gif/video/...
+            }, { icon: "Video", className: "ml-auto", title: "Record", tooltip: true } );
+            panel.addButton( null, "Fullscreen", this.requestFullscreen.bind( this ), { icon: "Fullscreen", title: "Fullscreen", tooltip: true } );
 
-            // Default Uniforms list info
-            {
-                const defaultParametersContainer = LX.makeContainer(
-                    [ `${ Math.min( 600, window.innerWidth - 64 ) }px`, "auto" ],
-                    "overflow-scroll",
-                    "",
-                    null,
-                    { maxHeight: "256px", maxWidth: `${ window.innerWidth - 64 }px` }
-                );
-
-                LX.makeContainer( ["auto", "auto"], "flex flex-row p-2 items-center", "Default Uniforms", defaultParametersContainer );
-
-                // Create the content for the uniforms panel
-                {
-                    this.defaultParametersPanel = new LX.Panel({ className: "custom-parameters-panel w-full" });
-                    defaultParametersContainer.appendChild( this.defaultParametersPanel.root );
-
-                    this.defaultParametersPanel.refresh = () => {
-
-                        this.defaultParametersPanel.clear();
-
-                        for( let u of DEFAULT_UNIFORMS_LIST )
-                        {
-                            this.defaultParametersPanel.sameLine( 2, "justify-between" );
-                            this.defaultParametersPanel.addLabel( `${ u.name } : ${ u.type }`, { className: "w-full p-0" } );
-                            this.defaultParametersPanel.addLabel( u.info, { className: "w-full p-0", inputClass: "text-end" } );
-                        }
-                    }
-
-                    this.defaultParametersPanel.refresh();
-                }
-
-                panel.addButton( null, "OpenDefaultParams", ( name, event ) => {
-                    new LX.Popover( event.target, [ defaultParametersContainer ], { align: "end" } );
-                }, { icon: "BookOpen", title: "Default Parameters", tooltip: true } );
-            }
-
-            // Custom Uniforms info
-            {
-                const customParametersContainer = LX.makeContainer(
-                    [`${ Math.min( 600, window.innerWidth - 64 ) }px`, "auto"],
-                    "overflow-scroll",
-                    "",
-                    null,
-                    { maxHeight: "256px", maxWidth: `${ window.innerWidth - 64 }px` }
-                );
-
-                const uniformsHeader = LX.makeContainer( ["auto", "auto"], "flex flex-row p-2 items-center", "", customParametersContainer );
-                const uniformsCountTitle = LX.makeContainer( ["auto", "auto"], "", `Uniforms [${ this.shader.uniforms.length }]`, uniformsHeader );
-                const addUniformButton = new LX.Button( null, "AddNewCustomUniform", () => {
-                    this.addUniform();
-                    this.customParametersPanel.refresh();
-                }, { icon: "Plus", className: "ml-auto self-center", buttonClass: "bg-none", title: "Add New Uniform", tooltip: true, width: "38px" } );
-                uniformsHeader.appendChild( addUniformButton.root );
-
-                // Popover to dialog button
-                {
-                    const dialogizePopoverButton = new LX.Button( null,
-                        "DialogizePopoverButton",
-                        this.openUniformsDialog.bind( this ),
-                        { icon: "AppWindowMac", className: "self-center", buttonClass: "bg-none", title: "Expand Window", tooltip: true, width: "38px" } );
-                    uniformsHeader.appendChild( dialogizePopoverButton.root );
-                }
-
-                // Create the content for the uniforms panel
-                {
-                    this.customParametersPanel = new LX.Panel({ className: "custom-parameters-panel w-full" });
-                    customParametersContainer.appendChild( this.customParametersPanel.root );
-
-                    this.customParametersPanel.refresh = ( overridePanel, onRefresh ) => {
-
-                        overridePanel = overridePanel ?? this.customParametersPanel;
-
-                        overridePanel.clear();
-
-                        overridePanel.addLabel( "Uniform names must start with i + Capital letter (e.g. iTime)." );
-
-                        for( let u of this.shader.uniforms )
-                        {
-                            overridePanel.sameLine( 5 );
-                            overridePanel.addText( null, u.name, ( v ) => {
-                                u.name = v;
-                                this.createRenderPipeline( true, true );
-                            }, { width: "25%", skipReset: true, pattern: "\\b(?!(" + DEFAULT_UNIFORM_NAMES.join("|") + ")\\b)(i[A-Z]\\w*)\\b" } );
-                            overridePanel.addNumber( "Min", u.min, ( v ) => {
-                                u.min = v;
-                                uRangeComponent.setLimits( u.min, u.max );
-                                this._parametersDirty = true;
-                            }, { nameWidth: "40%", width: "17%", skipReset: true, step: 0.1 } );
-                            const uRangeComponent = overridePanel.addRange( null, u.value, ( v ) => {
-                                u.value = v;
-                                this._parametersDirty = true;
-                            }, { className: "contrast", width: "35%", skipReset: true, min: u.min, max: u.max, step: 0.1 } );
-                            overridePanel.addNumber( "Max", u.max, ( v ) => {
-                                u.max = v;
-                                uRangeComponent.setLimits( u.min, u.max );
-                                this._parametersDirty = true;
-                            }, { nameWidth: "40%", width: "17%", skipReset: true, step: 0.1 } );
-                            overridePanel.addButton( null, "RemoveUniformButton", ( v ) => {
-                                // Check if the uniforms is used to recompile shaders or not
-                                const allCode = this.getShaderCode( false );
-                                const idx = this.shader.uniforms.indexOf( u );
-                                this.shader.uniforms.splice( idx, 1 );
-                                this.customParametersPanel.refresh( overridePanel );
-                                if( allCode.match( new RegExp( `\\b${ u.name }\\b` ) ) )
-                                {
-                                    this.createRenderPipeline( true, true );
-                                }
-                            }, { width: "6%", icon: "X", buttonClass: "bg-none", title: "Remove Uniform", tooltip: true } );
-                        }
-
-                        // Updates probably to the panel at the dialog
-                        if( onRefresh )
-                        {
-                            onRefresh();
-                        }
-                        else
-                        {
-                            // Updates to the popover
-                            uniformsCountTitle.innerHTML = `Uniforms [${ this.shader.uniforms.length }]`;
-
-                            if( LX.Popover.activeElement )
-                            {
-                                LX.Popover.activeElement._adjustPosition();
-                            }
-                        }
-                    }
-
-                    this.customParametersPanel.refresh();
-                }
-
-                panel.sameLine();
-
-                this.openCustomParamsButton = panel.addButton( null, "OpenCustomParams", ( name, event ) => {
-                    this.openCustomUniforms( event.target );
-                }, { icon: "Settings2", title: "Custom Parameters", tooltip: true } );
-
-                panel.endLine( "items-center h-full ml-auto" );
-            }
+            panel.endLine( "items-center h-full ml-auto" );
         }
+    },
+
+    async createStatusBarButtons( p ) {
+
+        const customTabInfoButtonsPanel = new LX.Panel( { className: "flex flex-row items-center", height: "auto" } );
+
+        customTabInfoButtonsPanel.sameLine();
+
+        // Default Uniforms list info
+        {
+            const defaultParametersContainer = LX.makeContainer(
+                [ `${ Math.min( 600, window.innerWidth - 64 ) }px`, "auto" ],
+                "overflow-scroll",
+                "",
+                null,
+                { maxHeight: "256px", maxWidth: `${ window.innerWidth - 64 }px` }
+            );
+
+            LX.makeContainer( ["auto", "auto"], "flex flex-row p-2 items-center", "Default Uniforms", defaultParametersContainer );
+
+            // Create the content for the uniforms panel
+            {
+                this.defaultParametersPanel = new LX.Panel({ className: "custom-parameters-panel w-full" });
+                defaultParametersContainer.appendChild( this.defaultParametersPanel.root );
+
+                this.defaultParametersPanel.refresh = () => {
+
+                    this.defaultParametersPanel.clear();
+
+                    for( let u of DEFAULT_UNIFORMS_LIST )
+                    {
+                        this.defaultParametersPanel.sameLine( 2, "justify-between" );
+                        this.defaultParametersPanel.addLabel( `${ u.name } : ${ u.type }`, { className: "w-full p-0" } );
+                        this.defaultParametersPanel.addLabel( u.info, { className: "w-full p-0", inputClass: "text-end" } );
+                    }
+                }
+
+                this.defaultParametersPanel.refresh();
+            }
+
+            customTabInfoButtonsPanel.addButton( null, "OpenDefaultParams", ( name, event ) => {
+                new LX.Popover( event.target, [ defaultParametersContainer ], { align: "start", side: "top" } );
+            }, { icon: "BookOpen", title: "Default Parameters", tooltip: true } );
+        }
+
+        // Custom Uniforms info
+        {
+            const customParametersContainer = LX.makeContainer(
+                [`${ Math.min( 600, window.innerWidth - 64 ) }px`, "auto"],
+                "overflow-scroll",
+                "",
+                null,
+                { maxHeight: "256px", maxWidth: `${ window.innerWidth - 64 }px` }
+            );
+
+            const uniformsHeader = LX.makeContainer( ["auto", "auto"], "flex flex-row p-2 items-center", "", customParametersContainer );
+            const uniformsCountTitle = LX.makeContainer( ["auto", "auto"], "", `Uniforms [${ this.shader.uniforms.length }]`, uniformsHeader );
+            const addUniformButton = new LX.Button( null, "AddNewCustomUniform", () => {
+                this.addUniform();
+                this.customParametersPanel.refresh();
+            }, { icon: "Plus", className: "ml-auto self-center", buttonClass: "bg-none", title: "Add New Uniform", tooltip: true, width: "38px" } );
+            uniformsHeader.appendChild( addUniformButton.root );
+
+            // Popover to dialog button
+            {
+                const dialogizePopoverButton = new LX.Button( null,
+                    "DialogizePopoverButton",
+                    this.openUniformsDialog.bind( this ),
+                    { icon: "AppWindowMac", className: "self-center", buttonClass: "bg-none", title: "Expand Window", tooltip: true, width: "38px" } );
+                uniformsHeader.appendChild( dialogizePopoverButton.root );
+            }
+
+            // Create the content for the uniforms panel
+            {
+                this.customParametersPanel = new LX.Panel({ className: "custom-parameters-panel w-full" });
+                customParametersContainer.appendChild( this.customParametersPanel.root );
+
+                this.customParametersPanel.refresh = ( overridePanel, onRefresh ) => {
+
+                    overridePanel = overridePanel ?? this.customParametersPanel;
+
+                    overridePanel.clear();
+
+                    overridePanel.addLabel( "Uniform names must start with i + Capital letter (e.g. iTime)." );
+
+                    for( let u of this.shader.uniforms )
+                    {
+                        overridePanel.sameLine( 5 );
+                        overridePanel.addText( null, u.name, ( v ) => {
+                            u.name = v;
+                            this.createRenderPipeline( true, true );
+                        }, { width: "25%", skipReset: true, pattern: "\\b(?!(" + DEFAULT_UNIFORM_NAMES.join("|") + ")\\b)(i[A-Z]\\w*)\\b" } );
+                        overridePanel.addNumber( "Min", u.min, ( v ) => {
+                            u.min = v;
+                            uRangeComponent.setLimits( u.min, u.max );
+                            this._parametersDirty = true;
+                        }, { nameWidth: "40%", width: "17%", skipReset: true, step: 0.1 } );
+                        const uRangeComponent = overridePanel.addRange( null, u.value, ( v ) => {
+                            u.value = v;
+                            this._parametersDirty = true;
+                        }, { className: "contrast", width: "35%", skipReset: true, min: u.min, max: u.max, step: 0.1 } );
+                        overridePanel.addNumber( "Max", u.max, ( v ) => {
+                            u.max = v;
+                            uRangeComponent.setLimits( u.min, u.max );
+                            this._parametersDirty = true;
+                        }, { nameWidth: "40%", width: "17%", skipReset: true, step: 0.1 } );
+                        overridePanel.addButton( null, "RemoveUniformButton", ( v ) => {
+                            // Check if the uniforms is used to recompile shaders or not
+                            const allCode = this.getShaderCode( false );
+                            const idx = this.shader.uniforms.indexOf( u );
+                            this.shader.uniforms.splice( idx, 1 );
+                            this.customParametersPanel.refresh( overridePanel );
+                            if( allCode.match( new RegExp( `\\b${ u.name }\\b` ) ) )
+                            {
+                                this.createRenderPipeline( true, true );
+                            }
+                        }, { width: "6%", icon: "X", buttonClass: "bg-none", title: "Remove Uniform", tooltip: true } );
+                    }
+
+                    // Updates probably to the panel at the dialog
+                    if( onRefresh )
+                    {
+                        onRefresh();
+                    }
+                    else
+                    {
+                        // Updates to the popover
+                        uniformsCountTitle.innerHTML = `Uniforms [${ this.shader.uniforms.length }]`;
+
+                        if( LX.Popover.activeElement )
+                        {
+                            LX.Popover.activeElement._adjustPosition();
+                        }
+                    }
+                }
+
+                this.customParametersPanel.refresh();
+            }
+
+            this.openCustomParamsButton = customTabInfoButtonsPanel.addButton( null, "OpenCustomParams", ( name, event ) => {
+                this.openCustomUniforms( event.target );
+            }, { icon: "Settings2", title: "Custom Parameters", tooltip: true } );
+        }
+
+        customTabInfoButtonsPanel.addButton( null, "CompileShaderButton", this.compileShader.bind( this ), { icon: "Play", width: "32px", title: "Compile", tooltip: true } );
+
+        customTabInfoButtonsPanel.endLine();
+
+        p.root.prepend( customTabInfoButtonsPanel.root );
     },
 
     async openAvailableChannels( channelIndex ) {
@@ -1971,7 +1982,7 @@ const ShaderHub = {
         // Refresh content first
         this.customParametersPanel.refresh();
 
-        new LX.Popover( target, [ this.customParametersPanel.root.parentElement ], { align: "end" } );
+        new LX.Popover( target, [ this.customParametersPanel.root.parentElement ], { align: "start", side: "top" } );
     },
 
     resetShaderElapsedTime() {
