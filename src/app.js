@@ -31,6 +31,19 @@ function capitalizeFirstLetter(val) {
     return String(val).charAt(0).toUpperCase() + String(val).slice(1);
 }
 
+function toESDate( date ) {
+    const ts = date.substring( 0, 10 ).split("-");
+    return [ ts[ 2 ], ts[ 1 ], ts[ 0 ] ].join("-");
+}
+
+function getDate() {
+    const date = new Date();
+    const day = `${ date.getDate() }`;
+    const month = `${ date.getMonth() + 1 }`;
+    const year = `${ date.getFullYear() }`;
+    return `${ "0".repeat( 2 - day.length ) }${ day }-${ "0".repeat( 2 - month.length ) }${ month }-${ year }`;
+}
+
 const ShaderHub = {
 
     shaderList: [],
@@ -130,7 +143,8 @@ const ShaderHub = {
             }
 
             const loginOptionsButton = LX.makeContainer( [`auto`, "auto"], "flex flex-row gap-1 p-1 mr-2 rounded-lg fg-primary hover:bg-tertiary text-md self-center items-center cursor-pointer", `
-                ${ fs.user ? `<span class="decoration-none fg-secondary">${ fs.user.email }</span>${ LX.makeIcon("ChevronsUpDown", { iconClass: "pl-2" } ).innerHTML }` : "Login" }`, menubar.root );
+                ${ fs.user ? `<span class="decoration-none fg-secondary">${ fs.user.email }</span>${ LX.makeIcon("ChevronsUpDown", { iconClass: "pl-2" } ).innerHTML }
+                    <span class="rounded-full w-6 h-6 bg-accent text-center content-center">${ fs.user.name[ 0 ].toUpperCase() }</span>` : "Login" }`, menubar.root );
             loginOptionsButton.id = "loginOptionsButton";
             loginOptionsButton.addEventListener( "click", async (e) => {
                 e.preventDefault();
@@ -143,7 +157,7 @@ const ShaderHub = {
                         { name: "Logout", icon: "LogOut", className: "fg-error", callback: async () => {
                             await fs.logout();
                             loginOptionsButton.innerHTML = "Login";
-                            document.getElementById( "signupContainer" ).classList.remove( "hidden" );
+                            document.getElementById( "signupContainer" )?.classList.remove( "hidden" );
                         } },
                     ], { side: "bottom", align: "end" });
                 }
@@ -199,7 +213,8 @@ const ShaderHub = {
 
             const shaderInfo = {
                 name,
-                uid: document[ "$id" ]
+                uid: document[ "$id" ],
+                creationDate: toESDate( document[ "$createdAt" ] )
             };
 
             const authorId = document[ "author_id" ];
@@ -216,7 +231,7 @@ const ShaderHub = {
                 shaderInfo.anonAuthor = true;
             }
 
-            const previewName = `${ name.replaceAll( " ", "_" ) }_preview.png`;
+            const previewName = `${ shaderInfo.uid }.png`;
             const result = await fs.listFiles( [ Query.equal( "name", previewName ) ] );
             if( result.total > 0 )
             {
@@ -249,9 +264,7 @@ const ShaderHub = {
             const shaderDesc = LX.makeContainer( ["100%", "100%"], "flex flex-row rounded-b-lg gap-6 p-4 items-center select-none", `
                 <div class="w-full">
                     <div class="text-lg font-bold">${ shader.name }</div>
-                    <div class="text-sm font-light">by
-                        ${ !shader.anonAuthor ? "<a class='dodgerblue cursor-pointer hover:text-underline'>" : "" }<span class="font-bold">${ shader.author }</span>${ !shader.anonAuthor ? "</a>" : "" }
-                    </div>
+                    <div class="text-sm font-light">by ${ !shader.anonAuthor ? "<a class='dodgerblue cursor-pointer hover:text-underline'>" : "" }<span class="font-bold">${ shader.author }</span>${ !shader.anonAuthor ? "</a>" : "" }</div>
                 </div>
                 <div class="">
                     <div class="">
@@ -327,7 +340,7 @@ const ShaderHub = {
                 uid: document[ "$id" ]
             };
 
-            const previewName = `${ name.replaceAll( " ", "_" ) }_preview.png`;
+            const previewName = `${ shaderInfo.uid }.png`;
             const result = await fs.listFiles( [ Query.equal( "name", previewName ) ] );
             if( result.total > 0 )
             {
@@ -339,7 +352,7 @@ const ShaderHub = {
             shaderPreview.src = shaderInfo.preview ?? "images/shader_preview.png";
             const shaderDesc = LX.makeContainer( ["100%", "100%"], "flex flex-row rounded-b-lg gap-6 p-4 items-center select-none", `
                 <div class="w-full">
-                    <div class="text-lg font-bold"><span style="font-family:var(--global-code-font);">${ shaderInfo.name }</span></div>
+                    <div class="text-lg font-bold"><span>${ shaderInfo.name }</span></div>
                 </div>
                 <div class="">
                     <div class="">
@@ -391,7 +404,8 @@ const ShaderHub = {
                 files,
                 channels: JSON.parse( result[ "channels" ] ),
                 uniforms: JSON.parse( result[ "uniforms" ] ),
-                description: result.description ?? ""
+                description: result.description ?? "",
+                creationDate: toESDate( result[ "$createdAt" ] )
             };
 
             const authorId = result[ "author_id" ];
@@ -569,16 +583,41 @@ const ShaderHub = {
 
         var [ graphicsArea, shaderDataArea ] = leftArea.split({ type: "vertical", sizes: ["70%", null], resize: false });
 
+        const ownProfile = fs.user && ( this.shader.authorId === fs.getUserId() );
+
         // Add Shader data
         {
             shaderDataArea.root.className += " pt-2 items-center justify-center bg-primary";
             const shaderDataContainer = LX.makeContainer( [`100%`, "100%"], "p-6 flex flex-col gap-2 rounded-lg bg-secondary overflow-scroll overflow-x-hidden", "", shaderDataArea );
             const shaderNameAuthorOptionsContainer = LX.makeContainer( [`100%`, "auto"], "flex flex-row", `
                 <div class="flex flex-col">
-                    <div class="fg-primary text-xxl font-semibold">${ this.shader.name }</div>
-                    <div class="fg-primary text-md">by ${ !this.shader.anonAuthor ? "<a class='dodgerblue cursor-pointer hover:text-underline'>" : "" }${ this.shader.author }${ !this.shader.anonAuthor ? "</a>" : "" }</div>
+                    <div class="flex flex-row items-center">
+                        ${ ownProfile ? LX.makeIcon("Edit", { svgClass: "mr-2 cursor-pointer hover:fg-primary" } ).innerHTML : "" }
+                        <div class="fg-primary text-xxl font-semibold">${ this.shader.name }</div>
+                    </div>
+                    <div class="fg-secondary text-md">created by ${ !this.shader.anonAuthor ? "<a class='dodgerblue cursor-pointer hover:text-underline'>" : "" }${ this.shader.author }${ !this.shader.anonAuthor ? "</a>" : "" }
+                    on <span class="font-bold">${ this.shader.creationDate }</span></div>
                 </div>
             `, shaderDataContainer );
+
+            const editButton = shaderNameAuthorOptionsContainer.querySelector( "svg" );
+            if( editButton )
+            {
+                editButton.addEventListener( "click", (e) => {
+                    if( this._editingName ) return;
+                    e.preventDefault();
+                    const text = e.target.parentElement.children[ 1 ]; // get non-editable text
+                    const input = new LX.TextInput( null, text.textContent, async (v) => {
+                        text.innerText = v;
+                        input.root.replaceWith( text );
+                        await this.updateShaderName( v );
+                        this._editingName = false;
+                    }, { inputClass: "fg-primary text-xxl font-semibold", pattern: LX.buildTextPattern( { minLength: 3 } ) } );
+                    text.replaceWith( input.root );
+                    LX.doAsync( () => input.root.focus() );
+                    this._editingName = true;
+                } )
+            }
 
             const hyperlink = shaderNameAuthorOptionsContainer.querySelector( "a" );
             if( hyperlink )
@@ -589,7 +628,6 @@ const ShaderHub = {
                 } )
             }
 
-            const ownProfile = fs.user && ( this.shader.authorId === fs.getUserId() );
             const shaderOptions = LX.makeContainer( [`auto`, "auto"], "ml-auto flex flex-row p-1 gap-1 self-center items-center", ``, shaderNameAuthorOptionsContainer );
 
             if( fs.user )
@@ -607,7 +645,7 @@ const ShaderHub = {
                         if( result )
                         {
                             dmOptions.push(
-                                mobile ? 0 : { name: "Update Preview", icon: "ImageUp", callback: this.updateShaderPreview.bind( this, this.shader.name, true ) },
+                                mobile ? 0 : { name: "Update Preview", icon: "ImageUp", callback: this.updateShaderPreview.bind( this, this.shader.uid, true ) },
                                 mobile ? 0 : null,
                                 { name: "Delete Shader", icon: "Trash2", className: "fg-error", callback: this.deleteShader.bind( this ) },
                             );
@@ -913,11 +951,7 @@ const ShaderHub = {
                         loginButton.innerHTML = `<span class="decoration-none fg-secondary">${ fs.user.email }</span>
                                                     ${ LX.makeIcon("ChevronsUpDown", { iconClass: "pl-2" } ).innerHTML }`;
                     }
-                    const signupContainer = document.getElementById( "signupContainer" );
-                    if( signupContainer )
-                    {
-                        signupContainer.classList.add( "hidden" );
-                    }
+                    document.getElementById( "signupContainer" )?.classList.add( "hidden" );
                     document.querySelectorAll( ".lextoast" ).forEach( t => t.close() );
                     LX.toast( `✅ Logged in`, `User: ${ value.email }`, { position: "top-right" } );
                 }, (err) => {
@@ -1027,6 +1061,16 @@ const ShaderHub = {
         window.location.href = `${ window.location.origin + window.location.pathname }?shader=new`;
     },
 
+    async updateShaderName( shaderName ) {
+
+        const shaderUid = this.shader.uid;
+
+        // update DB
+        // ...
+
+        this.shader.name = shaderName;
+    },
+
     async saveShaderFiles() {
 
         let newFileId = "";
@@ -1091,11 +1135,11 @@ const ShaderHub = {
                     "uniforms": JSON.stringify( this.shader.uniforms ),
                 } );
 
-                // Upload canvas snapshot
-                await this.updateShaderPreview( shaderName, false );
-
                 this.shader.uid = result[ "$id" ];
                 this.shader.name = shaderName;
+
+                // Upload canvas snapshot
+                await this.updateShaderPreview( this.shader.uid, false );
 
                 // Close dialog on succeed and show toast
                 dialog.close();
@@ -1125,7 +1169,7 @@ const ShaderHub = {
         } );
 
         // Update canvas snapshot
-        await this.updateShaderPreview( this.shader.name, false );
+        await this.updateShaderPreview( this.shader.uid, false );
 
         LX.toast( `✅ Shader updated`, `Shader: ${ this.shader.name } by ${ fs.user.name }`, { position: "top-right" } );
     },
@@ -1152,7 +1196,7 @@ const ShaderHub = {
             }
 
             // Preview
-            const previewName = `${ this.shader.name.replaceAll( " ", "_" ) }_preview.png`;
+            const previewName = `${ this.shader.uid }.png`;
             result = await fs.listFiles( [ Query.equal( "name", previewName ) ] );
             if( result.total > 0 )
             {
@@ -1179,7 +1223,7 @@ const ShaderHub = {
         // Create a new col to store original_id so it can be shown in the page
         // Get the new shader id, and reload page in shader view with that id
 
-        const shaderName = `${ this.shader.name } (remix from ${ this.shader.author }'s)`;
+        const shaderName = this.shader.name;
         const shaderUid = this.shader.uid;
         const newFileId = await this.saveShaderFiles();
 
@@ -1195,15 +1239,18 @@ const ShaderHub = {
         } );
 
         // Upload canvas snapshot
-        await this.updateShaderPreview( shaderName, false );
+        await this.updateShaderPreview( shaderUid, false );
 
         // Go to shader edit view with the new shader
         window.location.href = `${ window.location.origin + window.location.pathname }?shader=${ result[ "$id" ] }`;
     },
 
-    async updateShaderPreview( shaderName, showFeedback = true ) {
+    async updateShaderPreview( shaderUid, showFeedback = true ) {
+
+        shaderUid = shaderUid ?? this.shader.uid;
+
         // Delete old preview first if necessary
-        const previewName = `${ shaderName.replaceAll( " ", "_" ) }_preview.png`;
+        const previewName = `${ shaderUid }.png`;
         const result = await fs.listFiles( [ Query.equal( "name", previewName ) ] );
         if( result.total > 0 )
         {
@@ -1218,7 +1265,7 @@ const ShaderHub = {
 
         if( showFeedback )
         {
-            LX.toast( `✅ Shader preview updated`, `Shader: ${ shaderName } by ${ fs.user.name }`, { position: "top-right" } );
+            LX.toast( `✅ Shader preview updated`, `Shader: ${ this.shader.name } by ${ fs.user.name }`, { position: "top-right" } );
         }
     },
 

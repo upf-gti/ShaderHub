@@ -13,7 +13,7 @@ class Shader {
         this.authorId = data.authorId;
         this.anonAuthor = data.anonAuthor ?? false;
         this.description = data.description ?? "";
-        this.lastUpdatedDate = "";
+        this.creationDate = data.creationDate ?? "";
         this.hasPreview = data.hasPreview ?? false
     }
 }
