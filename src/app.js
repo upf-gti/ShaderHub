@@ -1,6 +1,7 @@
 import { LX } from 'lexgui';
 // import 'lexgui/extensions/codeeditor.js';
 import './extra/codeeditor.js';
+import * as Utils from './utils.js';
 import { FS } from './fs.js';
 import { Shader } from './shader.js';
 
@@ -25,36 +26,7 @@ const SRC_IMAGE_EMPTY = "data:image/gif;base64,R0lGODlhAQABAPcAAAAAAAAAAAAAAAAAA
 
 const fs = new FS();
 const Query = Appwrite.Query;
-const mobile = navigator && /Android|iPhone/i.test( navigator.userAgent );
-
-function capitalizeFirstLetter(val) {
-    return String(val).charAt(0).toUpperCase() + String(val).slice(1);
-}
-
-function toESDate( date ) {
-    const ts = date.substring( 0, 10 ).split("-");
-    return [ ts[ 2 ], ts[ 1 ], ts[ 0 ] ].join("-");
-}
-
-function getDate() {
-    const date = new Date();
-    const day = `${ date.getDate() }`;
-    const month = `${ date.getMonth() + 1 }`;
-    const year = `${ date.getFullYear() }`;
-    return `${ "0".repeat( 2 - day.length ) }${ day }-${ "0".repeat( 2 - month.length ) }${ month }-${ year }`;
-}
-
-const CODE2ASCII = {};
-
-for (let i = 0; i < 26; i++) CODE2ASCII["Key" + String.fromCharCode(65 + i)] = 65 + i;  // Letters A–Z → ASCII uppercase
-for (let i = 0; i < 10; i++) CODE2ASCII["Digit" + i] = 48 + i;                          // Digits 0–9 → ASCII '0'–'9'
-for (let i = 0; i < 10; i++) CODE2ASCII["Numpad" + i] = 48 + i;                         // Numpad digits. same as ASCII '0'–'9'
-for (let i = 1; i <= 12; i++) CODE2ASCII["F" + i] = 111 + i;                            // Function keys → assign numbers starting from 112 (legacy F1..F12 codes)
-
-// Common symbols (matching US layout ASCII)
-Object.assign(CODE2ASCII, { "Space": 32, "Enter": 13, "Tab": 9, "Backspace": 8, "Escape": 27, "Minus": 45, "Equal": 61, "BracketLeft": 91, "BracketRight": 93, "Backslash": 92, "Semicolon": 59, "Quote": 39, "Backquote": 96, "Comma": 44, "Period": 46, "Slash": 47 });
-// Arrows and controls (matching old keyCodes)
-Object.assign(CODE2ASCII, { "ArrowLeft": 37, "ArrowUp": 38, "ArrowRight": 39, "ArrowDown": 40, "Insert": 45, "Delete": 46, "Home": 36, "End": 35, "PageUp": 33, "PageDown": 34 });
+const mobile = Utils.isMobile();
 
 const ShaderHub = {
 
@@ -232,7 +204,7 @@ const ShaderHub = {
             const shaderInfo = {
                 name,
                 uid: document[ "$id" ],
-                creationDate: toESDate( document[ "$createdAt" ] )
+                creationDate: Utils.toESDate( document[ "$createdAt" ] )
             };
 
             const authorId = document[ "author_id" ];
@@ -427,7 +399,7 @@ const ShaderHub = {
                 channels: JSON.parse( result[ "channels" ] ),
                 uniforms: JSON.parse( result[ "uniforms" ] ),
                 description: result.description ?? "",
-                creationDate: toESDate( result[ "$createdAt" ] )
+                creationDate: Utils.toESDate( result[ "$createdAt" ] )
             };
 
             const authorId = result[ "author_id" ];
@@ -464,7 +436,7 @@ const ShaderHub = {
                 files: [ [ "shaders/main.template.wgsl", "main.wgsl" ] ],
                 author: fs.user?.name ?? "Anonymous",
                 anonAuthor: true,
-                creationDate: getDate()
+                creationDate: Utils.getDate()
             };
 
             this.shader = new Shader( shaderData );
@@ -611,7 +583,7 @@ const ShaderHub = {
             shaderDataArea.root.className += " pt-2 items-center justify-center bg-primary";
             const shaderDataContainer = LX.makeContainer( [`100%`, "100%"], "p-6 flex flex-col gap-2 rounded-lg bg-secondary overflow-scroll overflow-x-hidden", "", shaderDataArea );
             const shaderNameAuthorOptionsContainer = LX.makeContainer( [`100%`, "auto"], "flex flex-row", `
-                <div class="flex flex-col">
+                <div class="flex flex-col gap-1">
                     <div class="flex flex-row items-center">
                         ${ ( ownProfile || isNewShader ) ? LX.makeIcon("Edit", { svgClass: "mr-2 cursor-pointer hover:fg-primary" } ).innerHTML : "" }
                         <div class="fg-primary text-xxl font-semibold">${ this.shader.name }</div>
@@ -649,7 +621,7 @@ const ShaderHub = {
                 } )
             }
 
-            const shaderOptions = LX.makeContainer( [`auto`, "auto"], "ml-auto flex flex-row p-1 gap-1 self-center items-center", ``, shaderNameAuthorOptionsContainer );
+            const shaderOptions = LX.makeContainer( [`auto`, "auto"], "ml-auto flex flex-row p-1 gap-1 self-start items-center", ``, shaderNameAuthorOptionsContainer );
 
             if( fs.user )
             {
@@ -689,7 +661,7 @@ const ShaderHub = {
             // Editable description
             {
                 const descContainer = LX.makeContainer( [`auto`, "auto"], "fg-primary mt-2 flex flex-row items-center", `
-                    <div class="w-auto">${ ( ownProfile || ( shaderUid === "new" ) ) ? LX.makeIcon("Edit", { svgClass: "mr-3 cursor-pointer hover:fg-primary" } ).innerHTML : "" }</div>
+                    <div class="w-auto self-start mt-1">${ ( ownProfile || ( shaderUid === "new" ) ) ? LX.makeIcon("Edit", { svgClass: "mr-3 cursor-pointer hover:fg-primary" } ).innerHTML : "" }</div>
                     <div class="desc-content w-full text-md break-words">${ this.shader.description }</div>
                     `, shaderDataContainer );
 
@@ -779,16 +751,16 @@ const ShaderHub = {
         let generateKbTexture = true;
 
         canvas.addEventListener('keydown', async (e) => {
-            this.keyState.set( CODE2ASCII[ e.code ], true );
+            this.keyState.set( Utils.code2ascii( e.code ), true );
             if( generateKbTexture ) await this.createKeyboardTexture();
             generateKbTexture = false;
             e.preventDefault();
         }, false);
 
         canvas.addEventListener('keyup', async (e) => {
-            this.keyState.set( CODE2ASCII[ e.code ], false );
-            this.keyToggleState.set( CODE2ASCII[ e.code ], !( this.keyToggleState.get( CODE2ASCII[ e.code ] ) ?? false ) );
-            this.keyPressed.set( CODE2ASCII[ e.code ], true );
+            this.keyState.set( Utils.code2ascii( e.code ), false );
+            this.keyToggleState.set( Utils.code2ascii( e.code ), !( this.keyToggleState.get( Utils.code2ascii( e.code ) ) ?? false ) );
+            this.keyPressed.set( Utils.code2ascii( e.code ), true );
             this._anyKeyPressed = true;
             await this.createKeyboardTexture();
             generateKbTexture = true;
@@ -1058,8 +1030,6 @@ const ShaderHub = {
 
     requestFullscreen( element ) {
 
-        console.log(element)
-
         if( element == null ) element = document.documentElement;
         if( element.requestFullscreen ) element.requestFullscreen();
         else if( element.msRequestFullscreen ) element.msRequestFullscreen();
@@ -1078,16 +1048,6 @@ const ShaderHub = {
         else if( document.msExitFullscreen ) document.msExitFullscreen();
         else if( document.mozCancelFullScreen ) document.mozCancelFullScreen();
         else if( document.webkitExitFullscreen ) document.webkitExitFullscreen();
-    },
-
-    isMobile() {
-        return ( navigator.userAgent.match(/Android/i) ||
-                navigator.userAgent.match(/webOS/i) ||
-                navigator.userAgent.match(/iPhone/i) ||
-                navigator.userAgent.match(/iPad/i) ||
-                navigator.userAgent.match(/iPod/i) ||
-                navigator.userAgent.match(/BlackBerry/i) ||
-                navigator.userAgent.match(/Windows Phone/i) );
     },
 
     openProfile( userID ) {
