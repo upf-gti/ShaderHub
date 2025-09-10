@@ -27,9 +27,10 @@ Roadmap:
 - [x] Delete Shader
 - [x] Modify Shader name, description
 - [x] Add keyboard uniform as possible texture
+- [x] Fullscreen mode
 - [ ] Change uniforms type
 - [ ] Support creating Compute shaders
-- [ ] Export GIF/pngs
+- [ ] Export GIF/pngs (RECORD CANVAS)
 - [ ] Submit form for Login (LX)
 - [ ] Give more info on form validation errors (LX)
 - [ ] Shader stats

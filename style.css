@@ -2,12 +2,11 @@
 	font-family: var(--global-code-font) !important;
 }
 
-/* canvas:fullscreen {
-	position: fixed;
-	top: 0; left: 0; right: 0; bottom: 0;
-	width: 100%;
-	height: 100%;
-} */
+.webgpu-canvas { aspect-ratio: 16 / 9; outline: none }
+.webgpu-canvas:fullscreen { width: 100%; height: 100%; }
+.webgpu-canvas:-webkit-full-screen { width: 100%; height: 100%; }
+.webgpu-canvas:-moz-full-screen { width: 100%; height: 100%; }
+.webgpu-canvas:-ms-fullscreen { width: 100%; height: 100%; }
 
 .notifications ol .lextoast .lextoastcontent .desc {
 	transition: all 0.5s cubic-bezier(.42, .97, .52, 1.19);

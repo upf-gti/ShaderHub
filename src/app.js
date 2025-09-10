@@ -602,7 +602,7 @@ const ShaderHub = {
             }
         });
 
-        var [ graphicsArea, shaderDataArea ] = leftArea.split({ type: "vertical", sizes: ["70%", null], resize: false });
+        var [ graphicsArea, shaderDataArea ] = leftArea.split({ type: "vertical", sizes: ["auto", "auto"], resize: false });
 
         const ownProfile = fs.user && ( this.shader.authorId === fs.getUserId() );
 
@@ -717,53 +717,85 @@ const ShaderHub = {
         let [ canvasArea, canvasControlsArea ] = graphicsArea.split({ type: "vertical", sizes: ["calc(100% - 48px)", null], resize: false });
 
         const canvas = document.createElement("canvas");
-        canvas.className = "w-full h-full rounded-t-lg";
-        canvas.tabIndex = "1";
+        canvas.className = "webgpu-canvas w-full h-full rounded-t-lg";
+        canvas.tabIndex = "0";
         canvasArea.attach( canvas );
 
-        document.addEventListener('fullscreenchange', (e) => {
-            // document.fullscreenElement will point to the element that
-            // is in fullscreen mode if there is one. If there isn't one,
-            // the value of the property is null.
-            if (document.fullscreenElement) {
-                const canvas = document.fullscreenElement;
-                console.assert( canvas.constructor === HTMLCanvasElement );
-                LX.doAsync( () => {
-                    canvas.width = window.screen.width;
-                    canvas.height = window.screen.height;
-                }, 1000 )
-            } else {
-                console.log("Leaving fullscreen mode.");
-            }
-        });
+        {
+            let iResize = ( xResolution, yResolution ) => {
+                canvas.width = xResolution;
+                canvas.height = yResolution;
+                this.resolutionX = xResolution;
+                this.resolutionY = yResolution;
+                // me.ResizeBuffers( xResolution, yResolution );
+                // resizeCallback( xResolution, yResolution );
+            };
 
-        let lastDownTarget = null;
+            let bestAttemptFallback = () => {
+                let devicePixelRatio = window.devicePixelRatio || 1;
+                let xResolution = Math.round( canvas.offsetWidth  * devicePixelRatio ) | 0;
+                let yResolution = Math.round( canvas.offsetHeight * devicePixelRatio ) | 0;
+                iResize( xResolution, yResolution );
+            };
+
+            if( !window.ResizeObserver )
+            {
+                console.warn( "This browser doesn't support ResizeObserver." );
+                bestAttemptFallback();
+                window.addEventListener( "resize", bestAttemptFallback );
+            }
+            else
+            {
+                this.ro = new ResizeObserver( function( entries, observer )
+                {
+                    var entry = entries[ 0 ];
+                    if( !entry['devicePixelContentBoxSize'] )
+                    {
+                        observer.unobserve( canvas );
+                        console.warn( "This browser doesn't support ResizeObserver + device-pixel-content-box (2)" );
+                        bestAttemptFallback();
+                        window.addEventListener( "resize", bestAttemptFallback );
+                    }
+                    else
+                    {
+                        let box = entry.devicePixelContentBoxSize[ 0 ];
+                        iResize( box.inlineSize, box.blockSize );
+                    }
+                });
+
+                try
+                {
+                    this.ro.observe( canvas, { box: ["device-pixel-content-box"] } );
+                }
+                catch( e )
+                {
+                    console.warn( "This browser doesn't support ResizeObserver + device-pixel-content-box (1)");
+                    bestAttemptFallback();
+                    window.addEventListener( "resize", bestAttemptFallback );
+                }
+            }
+        }
+
         let generateKbTexture = true;
-        document.addEventListener('mousedown', (e) => {
-            lastDownTarget = e.target;
+
+        canvas.addEventListener('keydown', async (e) => {
+            this.keyState.set( CODE2ASCII[ e.code ], true );
+            if( generateKbTexture ) await this.createKeyboardTexture();
+            generateKbTexture = false;
+            e.preventDefault();
         }, false);
 
-        document.addEventListener('keydown', async (e) => {
-            if (lastDownTarget == canvas) {
-                this.keyState.set( CODE2ASCII[ e.code ], true );
-                if( generateKbTexture ) await this.createKeyboardTexture();
-                generateKbTexture = false;
-            }
-        }, false);
-
-        document.addEventListener('keyup', async (e) => {
-            if (lastDownTarget == canvas) {
-                this.keyState.set( CODE2ASCII[ e.code ], false );
-                this.keyToggleState.set( CODE2ASCII[ e.code ], !( this.keyToggleState.get( CODE2ASCII[ e.code ] ) ?? false ) );
-                this.keyPressed.set( CODE2ASCII[ e.code ], true );
-                this._anyKeyPressed = true;
-                await this.createKeyboardTexture();
-                generateKbTexture = true;
-            }
+        canvas.addEventListener('keyup', async (e) => {
+            this.keyState.set( CODE2ASCII[ e.code ], false );
+            this.keyToggleState.set( CODE2ASCII[ e.code ], !( this.keyToggleState.get( CODE2ASCII[ e.code ] ) ?? false ) );
+            this.keyPressed.set( CODE2ASCII[ e.code ], true );
+            this._anyKeyPressed = true;
+            await this.createKeyboardTexture();
+            generateKbTexture = true;
+            e.preventDefault();
         }, false);
 
         canvas.addEventListener("mousedown", (e) => {
-            e.preventDefault();
             this._mouseDown = e;
             this.mousePosition = [ e.offsetX, this.gpuCanvas.offsetHeight - e.offsetY ];
             this.lastMousePosition = [ ...this.mousePosition ];
@@ -771,14 +803,12 @@ const ShaderHub = {
         });
 
         canvas.addEventListener("mouseup", (e) => {
-            e.preventDefault();
             this._mouseDown = undefined;
         });
 
         canvas.addEventListener("mousemove", (e) => {
             if( this._mouseDown )
             {
-                e.preventDefault();
                 this.mousePosition = [ e.offsetX, this.gpuCanvas.offsetHeight - e.offsetY ];
             }
         });
@@ -803,7 +833,7 @@ const ShaderHub = {
             panel.addButton( null, "Record", ( name, event ) => {
                 // TODO: Record gif/video/...
             }, { icon: "Video", className: "ml-auto", title: "Record", tooltip: true } );
-            panel.addButton( null, "Fullscreen", this.requestFullscreen.bind( this ), { icon: "Fullscreen", title: "Fullscreen", tooltip: true } );
+            panel.addButton( null, "Fullscreen", () => this.requestFullscreen( this.gpuCanvas ), { icon: "Fullscreen", title: "Fullscreen", tooltip: true } );
 
             panel.endLine( "items-center h-full ml-auto" );
         }
@@ -951,7 +981,10 @@ const ShaderHub = {
             }, { icon: "Settings2", title: "Custom Parameters", tooltip: true } );
         }
 
-        customTabInfoButtonsPanel.addButton( null, "CompileShaderButton", this.compileShader.bind( this ), { icon: "Play", width: "32px", title: "Compile", tooltip: true } );
+        customTabInfoButtonsPanel.addButton( null, "CompileShaderButton", async () => {
+            await this.compileShader();
+            this.gpuCanvas.focus();
+        }, { icon: "Play", width: "32px", title: "Compile", tooltip: true } );
 
         customTabInfoButtonsPanel.endLine();
 
@@ -1023,16 +1056,38 @@ const ShaderHub = {
         }, { modal: false, close: true, minimize: false, size: [`${ Math.min( 1280, window.innerWidth - 64 ) }px`, "512px"], draggable: true });
     },
 
-    requestFullscreen() {
+    requestFullscreen( element ) {
 
-        if( this.gpuCanvas.requestFullscreen )
-        {
-            this.gpuCanvas.requestFullscreen();
-        }
-        else if( this.gpuCanvas.webkitRequestFullscreen() ) // Safari
-        {
-            this.gpuCanvas.webkitRequestFullscreen();
-        }
+        console.log(element)
+
+        if( element == null ) element = document.documentElement;
+        if( element.requestFullscreen ) element.requestFullscreen();
+        else if( element.msRequestFullscreen ) element.msRequestFullscreen();
+        else if( element.mozRequestFullScreen ) element.mozRequestFullScreen();
+        else if( element.webkitRequestFullscreen ) element.webkitRequestFullscreen( Element.ALLOW_KEYBOARD_INPUT );
+
+        if( element.focus ) element.focus();
+    },
+
+    isFullScreen() {
+        return document.fullscreen || document.mozFullScreen || document.webkitIsFullScreen || document.msFullscreenElement;
+    },
+
+    exitFullscreen() {
+        if( document.exitFullscreen ) document.exitFullscreen();
+        else if( document.msExitFullscreen ) document.msExitFullscreen();
+        else if( document.mozCancelFullScreen ) document.mozCancelFullScreen();
+        else if( document.webkitExitFullscreen ) document.webkitExitFullscreen();
+    },
+
+    isMobile() {
+        return ( navigator.userAgent.match(/Android/i) ||
+                navigator.userAgent.match(/webOS/i) ||
+                navigator.userAgent.match(/iPhone/i) ||
+                navigator.userAgent.match(/iPad/i) ||
+                navigator.userAgent.match(/iPod/i) ||
+                navigator.userAgent.match(/BlackBerry/i) ||
+                navigator.userAgent.match(/Windows Phone/i) );
     },
 
     openProfile( userID ) {
