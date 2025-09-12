@@ -1,5 +1,5 @@
 # ShaderHub
-WebGPU Shadertoy
+WebGPU Shadertoy-like platform to create fullscreen quad shaders.
 
 Roadmap:
 - [x] Create New Shader
@@ -28,9 +28,16 @@ Roadmap:
 - [x] Modify Shader name, description
 - [x] Add keyboard uniform as possible texture
 - [x] Fullscreen mode
+- [ ] Share shader iframe
+- [ ] Shader Utils
+- [ ] Shader desc/comments format
+- [ ] Shader Comments
 - [ ] Change uniforms type
 - [ ] Support creating Compute shaders
 - [ ] Export GIF/pngs (RECORD CANVAS)
 - [ ] Submit form for Login (LX)
 - [ ] Give more info on form validation errors (LX)
 - [ ] Shader stats
+
+CE:
+- Fix horizontal scroll

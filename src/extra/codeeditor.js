@@ -1312,9 +1312,13 @@ class CodeEditor {
                 }});
             }
         }
-        else
+        else if( options.defaultTab ?? true )
         {
             this.addTab( options.name || "untitled", true, options.title, { language: options.highlight ?? "Plain Text" } );
+            onLoadAll();
+        }
+        else
+        {
             onLoadAll();
         }
     }
@@ -2049,6 +2053,12 @@ class CodeEditor {
         {
             code.languageOverride = options.language;
             this._changeLanguage( code.languageOverride );
+            this.mustProcessLines = true;
+        }
+
+        if( options.codeLines )
+        {
+            code.lines = options.codeLines;
             this.mustProcessLines = true;
         }
 

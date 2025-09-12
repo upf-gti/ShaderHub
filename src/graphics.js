@@ -1,0 +1,124 @@
+// Each shader pass corresponds to a shader file
+class ShaderPass {
+
+    constructor( device, data ) {
+        this.name = data.name;
+        this.type = data.type ?? "image";
+        this.codeLines = data.codeLines;
+
+        this.channels = data.channels ?? [];
+        // this.uniformChannels = [];
+
+        this.uniforms = data.uniforms ?? [];
+        this.uniformBuffers = [];
+
+        if( this.type === "buffer" )
+        {
+            this.targetTexture = device.createTexture({
+                size: [ 1280, 720, 1 ],
+                format: navigator.gpu.getPreferredCanvasFormat(),
+                usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING
+            });
+        }
+    }
+
+    draw( device, ctx, renderPipeline, renderBindGroup ) {
+
+        if( this.type === "common" )
+        {
+            return;
+        } 
+        else if( this.type === "image" )
+        {
+            if( !renderPipeline )
+            {
+                return;
+            }
+
+            const commandEncoder = device.createCommandEncoder();
+            const textureView = ctx.getCurrentTexture().createView();
+
+            const renderPassDescriptor = {
+                colorAttachments: [
+                    {
+                        view: textureView,
+                        clearValue: [0, 0, 0, 1],
+                        loadOp: 'clear',
+                        storeOp: 'store',
+                    },
+                ],
+            };
+
+            const passEncoder = commandEncoder.beginRenderPass( renderPassDescriptor );
+            passEncoder.setPipeline( renderPipeline );
+
+            if( renderBindGroup )
+            {
+                passEncoder.setBindGroup( 0, renderBindGroup );
+            }
+
+            passEncoder.draw( 6 );
+            passEncoder.end();
+
+            device.queue.submit( [ commandEncoder.finish() ] );
+        }
+        else if( this.type === "buffer" )
+        {
+            if( !renderPipeline || !this.targetTexture )
+            {
+                return;
+            }
+
+            const commandEncoder = device.createCommandEncoder();
+            const textureView = this.targetTexture.createView();
+
+            const renderPassDescriptor = {
+                colorAttachments: [
+                    {
+                        view: textureView,
+                        clearValue: [0, 0, 0, 1],
+                        loadOp: 'clear',
+                        storeOp: 'store',
+                    },
+                ],
+            };
+
+            const passEncoder = commandEncoder.beginRenderPass( renderPassDescriptor );
+            passEncoder.setPipeline( renderPipeline );
+
+            if( renderBindGroup )
+            {
+                passEncoder.setBindGroup( 0, renderBindGroup );
+            }
+
+            passEncoder.draw( 6 );
+            passEncoder.end();
+
+            device.queue.submit( [ commandEncoder.finish() ] );
+
+        }
+    }
+}
+
+class Shader {
+
+    constructor( data ) {
+
+        this.name = data.name ?? "";
+        this.uid = data.uid;
+        this.url = data.url;
+        this.passes = data.passes ?? [];
+
+        // Remove this once everything is moved to ShaderPass
+        this.uniforms = [];
+
+        this.author = data.author ?? "anonymous";
+        this.authorId = data.authorId;
+        this.anonAuthor = data.anonAuthor ?? false;
+        this.description = data.description ?? "";
+        this.creationDate = data.creationDate ?? "";
+        this.hasPreview = data.hasPreview ?? false;
+    }
+}
+
+export { Shader, ShaderPass };
