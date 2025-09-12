@@ -490,6 +490,18 @@ const ShaderHub = {
 
         document.title = `${ this.shader.name } (${ this.shader.author }) - ShaderHub`;
 
+        const customSuggestions = [];
+        DEFAULT_UNIFORM_NAMES.forEach( u => {
+            if( u.startsWith( "iChannel" ) )
+            {
+                customSuggestions.push( "iChannel" );
+            }
+            else
+            {
+                customSuggestions.push( u );
+            }
+        } );
+
         this.editor = await new LX.CodeEditor( codeArea, {
             allowClosingTabs: false,
             allowLoadingFiles: false,
@@ -498,6 +510,7 @@ const ShaderHub = {
             statusShowEditorIndentation: false,
             statusShowEditorLanguage: false,
             statusShowEditorFilename: false,
+            customSuggestions,
             onCreateStatusPanel: this.createStatusBarButtons.bind( this ),
             onCtrlSpace: this.compileShader.bind( this ),
             onSave: this.compileShader.bind( this ),

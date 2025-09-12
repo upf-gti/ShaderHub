@@ -351,6 +351,7 @@ class CodeEditor {
         this.allowLoadingFiles = options.allowLoadingFiles ?? true;
         this.highlight = options.highlight ?? 'Plain Text';
         this.newTabOptions = options.newTabOptions;
+        this.customSuggestions = options.customSuggestions ?? [];
 
         // Editor callbacks
         this.onSave = options.onSave ?? options.onsave;  // LEGACY onsave
@@ -558,36 +559,44 @@ class CodeEditor {
                         return;
                     }
 
-                    this.setScrollBarValue( 'vertical' );
-
-                    const scrollTop = this.getScrollTop();
-
-                    // Scroll down...
-                    if( scrollTop > lastScrollTopValue )
+                    // Vertical scroll
                     {
-                        if( this.visibleLinesViewport.y < (this.code.lines.length - 1) )
-                        {
-                            const totalLinesInViewport = ( ( this.codeScroller.offsetHeight ) / this.lineHeight )|0;
-                            const scrollDownBoundary =
-                                ( Math.max( this.visibleLinesViewport.y - totalLinesInViewport, 0 ) - 1 ) * this.lineHeight;
+                        this.setScrollBarValue( 'vertical' );
 
-                            if( scrollTop >= scrollDownBoundary )
+                        const scrollTop = this.getScrollTop();
+
+                        // Scroll down...
+                        if( scrollTop > lastScrollTopValue )
+                        {
+                            if( this.visibleLinesViewport.y < (this.code.lines.length - 1) )
+                            {
+                                const totalLinesInViewport = ( ( this.codeScroller.offsetHeight ) / this.lineHeight )|0;
+                                const scrollDownBoundary =
+                                    ( Math.max( this.visibleLinesViewport.y - totalLinesInViewport, 0 ) - 1 ) * this.lineHeight;
+
+                                if( scrollTop >= scrollDownBoundary )
+                                {
+                                    this.processLines( CodeEditor.UPDATE_VISIBLE_LINES );
+                                }
+                            }
+                        }
+                        // Scroll up...
+                        else
+                        {
+                            const scrollUpBoundary = parseInt( this.code.style.top );
+                            if( scrollTop < scrollUpBoundary )
                             {
                                 this.processLines( CodeEditor.UPDATE_VISIBLE_LINES );
                             }
                         }
-                    }
-                    // Scroll up...
-                    else
-                    {
-                        const scrollUpBoundary = parseInt( this.code.style.top );
-                        if( scrollTop < scrollUpBoundary )
-                        {
-                            this.processLines( CodeEditor.UPDATE_VISIBLE_LINES );
-                        }
+
+                        lastScrollTopValue = scrollTop;
                     }
 
-                    lastScrollTopValue = scrollTop;
+                    // Horizontal scroll
+                    {
+                        this.setScrollBarValue( 'horizontal' );
+                    }
                 });
 
                 this.codeScroller.addEventListener( 'wheel', e => {
@@ -5048,7 +5057,10 @@ class CodeEditor {
         }
         else
         {
-            this.codeScroller.scrollLeft += value;
+            if( value )
+            {
+                this.codeScroller.scrollLeft += value;
+            }
 
             const scrollBarWidth = this.hScrollbar.thumb.parentElement.offsetWidth;
             const scrollThumbWidth = this.hScrollbar.thumb.offsetWidth;
@@ -5257,6 +5269,9 @@ class CodeEditor {
             const otherValues = Array.from( this.code.symbolsTable ).map( s => s[ 0 ] );
             suggestions = suggestions.concat( otherValues.slice( 0, -1 ) );
         }
+
+        // Add custom suggestions...
+        suggestions = suggestions.concat( this.customSuggestions );
 
         // Remove 1/2 char words and duplicates...
         suggestions = Array.from( new Set( suggestions )).filter( s => s.length > 2 && s.toLowerCase().includes( word.toLowerCase() ) );
