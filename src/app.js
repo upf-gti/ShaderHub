@@ -46,6 +46,34 @@ const ShaderHub = {
     lastTime: 0,
     elapsedTime: 0,
     timePaused: false,
+    capturer: null,
+
+    startCapture() {
+        this.frameCount = 1;
+        this.capturer = new CCapture( { format: 'gif', framerate: 30, workersPath: './src/extra/' } );
+        // this.capturer.start();
+        // LX.doAsync( () => {
+        //     this.saveCapture();
+        // }, 2000 )
+    },
+
+    saveCapture() {
+
+        if( !this.capturer )
+        {
+            return;
+        }
+
+        this.capturer.stop();
+
+        this.capturer.save();
+
+        delete this.capturer;
+        delete this.frameCount;
+
+        // custom save, will get a blob in the callback
+        // this.capturer.save( function( blob ) { /* ... */ } );
+    },
 
     async initUI() {
 
@@ -1319,6 +1347,22 @@ const ShaderHub = {
                 passEncoder.end();
 
                 this.device.queue.submit( [ commandEncoder.finish() ] );
+            }
+
+            if( this.capturer )
+            {
+                if( this.frameCount == 1 )
+                {
+                    this.capturer.start();
+                }
+
+                this.capturer.capture( this.gpuCanvas );
+                this.frameCount++;
+
+                if( this.frameCount == 100 )
+                {
+                    this.saveCapture();
+                }
             }
 
             requestAnimationFrame(frame);
