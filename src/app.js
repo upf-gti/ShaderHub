@@ -8,6 +8,10 @@ import { Shader, ShaderPass } from './graphics.js';
 const WEBGPU_OK     = 0;
 const WEBGPU_ERROR  = 1;
 
+const ERROR_CODE_DEFAULT    = 0;
+const ERROR_CODE_SUCCESS    = 1;
+const ERROR_CODE_ERROR      = 2;
+
 const USERNAME_MIN_LENGTH = 3;
 const PASSWORD_MIN_LENGTH = 8;
 
@@ -40,6 +44,10 @@ const CODE_MAIN_TEMPLATE = `fn mainImage(fragUV : vec2f, fragCoord : vec2f) -> v
 }`;
 const CODE_COMMON_TEMPLATE = `fn someFunc(a: f32, b: f32) -> f32 {
     return a + b;
+}`;
+const CODE_BUFFER_TEMPLATE = `fn mainImage(fragUV : vec2f, fragCoord : vec2f) -> vec4f {
+    // Output to screen
+    return vec4f(0.0, 0.0, 1.0, 1.0);
 }`;
 
 const fs = new FS();
@@ -451,8 +459,9 @@ const ShaderHub = {
         leftArea.root.className += " p-2";
         leftArea.onresize = function (bounding) {};
 
-        let [ codeArea, shaderSettingsArea ] = rightArea.split({ type: "vertical", sizes: ["80%", null], resize: false });
-        codeArea.root.className += " rounded-lg overflow-hidden";
+        let [ codeArea, shaderSettingsArea ] = rightArea.split({ type: "vertical", sizes: ["80%", "20%"], resize: false });
+        codeArea.root.className += " rounded-lg overflow-hidden code-border-default";
+        shaderSettingsArea.root.className += " content-center";
 
         // Add input channels UI
         {
@@ -493,34 +502,14 @@ const ShaderHub = {
             onCtrlSpace: this.compileShader.bind( this ),
             onSave: this.compileShader.bind( this ),
             onRun: this.compileShader.bind( this ),
-            onCreateFile: ( editor ) => {
-
-                const filename = "Common";
-                if( this.loadedFiles[ filename ] )
-                {
-                    return; // Already a common file
-                }
-                
-                this.loadedFiles[ filename ] = CODE_COMMON_TEMPLATE;
-
-                // Wait for the tab to be created
-                LX.doAsync( () => {
-                    const closeIcon = LX.makeIcon( "X", { iconClass: "ml-2" } );
-                    LX.asTooltip( closeIcon, "Delete file" );
-                    closeIcon.addEventListener( "click", (e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        editor.tabs.delete( filename );
-                        document.body.querySelectorAll( ".lextooltip" ).forEach( e => e.remove() );
-                        // Delete common info
-                        delete this.loadedFiles[ filename ];
-                    } );
-                    editor.tabs.tabDOMs[ filename ].appendChild( closeIcon );
-                }, 10 );
-
-                return { name: filename, language: "WGSL", indexOffset: -2 };
-            },
+            onCreateFile: ( editor ) => null,
             onContextMenu: ( editor, content, event ) => {
+
+                const passName = editor.getSelectedTabName();
+                if( passName === "Common" )
+                {
+                    return;
+                }
 
                 const word = content.trim().match( /([A-Za-z0-9_]+)/g )[ 0 ];
                 if( !word )
@@ -528,19 +517,38 @@ const ShaderHub = {
                     return;
                 }
 
+                const pass = this.shader.passes.find( p => p.name === passName );
                 const options = [];
-                const USED_UNIFORM_NAMES = [ ...DEFAULT_UNIFORM_NAMES, ...this.shader.uniforms.map( u => u.name ) ];
+                const USED_UNIFORM_NAMES = [ ...DEFAULT_UNIFORM_NAMES, ...pass.uniforms.map( u => u.name ) ];
                 const regex = new RegExp( "\\b(?!(" + USED_UNIFORM_NAMES.join("|") + ")\\b)(i[A-Z]\\w*)\\b" );
-                
+
                 options.push( { path: "Create Uniform", disabled: !regex.test( word ), callback: async () => {
                     await this.addUniform( word );
-                    await this.compileShader();
+                    await this.compileShader( true, pass );
                     this.openCustomUniforms();
                 } } );
 
                 return options;
+            },
+            onNewTab: ( e ) => {
+
+                const canCreateCommon = !this.loadedFiles[ "Common" ];
+                const canCreateBuffer = ( this.shader.passes.filter( p => p.type === "buffer" ).length < 4 );
+
+                const dmOptions = [
+                    { name: "Buffer", icon: "FilePlus", disabled: !canCreateBuffer, callback: this.onCreatePass.bind( this, "buffer" ) },
+                    { name: "Common", icon: "FileUp", disabled: !canCreateCommon, callback: this.onCreatePass.bind( this, "common" ) },
+                ];
+
+                new LX.DropdownMenu( e.target, dmOptions, { side: "bottom", align: "start" });
             }
         });
+
+        // LX.doAsync( () => {
+        //     const channelsContainerHeight = this.channelsContainer.getBoundingClientRect().height;
+        //     console.log(channelsContainerHeight);
+        //     codeArea.root.style.height = `calc(100% - ${ channelsContainerHeight + 16 }px)`;
+        // }, 10 );
 
         var [ graphicsArea, shaderDataArea ] = leftArea.split({ type: "vertical", sizes: ["auto", "auto"], resize: false });
 
@@ -717,24 +725,24 @@ const ShaderHub = {
             }
         }
 
-        // let generateKbTexture = true;
+        let generateKbTexture = true;
 
-        // canvas.addEventListener('keydown', async (e) => {
-        //     this.keyState.set( Utils.code2ascii( e.code ), true );
-        //     if( generateKbTexture ) await this.createKeyboardTexture();
-        //     generateKbTexture = false;
-        //     e.preventDefault();
-        // }, false);
+        canvas.addEventListener('keydown', async (e) => {
+            this.keyState.set( Utils.code2ascii( e.code ), true );
+            if( generateKbTexture ) await this.createKeyboardTexture();
+            generateKbTexture = false;
+            e.preventDefault();
+        }, false);
 
-        // canvas.addEventListener('keyup', async (e) => {
-        //     this.keyState.set( Utils.code2ascii( e.code ), false );
-        //     this.keyToggleState.set( Utils.code2ascii( e.code ), !( this.keyToggleState.get( Utils.code2ascii( e.code ) ) ?? false ) );
-        //     this.keyPressed.set( Utils.code2ascii( e.code ), true );
-        //     this._anyKeyPressed = true;
-        //     await this.createKeyboardTexture();
-        //     generateKbTexture = true;
-        //     e.preventDefault();
-        // }, false);
+        canvas.addEventListener('keyup', async (e) => {
+            this.keyState.set( Utils.code2ascii( e.code ), false );
+            this.keyToggleState.set( Utils.code2ascii( e.code ), !( this.keyToggleState.get( Utils.code2ascii( e.code ) ) ?? false ) );
+            this.keyPressed.set( Utils.code2ascii( e.code ), true );
+            this._anyKeyPressed = true;
+            await this.createKeyboardTexture();
+            generateKbTexture = true;
+            e.preventDefault();
+        }, false);
 
         canvas.addEventListener("mousedown", (e) => {
             this._mouseDown = e;
@@ -784,7 +792,7 @@ const ShaderHub = {
             const templateShaderUrl = SHADER_TEMPLATE_RENDER_PATH;
             LX.requestText( templateShaderUrl, async (code) => {
 
-                this.loadedFiles[ templateShaderUrl ] = code;
+                this.loadedFiles[ templateShaderUrl ] = code.replaceAll( '\r', '' );
 
                 await this.initGraphics( canvas );
 
@@ -863,147 +871,156 @@ const ShaderHub = {
         }
     },
 
-    async createStatusBarButtons( p ) {
+    async createStatusBarButtons( p, editor ) {
 
         const customTabInfoButtonsPanel = new LX.Panel( { className: "flex flex-row items-center", height: "auto" } );
 
         customTabInfoButtonsPanel.sameLine();
 
-        // Default Uniforms list info
+        /*
+            Default Uniforms list info
+        */
+
+        const defaultParametersContainer = LX.makeContainer(
+            [ `${ Math.min( 600, window.innerWidth - 64 ) }px`, "auto" ],
+            "overflow-scroll",
+            "",
+            null,
+            { maxHeight: "256px", maxWidth: `${ window.innerWidth - 64 }px` }
+        );
+
+        LX.makeContainer( ["auto", "auto"], "flex flex-row p-2 items-center", "Default Uniforms", defaultParametersContainer );
+
+        // Create the content for the uniforms panel
         {
-            const defaultParametersContainer = LX.makeContainer(
-                [ `${ Math.min( 600, window.innerWidth - 64 ) }px`, "auto" ],
-                "overflow-scroll",
-                "",
-                null,
-                { maxHeight: "256px", maxWidth: `${ window.innerWidth - 64 }px` }
-            );
+            this.defaultParametersPanel = new LX.Panel({ className: "custom-parameters-panel w-full" });
+            defaultParametersContainer.appendChild( this.defaultParametersPanel.root );
 
-            LX.makeContainer( ["auto", "auto"], "flex flex-row p-2 items-center", "Default Uniforms", defaultParametersContainer );
+            this.defaultParametersPanel.refresh = () => {
 
-            // Create the content for the uniforms panel
-            {
-                this.defaultParametersPanel = new LX.Panel({ className: "custom-parameters-panel w-full" });
-                defaultParametersContainer.appendChild( this.defaultParametersPanel.root );
+                this.defaultParametersPanel.clear();
 
-                this.defaultParametersPanel.refresh = () => {
-
-                    this.defaultParametersPanel.clear();
-
-                    for( let u of DEFAULT_UNIFORMS_LIST )
-                    {
-                        this.defaultParametersPanel.sameLine( 2, "justify-between" );
-                        this.defaultParametersPanel.addLabel( `${ u.name } : ${ u.type }`, { className: "w-full p-0" } );
-                        this.defaultParametersPanel.addLabel( u.info, { className: "w-full p-0", inputClass: "text-end" } );
-                    }
+                for( let u of DEFAULT_UNIFORMS_LIST )
+                {
+                    this.defaultParametersPanel.sameLine( 2, "justify-between" );
+                    this.defaultParametersPanel.addLabel( `${ u.name } : ${ u.type }`, { className: "w-full p-0" } );
+                    this.defaultParametersPanel.addLabel( u.info, { className: "w-full p-0", inputClass: "text-end" } );
                 }
-
-                this.defaultParametersPanel.refresh();
             }
 
-            customTabInfoButtonsPanel.addButton( null, "OpenDefaultParams", ( name, event ) => {
-                new LX.Popover( event.target, [ defaultParametersContainer ], { align: "start", side: "top" } );
-            }, { icon: "BookOpen", title: "Default Parameters", tooltip: true } );
+            this.defaultParametersPanel.refresh();
         }
 
-        // Custom Uniforms info
+        customTabInfoButtonsPanel.addButton( null, "OpenDefaultParams", ( name, event ) => {
+            new LX.Popover( event.target, [ defaultParametersContainer ], { align: "start", side: "top" } );
+        }, { icon: "BookOpen", title: "Default Parameters", tooltip: true } );
+
+        /*
+            Custom Uniforms info
+        */
+
+        const customParametersContainer = LX.makeContainer(
+            [`${ Math.min( 600, window.innerWidth - 64 ) }px`, "auto"],
+            "overflow-scroll",
+            "",
+            null,
+            { maxHeight: "256px", maxWidth: `${ window.innerWidth - 64 }px` }
+        );
+
+        const uniformsHeader = LX.makeContainer( ["auto", "auto"], "flex flex-row p-2 items-center", "", customParametersContainer );
+        const uniformsCountTitle = LX.makeContainer( ["auto", "auto"], "", `Uniforms [0]`, uniformsHeader );
+        const addUniformButton = new LX.Button( null, "AddNewCustomUniform", () => {
+            this.addUniform();
+            this.customParametersPanel.refresh();
+        }, { icon: "Plus", className: "ml-auto self-center", buttonClass: "bg-none", title: "Add New Uniform", tooltip: true, width: "38px" } );
+        uniformsHeader.appendChild( addUniformButton.root );
+
+        // Popover to dialog button
         {
-            const customParametersContainer = LX.makeContainer(
-                [`${ Math.min( 600, window.innerWidth - 64 ) }px`, "auto"],
-                "overflow-scroll",
-                "",
-                null,
-                { maxHeight: "256px", maxWidth: `${ window.innerWidth - 64 }px` }
-            );
+            const dialogizePopoverButton = new LX.Button( null,
+                "DialogizePopoverButton",
+                this.openUniformsDialog.bind( this ),
+                { icon: "AppWindowMac", className: "self-center", buttonClass: "bg-none", title: "Expand Window", tooltip: true, width: "38px" } );
+            uniformsHeader.appendChild( dialogizePopoverButton.root );
+        }
 
-            const uniformsHeader = LX.makeContainer( ["auto", "auto"], "flex flex-row p-2 items-center", "", customParametersContainer );
-            const uniformsCountTitle = LX.makeContainer( ["auto", "auto"], "", `Uniforms [${ this.shader.uniforms.length }]`, uniformsHeader );
-            const addUniformButton = new LX.Button( null, "AddNewCustomUniform", () => {
-                this.addUniform();
-                this.customParametersPanel.refresh();
-            }, { icon: "Plus", className: "ml-auto self-center", buttonClass: "bg-none", title: "Add New Uniform", tooltip: true, width: "38px" } );
-            uniformsHeader.appendChild( addUniformButton.root );
+        // Create the content for the uniforms panel
+        {
+            this.customParametersPanel = new LX.Panel({ className: "custom-parameters-panel w-full" });
+            customParametersContainer.appendChild( this.customParametersPanel.root );
 
-            // Popover to dialog button
-            {
-                const dialogizePopoverButton = new LX.Button( null,
-                    "DialogizePopoverButton",
-                    this.openUniformsDialog.bind( this ),
-                    { icon: "AppWindowMac", className: "self-center", buttonClass: "bg-none", title: "Expand Window", tooltip: true, width: "38px" } );
-                uniformsHeader.appendChild( dialogizePopoverButton.root );
-            }
+            this.customParametersPanel.refresh = ( overridePanel, onRefresh ) => {
 
-            // Create the content for the uniforms panel
-            {
-                this.customParametersPanel = new LX.Panel({ className: "custom-parameters-panel w-full" });
-                customParametersContainer.appendChild( this.customParametersPanel.root );
+                const passName = editor.getSelectedTabName();
+                const pass = this.shader.passes.find( p => p.name === passName );
+                if( !pass || pass.type === "common" ) return;
 
-                this.customParametersPanel.refresh = ( overridePanel, onRefresh ) => {
+                overridePanel = overridePanel ?? this.customParametersPanel;
 
-                    overridePanel = overridePanel ?? this.customParametersPanel;
+                overridePanel.clear();
 
-                    overridePanel.clear();
+                overridePanel.addLabel( "Uniform names must start with i + Capital letter (e.g. iTime)." );
 
-                    overridePanel.addLabel( "Uniform names must start with i + Capital letter (e.g. iTime)." );
-
-                    for( let u of this.shader.uniforms )
-                    {
-                        overridePanel.sameLine( 5 );
-                        overridePanel.addText( null, u.name, ( v ) => {
-                            u.name = v;
-                            this.createRenderPipeline( true, true );
-                        }, { width: "25%", skipReset: true, pattern: "\\b(?!(" + DEFAULT_UNIFORM_NAMES.join("|") + ")\\b)(i[A-Z]\\w*)\\b" } );
-                        overridePanel.addNumber( "Min", u.min, ( v ) => {
-                            u.min = v;
-                            uRangeComponent.setLimits( u.min, u.max );
-                            this._parametersDirty = true;
-                        }, { nameWidth: "40%", width: "17%", skipReset: true, step: 0.1 } );
-                        const uRangeComponent = overridePanel.addRange( null, u.value, ( v ) => {
-                            u.value = v;
-                            this._parametersDirty = true;
-                        }, { className: "contrast", width: "35%", skipReset: true, min: u.min, max: u.max, step: 0.1 } );
-                        overridePanel.addNumber( "Max", u.max, ( v ) => {
-                            u.max = v;
-                            uRangeComponent.setLimits( u.min, u.max );
-                            this._parametersDirty = true;
-                        }, { nameWidth: "40%", width: "17%", skipReset: true, step: 0.1 } );
-                        overridePanel.addButton( null, "RemoveUniformButton", ( v ) => {
-                            // Check if the uniforms is used to recompile shaders or not
-                            const allCode = this.getShaderCode( false );
-                            const idx = this.shader.uniforms.indexOf( u );
-                            this.shader.uniforms.splice( idx, 1 );
-                            this.customParametersPanel.refresh( overridePanel );
-                            if( allCode.match( new RegExp( `\\b${ u.name }\\b` ) ) )
-                            {
-                                this.createRenderPipeline( true, true );
-                            }
-                        }, { width: "6%", icon: "X", buttonClass: "bg-none", title: "Remove Uniform", tooltip: true } );
-                    }
-
-                    // Updates probably to the panel at the dialog
-                    if( onRefresh )
-                    {
-                        onRefresh();
-                    }
-                    else
-                    {
-                        // Updates to the popover
-                        uniformsCountTitle.innerHTML = `Uniforms [${ this.shader.uniforms.length }]`;
-
-                        if( LX.Popover.activeElement )
+                for( let u of pass.uniforms )
+                {
+                    overridePanel.sameLine( 5 );
+                    overridePanel.addText( null, u.name, ( v ) => {
+                        u.name = v;
+                        this.compileShader( true, pass );
+                    }, { width: "25%", skipReset: true, pattern: "\\b(?!(" + DEFAULT_UNIFORM_NAMES.join("|") + ")\\b)(i[A-Z]\\w*)\\b" } );
+                    overridePanel.addNumber( "Min", u.min, ( v ) => {
+                        u.min = v;
+                        uRangeComponent.setLimits( u.min, u.max );
+                        this._parametersDirty = true;
+                    }, { nameWidth: "40%", width: "17%", skipReset: true, step: 0.1 } );
+                    const uRangeComponent = overridePanel.addRange( null, u.value, ( v ) => {
+                        u.value = v;
+                        this._parametersDirty = true;
+                    }, { className: "contrast", width: "35%", skipReset: true, min: u.min, max: u.max, step: 0.1 } );
+                    overridePanel.addNumber( "Max", u.max, ( v ) => {
+                        u.max = v;
+                        uRangeComponent.setLimits( u.min, u.max );
+                        this._parametersDirty = true;
+                    }, { nameWidth: "40%", width: "17%", skipReset: true, step: 0.1 } );
+                    overridePanel.addButton( null, "RemoveUniformButton", ( v ) => {
+                        // Check if the uniforms is used to recompile shaders or not
+                        const allCode = this.getShaderCode( pass, false );
+                        const idx = pass.uniforms.indexOf( u );
+                        pass.uniforms.splice( idx, 1 );
+                        this.customParametersPanel.refresh( overridePanel );
+                        if( allCode.match( new RegExp( `\\b${ u.name }\\b` ) ) )
                         {
-                            LX.Popover.activeElement._adjustPosition();
+                            this.compileShader( true, pass );
                         }
-                    }
+                    }, { width: "6%", icon: "X", buttonClass: "bg-none", title: "Remove Uniform", tooltip: true } );
                 }
 
-                this.customParametersPanel.refresh();
-            }
+                // Updates probably to the panel at the dialog
+                if( onRefresh )
+                {
+                    onRefresh();
+                }
+                else
+                {
+                    // Updates to the popover
+                    uniformsCountTitle.innerHTML = `Uniforms [${ pass.uniforms.length }]`;
 
-            this.openCustomParamsButton = customTabInfoButtonsPanel.addButton( null, "OpenCustomParams", ( name, event ) => {
-                this.openCustomUniforms( event.target );
-            }, { icon: "Settings2", title: "Custom Parameters", tooltip: true } );
+                    if( LX.Popover.activeElement )
+                    {
+                        LX.Popover.activeElement._adjustPosition();
+                    }
+                }
+            }
         }
+
+        this.openCustomParamsButton = customTabInfoButtonsPanel.addButton( null, "OpenCustomParams", ( name, event ) => {
+            this.customParametersPanel.refresh()
+            this.openCustomUniforms( event.target );
+        }, { icon: "Settings2", title: "Custom Parameters", tooltip: true } );
+
+        /*
+            Compile Button
+        */
 
         customTabInfoButtonsPanel.addButton( null, "CompileShaderButton", async () => {
             await this.compileShader();
@@ -1013,6 +1030,71 @@ const ShaderHub = {
         customTabInfoButtonsPanel.endLine();
 
         p.root.prepend( customTabInfoButtonsPanel.root );
+    },
+
+    onCreatePass( passType, passName ) {
+
+        let indexOffset = -1;
+
+        const shaderPass = new ShaderPass( this.device, { name: passName, type: passType } );
+
+        if( passType === "buffer" )
+        {
+            const getNextBufferName = () => {
+                const usedNames = this.shader.passes.filter( p => p.type === "buffer" ).map( p => p.name );
+                const possibleNames = ["BufferA", "BufferB", "BufferC", "BufferD"];
+
+                // Find the first unused name
+                for( const name of possibleNames )
+                {
+                    if( !usedNames.includes( name )) return name;
+                }
+
+                // All used, should not happen due to prev checks
+                return null;
+            }
+
+            indexOffset = -2;
+            passName = shaderPass.name = getNextBufferName();
+            this.loadedFiles[ passName ] = CODE_BUFFER_TEMPLATE;
+            this.shader.passes.splice( this.shader.passes.length - 1, 0, shaderPass ); // Add before MainImage
+
+            console.assert( shaderPass.targetTexture, "Buffer does not have render target texture" );
+            this.buffers[ passName ] = shaderPass.targetTexture;
+        }
+        else if( passType === "common" )
+        {
+            indexOffset = -( this.shader.passes.length + 1 );
+            this.loadedFiles[ passName ] = CODE_COMMON_TEMPLATE;
+            this.shader.passes.splice( 0, 0, shaderPass ); // Add at the start
+        }
+
+        const codeLines = this.loadedFiles[ passName ].split( "\n" );
+        shaderPass.codeLines = codeLines;
+
+        this.editor.addTab( passName, true, passName, {
+            indexOffset,
+            language: "WGSL",
+            codeLines
+        } );
+
+        // Wait for the tab to be created
+        LX.doAsync( () => {
+
+            const closeIcon = LX.makeIcon( "X", { iconClass: "ml-2" } );
+            LX.asTooltip( closeIcon, "Delete file" );
+            closeIcon.addEventListener( "click", (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                editor.tabs.delete( passName );
+                document.body.querySelectorAll( ".lextooltip" ).forEach( e => e.remove() );
+                // Delete common info
+                delete this.loadedFiles[ passName ];
+            } );
+
+            this.editor.tabs.tabDOMs[ passName ].appendChild( closeIcon );
+
+        }, 10 );
     },
 
     async openAvailableChannels( channelIndex ) {
@@ -1048,8 +1130,14 @@ const ShaderHub = {
                     {
                         switch( document.name )
                         {
-                            case "keyboard":
+                            case "Keyboard":
                             await this.createKeyboardTexture( this.currentChannelIndex, true );
+                            break;
+                            case "BufferA":
+                            case "BufferB":
+                            case "BufferC":
+                            case "BufferD":
+                            await this.loadBufferChannel( document.name, this.currentChannelIndex );
                             break;
                         }
                     }
@@ -1197,12 +1285,20 @@ const ShaderHub = {
 
     openUniformsDialog() {
 
+        const passName = this.editor.getSelectedTabName();
+        if( passName === "Common" )
+        {
+            return;
+        }
+
+        const pass = this.shader.passes.find( p => p.name === passName );
+
         if( this._lastUniformsDialog )
         {
             this._lastUniformsDialog.close();
         }
 
-        const dialog = new LX.Dialog( `Uniforms [${ this.shader.uniforms.length }]`, null, {
+        const dialog = new LX.Dialog( `Uniforms [${ pass.uniforms.length }]`, null, {
             modal: false, draggable: true, size: [ Math.min( 600, window.innerWidth - 64 ), "auto" ]
         } );
 
@@ -1212,7 +1308,7 @@ const ShaderHub = {
         const uniformsHeader = LX.makeContainer( ["auto", "auto"], "flex flex-row items-center", "", dialog.title );
         const addUniformButton = new LX.Button( null, "AddNewCustomUniform", () => {
             this.addUniform();
-            this.customParametersPanel.refresh( dialog.panel, () => dialog.title.childNodes[ 0 ].textContent = `Uniforms [${ this.shader.uniforms.length }]` );
+            this.customParametersPanel.refresh( dialog.panel, () => dialog.title.childNodes[ 0 ].textContent = `Uniforms [${ pass.uniforms.length }]` );
         }, { icon: "Plus", className: "ml-auto self-center", buttonClass: "bg-none", title: "Add New Uniform", width: "38px" } );
         uniformsHeader.appendChild( addUniformButton.root );
         LX.makeContainer( [`auto`, "0.75rem"], "ml-2 mr-4 border-right border-colored fg-quaternary self-center items-center", "", uniformsHeader );
@@ -1286,9 +1382,10 @@ const ShaderHub = {
                 // Create a new shader in the DB
                 const result = await fs.createDocument( FS.SHADERS_COLLECTION_ID, {
                     "name": shaderName,
+                    "description": this.shader.description,
                     "author_id": fs.getUserId(),
+                    "author_name": this.shader.author ?? "",
                     "file_id": newFileId,
-                    "description": this.shader.description
                 } );
 
                 this.shader.uid = result[ "$id" ];
@@ -1314,9 +1411,9 @@ const ShaderHub = {
 
         // Update files reference in the DB
         await fs.updateDocument( FS.SHADERS_COLLECTION_ID, this.shader.uid, {
-            "file_id": newFileId,
             "name": this.shader.name,
-            "description": this.shader.description
+            "description": this.shader.description,
+            "file_id": newFileId,
         } );
 
         // Update canvas snapshot
@@ -1472,33 +1569,6 @@ const ShaderHub = {
             minFilter: 'linear',
         });
 
-        let usesKeyboardChannel = false;
-
-        // Load any necessary texture channels for the current shader
-        // for( let i = 0; i < this.shader.channels?.length ?? 0; ++i )
-        // {
-        //     if( this.shader.channels[ i ] === "keyboard" )
-        //     {
-        //         usesKeyboardChannel = true;
-        //         continue;
-        //     }
-
-        //     await this.createTexture( this.shader.channels[ i ], i );
-        // }
-
-        // Create render pipeline based on editor shaders
-        // If uses keyboard, it will create the pipeline after the texture
-//         if( !usesKeyboardChannel )
-//         {
-//             await this.createRenderPipeline( codeBuffer, true, true );
-//         }
-//         else
-//         {
-//             // In case any channel is using it, it will be used in that
-//             // channel and update the channel image src
-//             await this.createKeyboardTexture( undefined, true );
-//         }
-
         const frame = async () => {
 
             const now = LX.getTime();
@@ -1531,20 +1601,6 @@ const ShaderHub = {
 
                 LX.emit( "@elapsed-time", `${ this.elapsedTime.toFixed( 2 ) }s` );
             }
-
-            if( this._parametersDirty && this.shader.uniforms.length )
-            {
-                this.shader.uniforms.map( ( u, index ) => {
-                    this.device.queue.writeBuffer(
-                        this.shader.uniformBuffers[ index ],
-                        0,
-                        new Float32Array([ u.value ])
-                    );
-                } );
-
-                this._parametersDirty = false;
-            }
-
             this.device.queue.writeBuffer(
                 this.resolutionBuffer,
                 0,
@@ -1567,31 +1623,58 @@ const ShaderHub = {
                 const pass = this.shader.passes[ i ];
                 if( pass.type === "common" ) continue;
 
-                let passPipeline = this.renderPipelines[ i ];
-                if( !passPipeline )
+                if( pass.channels.length !== pass.uniformChannels.length )
                 {
-                    const [ pipeline, bindGroup ] = await this.createRenderPipeline( pass, false, true );
-                    if( pipeline === "null" )
+                    for( let i = 0; i < pass.channels?.length ?? 0; ++i )
                     {
-                        continue;
+                        const channelName = pass.channels[ i ];
+
+                        if( channelName === "Keyboard" )
+                        {
+                            await this.createKeyboardTexture( i, true );
+                            continue;
+                        }
+                        else if( channelName.startsWith( "Buffer" ) )
+                        {
+                            await this.loadBufferChannel( channelName, i )
+                            continue;
+                        }
+
+                        const texture = await this.createTexture( channelName, i );
+                        pass.uniformChannels[ i ] = texture;
                     }
-                    this.renderPipelines[ i ] = passPipeline = pipeline;
                 }
 
-                let passBindGroup = this.renderBindGroups[ i ];
-                if( !passBindGroup )
+                if( this._parametersDirty && pass.uniforms.length )
                 {
-                    const bindGroup = await this.createRenderBindGroup( pass, passPipeline );
-                    this.renderBindGroups[ i ] = passBindGroup = bindGroup;
+                    pass.uniforms.map( ( u, index ) => {
+                        this.device.queue.writeBuffer(
+                            pass.uniformBuffers[ index ],
+                            0,
+                            new Float32Array([ u.value ])
+                        );
+                    } );
+
+                    this._parametersDirty = false;
                 }
 
-                pass.draw(
-                    this.device,
-                    this.webGPUContext,
-                    passPipeline,
-                    passBindGroup
-                );
-            } 
+
+                if( !this._lastShaderCompilationWithErrors )
+                {
+                    let passPipeline = this.renderPipelines[ i ];
+                    if( !passPipeline )
+                    {
+                        await this.compileShader( true, pass );
+                    }
+
+                    pass.draw(
+                        this.device,
+                        this.webGPUContext,
+                        this.renderPipelines[ i ],
+                        this.renderBindGroups[ i ]
+                    );
+                }
+            }
 
             if( this._anyKeyPressed )
             {
@@ -1719,12 +1802,12 @@ const ShaderHub = {
         return templateCodeLines.join( "\n" );
     },
 
-    async createRenderPipeline( pass, updateBindGroup = true, showFeedback ) {
+    async createRenderPipeline( pass, updateBindGroup = true ) {
 
-        const result = await this.validateShader( this.getShaderCode( pass ), showFeedback );
+        const result = await this.validateShader( this.getShaderCode( pass ) );
         if( !result.valid )
         {
-            return [ "null", "null" ];
+            return result;
         }
 
         const renderPipeline = await this.device.createRenderPipeline({
@@ -1747,7 +1830,14 @@ const ShaderHub = {
 
         console.warn( "Info: Render Pipeline created!" );
 
-        return [ renderPipeline, updateBindGroup ? await this.createRenderBindGroup( pass, renderPipeline ) : null ];
+        if( updateBindGroup )
+        {
+            return [ renderPipeline, await this.createRenderBindGroup( pass, renderPipeline ) ];
+        }
+        else
+        {
+            return renderPipeline;
+        }
     },
 
     async createRenderBindGroup( pass, renderPipeline ) {
@@ -1782,24 +1872,24 @@ const ShaderHub = {
             }
         ]
 
-        // const customUniformCount = this.shader.uniforms.length;
-        // if( customUniformCount )
-        // {
-        //     this.shader.uniforms.map( ( u, index ) => {
-        //         const buffer = this.shader.uniformBuffers[ index ];
-        //         this.device.queue.writeBuffer(
-        //             buffer,
-        //             0,
-        //             new Float32Array([ u.value ])
-        //         );
-        //         entries.push( {
-        //             binding: bindingIndex++,
-        //             resource: {
-        //                 buffer,
-        //             }
-        //         } );
-        //     } );
-        // }
+        const customUniformCount = pass.uniforms.length;
+        if( customUniformCount )
+        {
+            pass.uniforms.map( ( u, index ) => {
+                const buffer = pass.uniformBuffers[ index ];
+                this.device.queue.writeBuffer(
+                    buffer,
+                    0,
+                    new Float32Array([ u.value ])
+                );
+                entries.push( {
+                    binding: bindingIndex++,
+                    resource: {
+                        buffer,
+                    }
+                } );
+            } );
+        }
 
         const bindings = pass.channels.filter( u => u !== undefined && ( this.textures[ u ] || this.buffers[ u ] ) );
 
@@ -1851,11 +1941,12 @@ const ShaderHub = {
             dimensions
         );
 
-        const metadata = await fs.getFile( fileId );
+        // const metadata = await fs.getFile( fileId );
+
+        this.textures[ fileId ] = imageTexture;
 
         if( channel !== undefined )
         {
-            this.uniformChannels[ channel ] = imageTexture;
             this.channelsContainer.childNodes[ channel ].querySelector( "img" ).src = url;
         }
 
@@ -1902,29 +1993,36 @@ const ShaderHub = {
             dimensions
         );
 
-        const imageName = "keyboard";
-        const usedChannel = this.shader.channels.indexOf( imageName );
+        // Recreate stuff if we update the texture and
+        // a shader pass is using it
+        const imageName = "Keyboard";
+        this.textures[ imageName ] = imageTexture;
 
-        if( ( channel === undefined ) && usedChannel > -1 )
+        for( const pass of this.shader.passes ?? [] )
         {
-            channel = usedChannel;
-        }
+            const usedChannel = pass.channels.indexOf( imageName );
 
-        if( channel !== undefined )
-        {
-            this.uniformChannels[ channel ] = imageTexture;
-            this.shader.channels[ channel ] = imageName;
-            
-            await this.createRenderPipeline();
-
-            if( updatePreview )
+            if( ( channel === undefined ) && usedChannel > -1 )
             {
-                this.channelsContainer.childNodes[ channel ].querySelector( "img" ).src = await fs.getFileUrl( "68c04102000cc75e3d61" );
+                channel = usedChannel;
+            }
+
+            if( channel !== undefined )
+            {
+                pass.channels[ channel ] = imageName;
+                pass.uniformChannels[ channel ] = imageTexture;
+
+                await this.compileShader( false, pass );
+
+                if( updatePreview )
+                {
+                    this.channelsContainer.childNodes[ channel ].querySelector( "img" ).src = await fs.getFileUrl( "68c413a3001881f084fe" );
+                }
             }
         }
     },
 
-    async validateShader( code, showFeedback ) {
+    async validateShader( code ) {
 
         // Close all toasts
         document.querySelectorAll( ".lextoast" ).forEach( t => t.close() );
@@ -1935,45 +2033,37 @@ const ShaderHub = {
 
         if( info.messages.length > 0 )
         {
-            let hasError = false;
-
-            const codeLines = code.split( '\n' );
-            const currentTab = this.editor.getSelectedTabName();
-            const mainImageLines = this.loadedFiles[ currentTab ].replaceAll( '\r', '' ).split( "\n" );
-            const mainImageLineOffset = codeLines.indexOf( mainImageLines[ 0 ] );
-            console.assert( mainImageLineOffset > 0 );
+            let errorMsgs = [];
 
             for( const msg of info.messages )
             {
-                const fragLineNumber = msg.lineNum - ( mainImageLineOffset );
-
-                if( showFeedback )
-                {
-                    LX.toast( `❌ ${ LX.toTitleCase( msg.type ) }: ${ fragLineNumber }:${ msg.linePos }`, msg.message, { timeout: -1, position: "top-right" } );
-                    this.editor.code.childNodes[ fragLineNumber - 1 ]?.classList.add( msg.type === "error" ? "removed" : "debug");
-                }
-
                 if( msg.type === "error" )
                 {
-                    hasError = true;
+                    errorMsgs.push( msg );
                 }
             }
 
-            if( hasError )
+            if( errorMsgs.length > 0 )
             {
-                return { valid: false, messages: info.messages };
+                return { valid: false, code, messages: errorMsgs };
             }
-        }
-
-        if( showFeedback )
-        {
-            LX.toast( `✅ No errors`, "Shader compiled successfully!", { position: "top-right" } );
         }
 
         return { valid: true, module };
     },
 
-    async compileShader() {
+    _setEditorErrorBorder( errorCode = ERROR_CODE_DEFAULT ) {
+
+        this.editor.area.root.parentElement.classList.toggle( "code-border-default", errorCode === ERROR_CODE_DEFAULT );
+        this.editor.area.root.parentElement.classList.toggle( "code-border-error", errorCode === ERROR_CODE_ERROR );
+        this.editor.area.root.parentElement.classList.toggle( "code-border-success", errorCode === ERROR_CODE_SUCCESS );
+
+        LX.doAsync( () => this._setEditorErrorBorder(), 2000 );
+    },
+
+    async compileShader( showFeedback = true, pass ) {
+
+        this._lastShaderCompilationWithErrors = false;
 
         this.editor.processLines();
 
@@ -1983,20 +2073,59 @@ const ShaderHub = {
             this.loadedFiles[ tabName ] = code;
         }
 
-        for( let i = 0; i < this.shader.passes.length; ++i )
+        const compilePasses = pass ? [ pass ] : this.shader.passes;
+
+        for( let i = 0; i < compilePasses.length; ++i )
         {
             // Buffers and images draw
-            const pass = this.shader.passes[ i ];
+            const pass = compilePasses[ i ];
             pass.codeLines = this.loadedFiles[ pass.name ].split( "\n" );
             if( pass.type === "common" ) continue;
 
-            const [ pipeline, bindGroup ] = await this.createRenderPipeline( pass, true, true );
-            if( pipeline !== "null" )
+            const passIndex = this.shader.passes.indexOf( pass );
+            const pipeline = await this.createRenderPipeline( pass, false );
+            if( pipeline.constructor === GPURenderPipeline ) // success, no errors
             {
-                this.renderPipelines[ i ] = pipeline;
-                this.renderBindGroups[ i ] = bindGroup;
+                this.renderPipelines[ passIndex ] = pipeline;
+                this.renderBindGroups[ passIndex ] = await this.createRenderBindGroup( pass, pipeline );
+            }
+            else
+            {
+                // Open the tab with the error
+                this.editor.loadTab( pass.name );
+
+                // Make async so the tab is opened before adding the error feedback
+                LX.doAsync( () => {
+
+                    const mainImageLineOffset = pipeline.code.split( "\n" ).indexOf( pass.codeLines[ 0 ] );
+                    console.assert( mainImageLineOffset > 0 );
+
+                    for( const msg of pipeline.messages )
+                    {
+                        const fragLineNumber = msg.lineNum - ( mainImageLineOffset );
+
+                        if( showFeedback )
+                        {
+                            this._setEditorErrorBorder( ERROR_CODE_ERROR );
+                            LX.toast( `❌ ${ LX.toTitleCase( msg.type ) }: ${ fragLineNumber }:${ msg.linePos }`, msg.message, { timeout: -1, position: "top-right" } );
+                            this.editor.code.childNodes[ fragLineNumber - 1 ]?.classList.add( msg.type === "error" ? "removed" : "debug");
+                        }
+                    }
+                }, 10 );
+
+                this._lastShaderCompilationWithErrors = true;
+
+                return WEBGPU_ERROR; // Stop at first error
             }
         }
+
+        if( showFeedback )
+        {
+            this._setEditorErrorBorder( ERROR_CODE_SUCCESS );
+            // LX.toast( `✅ No errors`, "Shader compiled successfully!", { position: "top-right" } );
+        }
+
+        return WEBGPU_OK;
     },
 
     async shaderExists() {
@@ -2007,45 +2136,76 @@ const ShaderHub = {
         }
     },
 
+    async loadBufferChannel( bufferName, channel ) {
+
+        const passName = this.editor.getSelectedTabName();
+        if( passName === "Common" )
+        {
+            return;
+        }
+
+        const pass = this.shader.passes.find( p => p.name === passName );
+        pass.channels[ channel ] = bufferName;
+        pass.uniformChannels[ channel ] = this.buffers[ bufferName ];
+
+        await this.compileShader( true, pass );
+
+        this.channelsContainer.childNodes[ channel ].querySelector( "img" ).src = await fs.getFileUrl( "68c419ea00212a719e59" );
+    },
+
     async loadChannelFromFile( file, channel ) {
 
-        // const mustUpdateRenderPipeline = ( this.uniformChannels[ channel ] === undefined );
+        const passName = this.editor.getSelectedTabName();
+        if( passName === "Common" )
+        {
+            return;
+        }
 
-        // await this.createTexture( file, channel );
+        const texture = await this.createTexture( file, channel );
 
-        // this.shader.channels[ channel ] = file;
+        const passIndex = this.shader.passes.findIndex( p => p.name === passName );
+        const pass = this.shader.passes[ passIndex ];
+        pass.channels[ channel ] = file;
+        pass.uniformChannels[ channel ] = texture;
 
-        // if( mustUpdateRenderPipeline )
-        // {
-        //     // This already recreates bind group
-        //     await this.createRenderPipeline();
-        // }
-        // else
-        // {
-        //     await this.createRenderBindGroup();
-        // }
+        this.compileShader( true, pass );
     },
 
     async removeUniformChannel( channel ) {
 
-        // this.uniformChannels[ channel ] = undefined;
+        const passName = this.editor.getSelectedTabName();
+        if( passName === "Common" )
+        {
+            return;
+        }
 
-        // // Reset image
-        // this.channelsContainer.childNodes[ channel ].querySelector( "img" ).src = "data:image/gif;base64,R0lGODlhAQABAPcAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACH5BAEAAP8ALAAAAAABAAEAAAgEAP8FBAA7";
+        const pass = this.shader.passes.find( p => p.name === passName );
+        pass.channels[ channel ] = undefined;
+        pass.uniformChannels[ channel ] = undefined;
 
-        // // Recreate everything
-        // await this.createRenderPipeline( true, true );
+        // Reset image
+        this.channelsContainer.childNodes[ channel ].querySelector( "img" ).src = IMAGE_EMPTY_SRC;
+
+        // Recreate everything
+        this.compileShader( true, pass );
     },
 
     async addUniform( name, value, min, max ) {
 
-        // const uName = name ?? `iUniform${ this.shader.uniforms.length + 1 }`;
-        // this.shader.uniforms.push( { name: uName, value: value ?? 0, min: min ?? 0, max: max ?? 1 } );
-        // const allCode = this.getShaderCode( false );
-        // if( allCode.match( new RegExp( `\\b${ uName }\\b` ) ) )
-        // {
-        //     this.createRenderPipeline( true, true );
-        // }
+        const passName = this.editor.getSelectedTabName();
+        if( passName === "Common" )
+        {
+            return;
+        }
+
+        const pass = this.shader.passes.find( p => p.name === passName );
+        const uName = name ?? `iUniform${ pass.uniforms.length + 1 }`;
+        pass.uniforms.push( { name: uName, value: value ?? 0, min: min ?? 0, max: max ?? 1 } );
+        const allCode = this.getShaderCode( pass, false );
+        if( allCode.match( new RegExp( `\\b${ uName }\\b` ) ) )
+        {
+            this.createRenderPipeline( true );
+        }
     },
 
     openCustomUniforms( target ) {

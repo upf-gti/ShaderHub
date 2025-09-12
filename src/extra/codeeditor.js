@@ -350,6 +350,7 @@ class CodeEditor {
         this.allowClosingTabs = options.allowClosingTabs ?? true;
         this.allowLoadingFiles = options.allowLoadingFiles ?? true;
         this.highlight = options.highlight ?? 'Plain Text';
+        this.newTabOptions = options.newTabOptions;
 
         // Editor callbacks
         this.onSave = options.onSave ?? options.onsave;  // LEGACY onsave
@@ -357,6 +358,7 @@ class CodeEditor {
         this.onCtrlSpace = options.onCtrlSpace;
         this.onCreateStatusPanel = options.onCreateStatusPanel;
         this.onContextMenu = options.onContextMenu;
+        this.onNewTab = options.onNewTab;
 
         // File explorer
         if( this.useFileExplorer )
@@ -1723,7 +1725,7 @@ class CodeEditor {
 
         if( this.onCreateStatusPanel )
         {
-            this.onCreateStatusPanel( panel );
+            this.onCreateStatusPanel( panel, this );
         }
 
         let leftStatusPanel = new LX.Panel( { id: "FontSizeZoomStatusComponent", height: "auto" } );
@@ -1871,7 +1873,13 @@ class CodeEditor {
 
         this.processFocus( false );
 
-        const dmOptions = [
+        if( this.onNewTab )
+        {
+            this.onNewTab( e );
+            return;
+        }
+
+        const dmOptions = this.newTabOptions ?? [
             { name: "Create file", icon: "FilePlus", callback: this._onCreateNewFile.bind( this ) },
             { name: "Load file", icon: "FileUp", disabled: !this.allowLoadingFiles, callback: this.loadTabFromFile.bind( this ) }
         ];
@@ -1886,6 +1894,10 @@ class CodeEditor {
         if( this.onCreateFile )
         {
             options = this.onCreateFile( this );
+            if( !options ) // Skip adding new file
+            {
+                return;
+            }
         }
 
         const name = options.name ?? "unnamed.js";

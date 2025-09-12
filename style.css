@@ -8,6 +8,10 @@
 .webgpu-canvas:-moz-full-screen { width: 100%; height: 100%; }
 .webgpu-canvas:-ms-fullscreen { width: 100%; height: 100%; }
 
+.code-border-success { border: 1px solid var(--global-color-success) }
+.code-border-default { border: 1px solid var(--global-color-primary) }
+.code-border-error { border: 1px solid var(--global-color-error) }
+
 .notifications ol .lextoast .lextoastcontent .desc {
 	transition: all 0.5s cubic-bezier(.42, .97, .52, 1.19);
 }
@@ -46,6 +50,10 @@
 	overflow: hidden;
 }
 
+.codebasearea {
+	transition: border 0.15s ease-out;
+}
+
 .custom-parameters-panel .lexnumber input {
 	field-sizing: content;
 }
@@ -70,8 +78,8 @@
 }
 
 .channel-server-list {
-	grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-	grid-auto-rows: minmax(200px, auto);
+	grid-template-columns: repeat(auto-fill, minmax(175px, 1fr));
+	grid-auto-rows: minmax(175px, auto);
 }
 
 .channel-server-list li {
@@ -83,6 +91,10 @@
 .channel-list {
 	grid-template-columns:repeat(4, 1fr);
 }
+
+/* .channel-list > div {
+	aspect-ratio: 1 / 1;
+} */
 
 @media (min-width: 0px) {
 	.shader-list {

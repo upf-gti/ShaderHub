@@ -7,7 +7,7 @@ class ShaderPass {
         this.codeLines = data.codeLines;
 
         this.channels = data.channels ?? [];
-        // this.uniformChannels = [];
+        this.uniformChannels = [];
 
         this.uniforms = data.uniforms ?? [];
         this.uniformBuffers = [];

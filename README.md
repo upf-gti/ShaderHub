@@ -28,6 +28,7 @@ Roadmap:
 - [x] Modify Shader name, description
 - [x] Add keyboard uniform as possible texture
 - [x] Fullscreen mode
+- [x] Shader buffers
 - [ ] Share shader iframe
 - [ ] Shader Utils
 - [ ] Shader desc/comments format
