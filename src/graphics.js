@@ -7,18 +7,28 @@ class ShaderPass {
         this.codeLines = data.codeLines;
 
         this.channels = data.channels ?? [];
-        this.uniformChannels = [];
 
         this.uniforms = data.uniforms ?? [];
         this.uniformBuffers = [];
 
+        this.frameCount = 0;
+
         if( this.type === "buffer" )
         {
-            this.targetTexture = device.createTexture({
-                size: [ 1280, 720, 1 ],
-                format: navigator.gpu.getPreferredCanvasFormat(),
-                usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING
-            });
+            this.textures = [
+                device.createTexture({
+                    label: "Buffer Pass Texture A",
+                    size: [ 1280, 720, 1 ],
+                    format: navigator.gpu.getPreferredCanvasFormat(),
+                    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING
+                }),
+                device.createTexture({
+                    label: "Buffer Pass Texture B",
+                    size: [ 1280, 720, 1 ],
+                    format: navigator.gpu.getPreferredCanvasFormat(),
+                    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING
+                })
+            ];
         }
     }
 
@@ -64,13 +74,16 @@ class ShaderPass {
         }
         else if( this.type === "buffer" )
         {
-            if( !renderPipeline || !this.targetTexture )
+            if( !renderPipeline || !this.textures[ 0 ] || !this.textures[ 1 ] )
             {
                 return;
             }
 
+            const inputTex = this.textures[this.frameCount % 2]; // previous frame
+            const renderTarget = this.textures[(this.frameCount + 1) % 2]; // this frame
             const commandEncoder = device.createCommandEncoder();
-            const textureView = this.targetTexture.createView();
+            const textureView = renderTarget.createView();
+            console.log("Render target texture:", renderTarget.label );
 
             const renderPassDescriptor = {
                 colorAttachments: [
@@ -96,6 +109,9 @@ class ShaderPass {
 
             device.queue.submit( [ commandEncoder.finish() ] );
 
+            this.frameCount++;
+
+            return [ renderTarget, inputTex ];
         }
     }
 }

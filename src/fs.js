@@ -154,6 +154,14 @@ class FS {
         });
     }
 
+    async getImagePreview( fileId, options ) {
+        return await this.storage.getFilePreview( {
+            bucketId: FS.BUCKET_ID,
+            fileId,
+            ...options
+        });
+    }
+
     async requestFile( url, dataType, nocache ) {
 
         return new Promise( (resolve, reject) => {
