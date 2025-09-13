@@ -39,6 +39,3 @@ Roadmap:
 - [ ] Submit form for Login (LX)
 - [ ] Give more info on form validation errors (LX)
 - [ ] Shader stats
-
-CE:
-- Fix horizontal scroll
