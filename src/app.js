@@ -19,7 +19,6 @@ const mobile = Utils.isMobile();
 
 const ShaderHub = {
 
-    shaderList: [],
     textures: {},
     buffers: {},
     renderPipelines: [],
@@ -156,74 +155,25 @@ const ShaderHub = {
 
         menubar.siblingArea.root.classList.add( "content-area" );
 
-        const onLoad = async () => {
-            const params = new URLSearchParams( document.location.search );
-            const queryShader = params.get( "shader" );
-            const queryProfile = params.get( "profile" );
-            if( queryShader )
-            {
-                await this.createShaderView( queryShader );
-            }
-            else if( queryProfile )
-            {
-                this.createProfileView( queryProfile );
-            }
-            else
-            {
-                this.createBrowseListUI();
-            }
-        }
+        const params = new URLSearchParams( document.location.search );
+        const queryShader = params.get( "shader" );
+        const queryProfile = params.get( "profile" );
 
-        // Get all stored shader files (not the code, only the data)
-
-        const result = await fs.listDocuments( FS.SHADERS_COLLECTION_ID );
-
-        if( result.total === 0 )
+        if( queryShader )
         {
-            LX.makeContainer( ["100%", "auto"], "mt-8 text-xxl font-medium justify-center text-center", "No shaders found.", this.area );
-            return;
+            await this.createShaderView( queryShader );
         }
-
-        for( const document of result.documents )
+        else if( queryProfile )
         {
-            const name = document.name;
-
-            const shaderInfo = {
-                name,
-                uid: document[ "$id" ],
-                creationDate: Utils.toESDate( document[ "$createdAt" ] )
-            };
-
-            const authorId = document[ "author_id" ];
-            if( authorId )
-            {
-                const result = await fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_id", authorId ) ] );
-                const author = result.documents[ 0 ][ "user_name" ];
-                shaderInfo.author = author;
-                shaderInfo.authorId = authorId;
-            }
-            else
-            {
-                shaderInfo.author = document[ "author_name" ];
-                shaderInfo.anonAuthor = true;
-            }
-
-            const previewName = `${ shaderInfo.uid }.png`;
-            const result = await fs.listFiles( [ Query.equal( "name", previewName ) ] );
-            if( result.total > 0 )
-            {
-                shaderInfo.preview = await fs.getFileUrl( result.files[ 0 ][ "$id" ] );
-            }
-
-            this.shaderList.push( shaderInfo );
+            this.createProfileView( queryProfile );
         }
-
-        this.shaderList = this.shaderList.sort( (a, b) => a.name.localeCompare( b.name ) );
-
-        await onLoad();
+        else
+        {
+            await this.createBrowseListUI();
+        }
     },
 
-    createBrowseListUI() {
+    async createBrowseListUI() {
 
         var [ topArea, bottomArea ] = this.area.split({ type: "vertical", sizes: ["calc(100% - 48px)", null], resize: false });
         topArea.root.className += " overflow-scroll";
@@ -233,43 +183,107 @@ const ShaderHub = {
         LX.makeContainer( [`auto`, "auto"], "fg-primary text-lg flex flex-row gap-2 self-center align-center ml-auto mr-auto", `
             ${ LX.makeIcon("Github@solid", {svgClass:"lg"} ).innerHTML }<a class="decoration-none fg-secondary" href="https://github.com/upf-gti/ShaderHub">Code on Github</a>`, bottomArea );
 
-        const listContainer = LX.makeContainer( ["100%", "auto"], "grid shader-list gap-8 p-8 justify-center", "", topArea );
+        let skeletonHtml = "";
 
-        for( const shader of this.shaderList ?? [] )
+        for( let i = 0; i < 10; ++i )
         {
-            const shaderItem = LX.makeElement( "li", "shader-item rounded-lg bg-secondary hover:bg-tertiary overflow-hidden flex flex-col h-auto", "", listContainer );
-            const shaderPreview = LX.makeElement( "img", "rounded-t-lg bg-secondary hover:bg-tertiary w-full border-none cursor-pointer", "", shaderItem );
-            shaderPreview.src = shader.preview ?? "images/shader_preview.png";
-            const shaderDesc = LX.makeContainer( ["100%", "100%"], "flex flex-row rounded-b-lg gap-6 p-4 items-center select-none", `
-                <div class="w-full">
-                    <div class="text-lg font-bold">${ shader.name }</div>
-                    <div class="text-sm font-light">by ${ !shader.anonAuthor ? "<a class='dodgerblue cursor-pointer hover:text-underline'>" : "" }<span class="font-bold">${ shader.author }</span>${ !shader.anonAuthor ? "</a>" : "" }</div>
+            skeletonHtml += `
+            <div class="shader-item overflow-hidden flex flex-col h-auto">
+                <img class="w-full lexskeletonpart" width="640" height="360" src="${ Constants.IMAGE_EMPTY_SRC }"></img>
+                <div class="flex flex-col w-full mt-2 gap-2">
+                    <div class="w-full h-4 lexskeletonpart"></div>
+                    <div class="w-2/3 h-4 lexskeletonpart"></div>
                 </div>
-                <div class="">
-                    <div class="">
-                        ${ LX.makeIcon( "CircleUserRound", { svgClass: "xxl fg-secondary" } ).innerHTML }
-                    </div>
-                </div>`, shaderItem );
-                // <img alt="avatar" width="32" height="32" decoding="async" data-nimg="1" class="rounded-full" src="https://imgproxy.compute.toys/insecure/width:64/plain/https://hkisrufjmjfdgyqbbcwa.supabase.co/storage/v1/object/public/avatar/f91bbd73-7734-49a9-99ce-460774d4ccc0/avatar.jpg">
+            </div>`;
+        }
 
-            const hyperlink = shaderDesc.querySelector( "a" );
-            if( hyperlink )
+        const skeleton = new LX.Skeleton( skeletonHtml );
+        skeleton.root.classList.add( "grid", "shader-list", "gap-8", "p-8", "justify-center" );
+        topArea.attach( skeleton.root );
+
+        LX.doAsync( async () => {
+
+            const listContainer = LX.makeContainer( ["100%", "auto"], "grid shader-list gap-8 p-8 justify-center", "", topArea );
+
+            // Get all stored shader files (not the code, only the data)
+            const result = await fs.listDocuments( FS.SHADERS_COLLECTION_ID );
+
+            let shaderList = [];
+
+            for( const document of result.documents )
             {
-                hyperlink.addEventListener( "click", (e) => {
-                    e.preventDefault();
-                    this.openProfile( shader.authorId )
-                } )
+                const name = document.name;
+
+                const shaderInfo = {
+                    name,
+                    uid: document[ "$id" ],
+                    creationDate: Utils.toESDate( document[ "$createdAt" ] )
+                };
+
+                const authorId = document[ "author_id" ];
+                if( authorId )
+                {
+                    const result = await fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_id", authorId ) ] );
+                    const author = result.documents[ 0 ][ "user_name" ];
+                    shaderInfo.author = author;
+                    shaderInfo.authorId = authorId;
+                }
+                else
+                {
+                    shaderInfo.author = document[ "author_name" ];
+                    shaderInfo.anonAuthor = true;
+                }
+
+                const previewName = `${ shaderInfo.uid }.png`;
+                const result = await fs.listFiles( [ Query.equal( "name", previewName ) ] );
+                if( result.total > 0 )
+                {
+                    shaderInfo.preview = await fs.getFileUrl( result.files[ 0 ][ "$id" ] );
+                }
+
+                shaderList.push( shaderInfo );
             }
 
-            shaderPreview.addEventListener( "click", ( e ) => {
-                window.location.href = `${ window.location.origin + window.location.pathname }?shader=${ shader.uid }`;
-            } );
-        }
+            shaderList = shaderList.sort( (a, b) => a.name.localeCompare( b.name ) );
 
-        if( listContainer.childElementCount === 0 )
-        {
-            LX.makeContainer( ["100%", "auto"], "text-xxl font-medium justify-center text-center", "No shaders found.", topArea );
-        }
+            skeleton.destroy();
+
+            for( const shader of shaderList )
+            {
+                const shaderItem = LX.makeElement( "li", "shader-item rounded-lg bg-secondary hover:bg-tertiary overflow-hidden flex flex-col h-auto", "", listContainer );
+                const shaderPreview = LX.makeElement( "img", "rounded-t-lg bg-secondary hover:bg-tertiary w-full border-none cursor-pointer", "", shaderItem );
+                shaderPreview.src = shader.preview ?? "images/shader_preview.png";
+                const shaderDesc = LX.makeContainer( ["100%", "100%"], "flex flex-row rounded-b-lg gap-6 p-4 items-center select-none", `
+                    <div class="w-full">
+                        <div class="text-lg font-bold">${ shader.name }</div>
+                        <div class="text-sm font-light">by ${ !shader.anonAuthor ? "<a class='dodgerblue cursor-pointer hover:text-underline'>" : "" }<span class="font-bold">${ shader.author }</span>${ !shader.anonAuthor ? "</a>" : "" }</div>
+                    </div>
+                    <div class="">
+                        <div class="">
+                            ${ LX.makeIcon( "CircleUserRound", { svgClass: "xxl fg-secondary" } ).innerHTML }
+                        </div>
+                    </div>`, shaderItem );
+                    // <img alt="avatar" width="32" height="32" decoding="async" data-nimg="1" class="rounded-full" src="https://imgproxy.compute.toys/insecure/width:64/plain/https://hkisrufjmjfdgyqbbcwa.supabase.co/storage/v1/object/public/avatar/f91bbd73-7734-49a9-99ce-460774d4ccc0/avatar.jpg">
+
+                const hyperlink = shaderDesc.querySelector( "a" );
+                if( hyperlink )
+                {
+                    hyperlink.addEventListener( "click", (e) => {
+                        e.preventDefault();
+                        this.openProfile( shader.authorId )
+                    } )
+                }
+
+                shaderPreview.addEventListener( "click", ( e ) => {
+                    window.location.href = `${ window.location.origin + window.location.pathname }?shader=${ shader.uid }`;
+                } );
+            }
+
+            if( listContainer.childElementCount === 0 )
+            {
+                LX.makeContainer( ["100%", "auto"], "text-xxl font-medium justify-center text-center", "No shaders found.", topArea );
+            }
+        }, 200 );
     },
 
     async createProfileView( userID ) {
