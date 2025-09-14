@@ -1,0 +1,922 @@
+import { LX } from 'lexgui';
+import * as Constants from "./constants.js";
+import * as Utils from './utils.js';
+import { FS } from './fs.js';
+import { ShaderHub } from './app.js';
+import { Shader } from './graphics.js';
+
+const Query = Appwrite.Query;
+const mobile = Utils.isMobile();
+
+export const ui = {
+
+    async init( fs ) {
+
+        this.fs = fs;
+        this.area = await LX.init();
+
+        const starterTheme = LX.getTheme();
+        const menubarOptions = [];
+        const menubarButtons = [
+            {
+                title: "Switch Theme",
+                icon: starterTheme == "dark" ? "Moon" : "Sun",
+                swap: starterTheme == "dark" ? "Sun" : "Moon",
+                callback: (value, event) => { LX.switchTheme() }
+            }
+        ];
+
+        if( !mobile )
+        {
+            menubarOptions.push(
+                {
+                    name: "New", callback: () => ShaderHub.createNewShader()
+                },
+                {
+                    name: "Browse", callback: () => window.location.href = `${ window.location.origin + window.location.pathname }`
+                }
+            );
+        }
+
+        const menubar = this.area.addMenubar( menubarOptions );
+
+        if( mobile )
+        {
+            const sidebarOptions = {
+                headerTitle: fs.user ? fs.user.name : "Guest",
+                headerSubtitle: fs.user ? fs.user.email : undefined,
+                headerImage: "images/favicon.png",
+                skipFooter: true,
+                collapsed: false,
+                collapsable: false,
+                displaySelected: true
+            };
+
+            const sidebarCallback = m => {
+                if( fs.user )
+                {
+                    m.add( "Profile", { icon: "User", callback: () => ShaderHub.openProfile( fs.getUserId() ) } );
+                    m.add( "Browse", { icon: "Search", callback: () => window.location.href = `${ window.location.origin + window.location.pathname }` } );
+                    m.add( "Logout", { icon: "LogOut", callback: async () => {
+                        await fs.logout();
+                    } } );
+                    m.separator();
+                }
+                else
+                {
+                    m.add( "Login", { icon: "LogIn", callback: () => ShaderHub.openLoginDialog() } );
+                    m.add( "Create account", { icon: "UserPlus", callback: () => ShaderHub.openSignUpDialog() } );
+                }
+
+                m.add( "New Shader", { icon: "UserPlus", callback: () => ShaderHub.createNewShader() } );
+            }
+
+            const sheetArea = new LX.Area({ skipAppend: true });
+            sheetArea.addSidebar( sidebarCallback, sidebarOptions );
+
+            menubar.addButtons( menubarButtons );
+
+            menubar.setButtonIcon( "Menu", "Menu", () => window.__currentSheet = new LX.Sheet("256px", [ sheetArea ], { side: "right" } ) );
+        }
+        else
+        {
+            menubar.addButtons( menubarButtons );
+
+            if( !fs.user )
+            {
+                const signupContainer = LX.makeContainer( [`auto`, "auto"], "flex flex-row p-1 gap-1 self-center items-center", "", menubar.root );
+                signupContainer.id = "signupContainer";
+                const signupOptionsButton = LX.makeContainer( [`auto`, "auto"], "p-1 rounded-lg fg-primary hover:bg-tertiary text-md self-center items-center cursor-pointer", "Create account", signupContainer );
+                signupOptionsButton.addEventListener( "click", async (e) => {
+                    e.preventDefault();
+                    ShaderHub.openSignUpDialog();
+                } );
+                LX.makeContainer( [`auto`, "0.75rem"], "mx-2 border-right border-colored fg-quaternary self-center items-center", "", signupContainer );
+            }
+
+            const loginOptionsButton = LX.makeContainer( [`auto`, "auto"], "flex flex-row gap-1 p-1 mr-2 rounded-lg fg-primary hover:bg-tertiary text-md self-center items-center cursor-pointer", `
+                ${ fs.user ? `<span class="decoration-none fg-secondary">${ fs.user.email }</span>
+                    <span class="ml-1 rounded-full w-6 h-6 bg-accent text-center leading-tight content-center">${ fs.user.name[ 0 ].toUpperCase() }</span>
+                    ${ LX.makeIcon("ChevronsUpDown", { iconClass: "pl-2" } ).innerHTML }` : "Login" }`, menubar.root );
+            loginOptionsButton.id = "loginOptionsButton";
+            loginOptionsButton.addEventListener( "click", async (e) => {
+                e.preventDefault();
+                if( fs.user )
+                {
+                    new LX.DropdownMenu( loginOptionsButton, [
+                        fs.user.name,
+                        null,
+                        { name: "Profile", icon: "User", callback: () => ShaderHub.openProfile( fs.getUserId() ) },
+                        { name: "Logout", icon: "LogOut", className: "fg-error", callback: async () => {
+                            await fs.logout();
+                            loginOptionsButton.innerHTML = "Login";
+                            document.getElementById( "signupContainer" )?.classList.remove( "hidden" );
+                        } },
+                    ], { side: "bottom", align: "end" });
+                }
+                else
+                {
+                    ShaderHub.openLoginDialog();
+                }
+            } );
+        }
+
+        menubar.setButtonImage("ShaderHub", `images/icon_${ starterTheme }.png`, null, { float: "left" } );
+
+        LX.addSignal( "@on_new_color_scheme", ( el, value ) => {
+            menubar.setButtonImage("ShaderHub", `images/icon_${ value }.png`, null, { float: "left" } );
+        } );
+
+        menubar.siblingArea.root.classList.add( "content-area" );
+
+        const params = new URLSearchParams( document.location.search );
+        const queryShader = params.get( "shader" );
+        const queryProfile = params.get( "profile" );
+
+        if( queryShader )
+        {
+            await this.makeShaderView( queryShader );
+        }
+        else if( queryProfile )
+        {
+            await this.makeProfileView( queryProfile );
+        }
+        else
+        {
+            await this.makeBrowseList();
+        }
+    },
+
+    async makeBrowseList() {
+
+        var [ topArea, bottomArea ] = this.area.split({ type: "vertical", sizes: ["calc(100% - 48px)", null], resize: false });
+        topArea.root.className += " overflow-scroll";
+        bottomArea.root.className += " items-center content-center";
+
+        // Shaderhub footer
+        LX.makeContainer( [`auto`, "auto"], "fg-primary text-lg flex flex-row gap-2 self-center align-center ml-auto mr-auto", `
+            ${ LX.makeIcon("Github@solid", {svgClass:"lg"} ).innerHTML }<a class="decoration-none fg-secondary" href="https://github.com/upf-gti/ShaderHub">Code on Github</a>`, bottomArea );
+
+        let skeletonHtml = "";
+
+        for( let i = 0; i < 10; ++i )
+        {
+            skeletonHtml += `
+            <div class="shader-item overflow-hidden flex flex-col h-auto">
+                <img class="w-full lexskeletonpart" width="640" height="360" src="${ Constants.IMAGE_EMPTY_SRC }"></img>
+                <div class="flex flex-col w-full mt-2 gap-2">
+                    <div class="w-full h-4 lexskeletonpart"></div>
+                    <div class="w-2/3 h-4 lexskeletonpart"></div>
+                </div>
+            </div>`;
+        }
+
+        const skeleton = new LX.Skeleton( skeletonHtml );
+        skeleton.root.classList.add( "grid", "shader-list", "gap-8", "p-8", "justify-center" );
+        topArea.attach( skeleton.root );
+
+        LX.doAsync( async () => {
+
+            const listContainer = LX.makeContainer( ["100%", "auto"], "grid shader-list gap-8 p-8 justify-center", "", topArea );
+
+            // Get all stored shader files (not the code, only the data)
+            const result = await this.fs.listDocuments( FS.SHADERS_COLLECTION_ID );
+
+            let shaderList = [];
+
+            for( const document of result.documents )
+            {
+                const name = document.name;
+
+                const shaderInfo = {
+                    name,
+                    uid: document[ "$id" ],
+                    creationDate: Utils.toESDate( document[ "$createdAt" ] )
+                };
+
+                const authorId = document[ "author_id" ];
+                if( authorId )
+                {
+                    const result = await this.fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_id", authorId ) ] );
+                    const author = result.documents[ 0 ][ "user_name" ];
+                    shaderInfo.author = author;
+                    shaderInfo.authorId = authorId;
+                }
+                else
+                {
+                    shaderInfo.author = document[ "author_name" ];
+                    shaderInfo.anonAuthor = true;
+                }
+
+                const previewName = `${ shaderInfo.uid }.png`;
+                const result = await this.fs.listFiles( [ Query.equal( "name", previewName ) ] );
+                if( result.total > 0 )
+                {
+                    shaderInfo.preview = await this.fs.getFileUrl( result.files[ 0 ][ "$id" ] );
+                }
+
+                shaderList.push( shaderInfo );
+            }
+
+            shaderList = shaderList.sort( (a, b) => a.name.localeCompare( b.name ) );
+
+            skeleton.destroy();
+
+            for( const shader of shaderList )
+            {
+                const shaderItem = LX.makeElement( "li", "shader-item rounded-lg bg-secondary hover:bg-tertiary overflow-hidden flex flex-col h-auto", "", listContainer );
+                const shaderPreview = LX.makeElement( "img", "rounded-t-lg bg-secondary hover:bg-tertiary w-full border-none cursor-pointer", "", shaderItem );
+                shaderPreview.src = shader.preview ?? "images/shader_preview.png";
+                const shaderDesc = LX.makeContainer( ["100%", "100%"], "flex flex-row rounded-b-lg gap-6 p-4 items-center select-none", `
+                    <div class="w-full">
+                        <div class="text-lg font-bold">${ shader.name }</div>
+                        <div class="text-sm font-light">by ${ !shader.anonAuthor ? "<a class='dodgerblue cursor-pointer hover:text-underline'>" : "" }<span class="font-bold">${ shader.author }</span>${ !shader.anonAuthor ? "</a>" : "" }</div>
+                    </div>
+                    <div class="">
+                        <div class="">
+                            ${ LX.makeIcon( "CircleUserRound", { svgClass: "xxl fg-secondary" } ).innerHTML }
+                        </div>
+                    </div>`, shaderItem );
+                    // <img alt="avatar" width="32" height="32" decoding="async" data-nimg="1" class="rounded-full" src="https://imgproxy.compute.toys/insecure/width:64/plain/https://hkisrufjmjfdgyqbbcwa.supabase.co/storage/v1/object/public/avatar/f91bbd73-7734-49a9-99ce-460774d4ccc0/avatar.jpg">
+
+                const hyperlink = shaderDesc.querySelector( "a" );
+                if( hyperlink )
+                {
+                    hyperlink.addEventListener( "click", (e) => {
+                        e.preventDefault();
+                        ShaderHub.openProfile( shader.authorId )
+                    } )
+                }
+
+                shaderPreview.addEventListener( "click", ( e ) => {
+                    window.location.href = `${ window.location.origin + window.location.pathname }?shader=${ shader.uid }`;
+                } );
+            }
+
+            if( listContainer.childElementCount === 0 )
+            {
+                LX.makeContainer( ["100%", "auto"], "text-xxl font-medium justify-center text-center", "No shaders found.", topArea );
+            }
+        }, 200 );
+    },
+
+    async makeProfileView( userID ) {
+    
+        let [ topArea, bottomArea ] = this.area.split({ type: "vertical", sizes: ["calc(100% - 48px)", null], resize: false });
+        topArea.root.className += " overflow-scroll";
+        bottomArea.root.className += " items-center content-center";
+
+        // Shaderhub footer
+        LX.makeContainer( [`auto`, "auto"], "fg-primary text-lg flex flex-row gap-2 self-center align-center ml-auto mr-auto", `
+            ${ LX.makeIcon("Github@solid", {svgClass:"lg"} ).innerHTML }<a class="decoration-none fg-secondary" href="https://github.com/upf-gti/ShaderHub">Code on Github</a>`, bottomArea );
+
+        const users = await this.fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_id", userID ) ] );
+        if( users.total === 0 )
+        {
+            LX.makeContainer( ["100%", "auto"], "mt-8 text-xxl font-medium justify-center text-center", "No user found.", topArea );
+            return;
+        }
+
+        const user = users.documents[ 0 ];
+        const userName = user[ "user_name" ];
+        // const ownProfile = ( userID === this.fs.getUserId() );
+
+        document.title = `${ userName } - ShaderHub`;
+
+        const infoContainer = LX.makeContainer( ["100%", "auto"], "gap-8 p-8 justify-center", `
+            <div class="text-xxl font-bold">${ userName }</span>
+        `, topArea );
+        const listContainer = LX.makeContainer( ["100%", "auto"], "grid shader-list gap-8 p-8 justify-center", "", topArea );
+
+        const result = await this.fs.listDocuments( FS.SHADERS_COLLECTION_ID, [
+            Query.equal( "author_id", userID )
+        ] );
+
+        if( result.total === 0 )
+        {
+            LX.makeContainer( ["100%", "auto"], "mt-8 text-xxl font-medium justify-center text-center", "No shaders found.", topArea );
+            return;
+        }
+
+        for( const document of result.documents )
+        {
+            const name = document.name;
+
+            const shaderInfo = {
+                name,
+                uid: document[ "$id" ]
+            };
+
+            const previewName = `${ shaderInfo.uid }.png`;
+            const result = await this.fs.listFiles( [ Query.equal( "name", previewName ) ] );
+            if( result.total > 0 )
+            {
+                shaderInfo.preview = await this.fs.getFileUrl( result.files[ 0 ][ "$id" ] );
+            }
+
+            const shaderItem = LX.makeElement( "li", "shader-item shader-profile rounded-lg bg-secondary hover:bg-tertiary overflow-hidden flex flex-col h-auto", "", listContainer );
+            const shaderPreview = LX.makeElement( "img", "rounded-t-lg bg-secondary hover:bg-tertiary w-full border-none cursor-pointer", "", shaderItem );
+            shaderPreview.src = shaderInfo.preview ?? "images/shader_preview.png";
+            const shaderDesc = LX.makeContainer( ["100%", "100%"], "flex flex-row rounded-b-lg gap-6 p-4 items-center select-none", `
+                <div class="w-full">
+                    <div class="text-lg font-bold"><span>${ shaderInfo.name }</span></div>
+                </div>
+                <div class="">
+                    <div class="">
+                        ${ LX.makeIcon( "CircleUserRound", { svgClass: "xxl fg-secondary" } ).innerHTML }
+                    </div>
+                </div>`, shaderItem );
+                // <img alt="avatar" width="32" height="32" decoding="async" data-nimg="1" class="rounded-full" src="https://imgproxy.compute.toys/insecure/width:64/plain/https://hkisrufjmjfdgyqbbcwa.supabase.co/storage/v1/object/public/avatar/f91bbd73-7734-49a9-99ce-460774d4ccc0/avatar.jpg">
+
+            shaderPreview.addEventListener( "click", ( e ) => {
+                window.location.href = `${ window.location.origin + window.location.pathname }?shader=${ shaderInfo.uid }`;
+            } );
+        }
+
+        if( listContainer.childElementCount === 0 )
+        {
+            LX.makeContainer( ["100%", "auto"], "mt-8 text-xxl font-medium justify-center text-center", "No shaders found.", topArea );
+        }
+    },
+
+    async makeShaderView( shaderUid ) {
+
+        const shader = await ShaderHub.getShaderById( shaderUid );
+        const isNewShader = ( shaderUid === "new" );
+
+        window.onbeforeunload = ( event ) => {
+            event.preventDefault();
+            event.returnValue = "";
+        };
+
+        let [ leftArea, rightArea ] = this.area.split({ sizes: ["50%", "50%"] });
+        rightArea.root.className += " p-2 shader-edit-content";
+        leftArea.root.className += " p-2";
+
+        let [ codeArea, shaderSettingsArea ] = rightArea.split({ type: "vertical", sizes: ["80%", "20%"], resize: false });
+        codeArea.root.className += " rounded-lg overflow-hidden code-border-default";
+        shaderSettingsArea.root.className += " content-center";
+
+        this.channelsContainer = LX.makeContainer( ["100%", "100%"], "channel-list grid gap-2 pt-2 items-center justify-center bg-primary", "", shaderSettingsArea );
+
+        document.title = `${ shader.name } (${ shader.author }) - ShaderHub`;
+
+        // Manage code area resize when channels are collapsed
+        {
+            if( window.ResizeObserver )
+            {
+                const ro = new ResizeObserver( function( entries, observer )
+                {
+                    var entry = entries[ 0 ];
+                    let box = entry.contentRect;
+                    codeArea.root.style.height = `calc(100% - ${ box.height }px)`;
+                });
+
+                ro.observe( shaderSettingsArea.root );
+            }
+        }
+
+        const customSuggestions = [];
+        Constants.DEFAULT_UNIFORM_NAMES.forEach( u => {
+            if( u.startsWith( "iChannel" ) )
+            {
+                customSuggestions.push( "iChannel" );
+            }
+            else
+            {
+                customSuggestions.push( u );
+            }
+        } );
+
+        this.editor = await new LX.CodeEditor( codeArea, {
+            allowClosingTabs: false,
+            allowLoadingFiles: false,
+            fileExplorer: false,
+            defaultTab: false,
+            statusShowEditorIndentation: false,
+            statusShowEditorLanguage: false,
+            statusShowEditorFilename: false,
+            customSuggestions,
+            onCreateStatusPanel: ShaderHub.makeStatusBarButtons.bind( ShaderHub ),
+            onCtrlSpace: ShaderHub.compileShader.bind( ShaderHub ),
+            onSave: ShaderHub.compileShader.bind( ShaderHub ),
+            onRun: ShaderHub.compileShader.bind( ShaderHub ),
+            onCreateFile: ( editor ) => null,
+            onContextMenu: ( editor, content, event ) => {
+                const pass = ShaderHub.currentPass;
+                if( pass.name === "Common" ) return;
+                    
+                const word = content.trim().match( /([A-Za-z0-9_]+)/g )[ 0 ];
+                if( !word ) return;
+
+                const options = [];
+                const USED_UNIFORM_NAMES = [ ...Constants.DEFAULT_UNIFORM_NAMES, ...pass.uniforms.map( u => u.name ) ];
+                const regex = new RegExp( "\\b(?!(" + USED_UNIFORM_NAMES.join("|") + ")\\b)(i[A-Z]\\w*)\\b" );
+
+                options.push( { path: "Create Uniform", disabled: !regex.test( word ), callback: async () => {
+                    await ShaderHub.addUniform( word );
+                    await ShaderHub.compileShader( true, pass );
+                    this.openCustomUniforms();
+                } } );
+
+                return options;
+            },
+            onNewTab: ( e ) => {
+                const canCreateCommon = ( shader.passes.filter( p => p.type === "common" ).length === 0 );
+                const canCreateBuffer = ( shader.passes.filter( p => p.type === "buffer" ).length < 4 );
+
+                const dmOptions = [
+                    { name: "Buffer", icon: "FilePlus", disabled: !canCreateBuffer, callback: ( v ) => ShaderHub.onShaderPassCreated( "buffer", v ) },
+                    { name: "Common", icon: "FileUp", disabled: !canCreateCommon, callback: ( v ) => ShaderHub.onShaderPassCreated( "common", v ) },
+                ];
+
+                new LX.DropdownMenu( e.target, dmOptions, { side: "bottom", align: "start" });
+            },
+            onSelectTab: async ( name, editor ) => {
+                ShaderHub.onShaderPassSelected( name );
+                await this.updateShaderChannelsView();
+            }
+        });
+
+        var [ graphicsArea, shaderDataArea ] = leftArea.split({ type: "vertical", sizes: ["auto", "auto"], resize: false });
+
+        const ownProfile = this.fs.user && ( shader.authorId === this.fs.getUserId() );
+
+        // Add Shader data
+        {
+            shaderDataArea.root.className += " pt-2 items-center justify-center bg-primary";
+            const shaderDataContainer = LX.makeContainer( [`100%`, "100%"], "p-6 flex flex-col gap-2 rounded-lg bg-secondary overflow-scroll overflow-x-hidden", "", shaderDataArea );
+            const shaderNameAuthorOptionsContainer = LX.makeContainer( [`100%`, "auto"], "flex flex-row", `
+                <div class="flex flex-col gap-1">
+                    <div class="flex flex-row items-center">
+                        ${ ( ownProfile || isNewShader ) ? LX.makeIcon("Edit", { svgClass: "mr-2 cursor-pointer hover:fg-primary" } ).innerHTML : "" }
+                        <div class="fg-primary text-xxl font-semibold">${ shader.name }</div>
+                    </div>
+                    <div class="fg-secondary text-md">created by ${ !shader.anonAuthor ? "<a class='dodgerblue cursor-pointer hover:text-underline'>" : "" }${ shader.author }${ !shader.anonAuthor ? "</a>" : "" }
+                    on <span class="font-bold">${ shader.creationDate }</span></div>
+                </div>
+            `, shaderDataContainer );
+
+            const editButton = shaderNameAuthorOptionsContainer.querySelector( "svg" );
+            if( editButton )
+            {
+                editButton.addEventListener( "click", (e) => {
+                    if( this._editingName ) return;
+                    e.preventDefault();
+                    const text = e.target.parentElement.children[ 1 ]; // get non-editable text
+                    const input = new LX.TextInput( null, text.textContent, async (v) => {
+                        text.innerText = v;
+                        input.root.replaceWith( text );
+                        await ShaderHub.updateShaderName( v );
+                        this._editingName = false;
+                    }, { inputClass: "fg-primary text-xxl font-semibold", pattern: LX.buildTextPattern( { minLength: 3 } ) } );
+                    text.replaceWith( input.root );
+                    LX.doAsync( () => input.root.focus() );
+                    this._editingName = true;
+                } )
+            }
+
+            const hyperlink = shaderNameAuthorOptionsContainer.querySelector( "a" );
+            if( hyperlink )
+            {
+                hyperlink.addEventListener( "click", (e) => {
+                    e.preventDefault();
+                    ShaderHub.openProfile( shader.authorId )
+                } )
+            }
+
+            const shaderOptions = LX.makeContainer( [`auto`, "auto"], "ml-auto flex flex-row p-1 gap-1 self-start items-center", ``, shaderNameAuthorOptionsContainer );
+
+            if( this.fs.user )
+            {
+                const shaderOptionsButton = new LX.Button( null, "ShaderOptions", async () => {
+
+                    const dmOptions = [ ]
+
+                    if( ownProfile || isNewShader )
+                    {
+                        let result = await shaderExists();
+
+                        dmOptions.push( mobile ? 0 : { name: "Save Shader", icon: "Save", callback: () => ShaderHub.saveShader( result ) } );
+
+                        if( result )
+                        {
+                            dmOptions.push(
+                                mobile ? 0 : { name: "Update Preview", icon: "ImageUp", callback: () => ShaderHub.updateShaderPreview( shader.uid, true ) },
+                                mobile ? 0 : null,
+                                { name: "Delete Shader", icon: "Trash2", className: "fg-error", callback: () => ShaderHub.deleteShader() },
+                            );
+                        }
+                    }
+                    else
+                    {
+                        dmOptions.push( mobile ? 0 : { name: "Remix Shader", icon: "GitFork", callback: () => ShaderHub.remixShader() } );
+                    }
+
+                    new LX.DropdownMenu( shaderOptionsButton.root, dmOptions.filter( o => o !== 0 ), { side: "bottom", align: "end" });
+                }, { icon: "Menu" } );
+                shaderOptions.appendChild( shaderOptionsButton.root );
+            }
+            else
+            {
+                LX.makeContainer( [`auto`, "auto"], "fg-secondary text-md", "Login to save/remix this shader", shaderOptions );
+            }
+
+            // Editable description
+            {
+                const descContainer = LX.makeContainer( [`auto`, "auto"], "fg-primary mt-2 flex flex-row items-center", `
+                    <div class="w-auto self-start mt-1">${ ( ownProfile || ( shaderUid === "new" ) ) ? LX.makeIcon("Edit", { svgClass: "mr-3 cursor-pointer hover:fg-primary" } ).innerHTML : "" }</div>
+                    <div class="desc-content w-full text-md break-words">${ shader.description }</div>
+                    `, shaderDataContainer );
+
+                const editButton = descContainer.querySelector( "svg" );
+                if( editButton )
+                {
+                    editButton.addEventListener( "click", (e) => {
+                        if( this._editingDescription ) return;
+                        e.preventDefault();
+                        const text = descContainer.querySelector( ".desc-content" );
+                        const input = new LX.TextArea( null, text.innerHTML, async (v) => {
+                            text.innerHTML = v;
+                            input.root.replaceWith( text );
+                            shader.description = v;
+                            this._editingDescription = false;
+                        }, { width: "100%", resize: false, className: "h-full", inputClass: "bg-tertiary h-full" , fitHeight: true } );
+                        text.replaceWith( input.root );
+                        LX.doAsync( () => input.root.focus() );
+                        this._editingDescription = true;
+                    } )
+                }
+            }
+        }
+
+        // Add shader visualization UI
+        {
+            let [ canvasArea, canvasControlsArea ] = graphicsArea.split({ type: "vertical", sizes: ["calc(100% - 48px)", null], resize: false });
+
+            const canvas = this.makeGPUCanvas();
+            canvasArea.attach( canvas );
+        
+            canvasControlsArea.root.className += " px-2 rounded-b-lg bg-secondary";
+            const panel = canvasControlsArea.addPanel( { className: "flex flex-row" } );
+            panel.sameLine();
+            panel.addButton( null, "ResetTime", () => ShaderHub.onShaderTimeReset(), { icon: "SkipBack", title: "Reset time", tooltip: true } );
+            panel.addButton( null, "PauseTime", () => ShaderHub.onShaderTimePaused(), { icon: "Pause", title: "Pause/Resume", tooltip: true, swap: "Play" } );
+            panel.addLabel( "0.0", { signal: "@elapsed-time", xclassName: "ml-auto", xinputClass: "text-end" } );
+            panel.endLine( "items-center h-full" );
+
+            panel.sameLine();
+            panel.addButton( null, "Record", ( name, event ) => {
+                // TODO: Record gif/video/...
+            }, { icon: "Video", className: "ml-auto", title: "Record", tooltip: true } );
+            panel.addButton( null, "Fullscreen", () => ShaderHub.requestFullscreen(), { icon: "Fullscreen", title: "Fullscreen", tooltip: true } );
+            panel.endLine( "items-center h-full ml-auto" );
+
+            ShaderHub.onShaderEditorCreated( shader, canvas );
+        }
+    },
+
+    async makeStatusBarButtons( p, editor ) {
+
+        const customTabInfoButtonsPanel = new LX.Panel( { className: "flex flex-row items-center", height: "auto" } );
+
+        customTabInfoButtonsPanel.sameLine();
+
+        /*
+            Default Uniforms list info
+        */
+
+        const defaultParametersContainer = LX.makeContainer(
+            [ `${ Math.min( 600, window.innerWidth - 64 ) }px`, "auto" ],
+            "overflow-scroll",
+            "",
+            null,
+            { maxHeight: "256px", maxWidth: `${ window.innerWidth - 64 }px` }
+        );
+
+        LX.makeContainer( ["auto", "auto"], "flex flex-row p-2 items-center", "Default Uniforms", defaultParametersContainer );
+
+        // Create the content for the uniforms panel
+        {
+            this.defaultParametersPanel = new LX.Panel({ className: "custom-parameters-panel w-full" });
+            defaultParametersContainer.appendChild( this.defaultParametersPanel.root );
+
+            this.defaultParametersPanel.refresh = () => {
+
+                this.defaultParametersPanel.clear();
+
+                for( let u of Constants.DEFAULT_UNIFORMS_LIST )
+                {
+                    this.defaultParametersPanel.sameLine( 2, "justify-between" );
+                    this.defaultParametersPanel.addLabel( `${ u.name } : ${ u.type }`, { className: "w-full p-0" } );
+                    this.defaultParametersPanel.addLabel( u.info, { className: "w-full p-0", inputClass: "text-end" } );
+                }
+            }
+
+            this.defaultParametersPanel.refresh();
+        }
+
+        customTabInfoButtonsPanel.addButton( null, "OpenDefaultParams", ( name, event ) => {
+            new LX.Popover( event.target, [ defaultParametersContainer ], { align: "start", side: "top" } );
+        }, { icon: "BookOpen", title: "Default Parameters", tooltip: true } );
+
+        /*
+            Custom Uniforms info
+        */
+
+        const customParametersContainer = LX.makeContainer(
+            [`${ Math.min( 600, window.innerWidth - 64 ) }px`, "auto"],
+            "overflow-scroll",
+            "",
+            null,
+            { maxHeight: "256px", maxWidth: `${ window.innerWidth - 64 }px` }
+        );
+
+        const uniformsHeader = LX.makeContainer( ["auto", "auto"], "flex flex-row p-2 items-center", "", customParametersContainer );
+        const uniformsCountTitle = LX.makeContainer( ["auto", "auto"], "", `Uniforms [0]`, uniformsHeader );
+        const addUniformButton = new LX.Button( null, "AddNewCustomUniform", () => {
+            ShaderHub.addUniform();
+            this.customParametersPanel.refresh();
+        }, { icon: "Plus", className: "ml-auto self-center", buttonClass: "bg-none", title: "Add New Uniform", tooltip: true, width: "38px" } );
+        uniformsHeader.appendChild( addUniformButton.root );
+
+        // Popover to dialog button
+        {
+            const dialogizePopoverButton = new LX.Button( null,
+                "DialogizePopoverButton",
+                () => this.openUniformsDialog(),
+                { icon: "AppWindowMac", className: "self-center", buttonClass: "bg-none", title: "Expand Window", tooltip: true, width: "38px" } );
+            uniformsHeader.appendChild( dialogizePopoverButton.root );
+        }
+
+        // Create the content for the uniforms panel
+        {
+            this.customParametersPanel = new LX.Panel({ className: "custom-parameters-panel w-full" });
+            customParametersContainer.appendChild( this.customParametersPanel.root );
+
+            this.customParametersPanel.refresh = ( overridePanel, onRefresh ) => {
+
+                const pass = ShaderHub.currentPass;
+                if( !pass || pass.type === "common" ) return;
+
+                overridePanel = overridePanel ?? this.customParametersPanel;
+
+                overridePanel.clear();
+
+                overridePanel.addLabel( "Uniform names must start with i + Capital letter (e.g. iTime)." );
+
+                for( let u of pass.uniforms )
+                {
+                    overridePanel.sameLine( 5 );
+                    overridePanel.addText( null, u.name, ( v ) => {
+                        u.name = v;
+                        ShaderHub.compileShader( true, pass );
+                    }, { width: "25%", skipReset: true, pattern: "\\b(?!(" + Constants.DEFAULT_UNIFORM_NAMES.join("|") + ")\\b)(i[A-Z]\\w*)\\b" } );
+                    overridePanel.addNumber( "Min", u.min, ( v ) => {
+                        u.min = v;
+                        uRangeComponent.setLimits( u.min, u.max );
+                        ShaderHub._parametersDirty = true;
+                    }, { nameWidth: "40%", width: "17%", skipReset: true, step: 0.1 } );
+                    const uRangeComponent = overridePanel.addRange( null, u.value, ( v ) => {
+                        u.value = v;
+                        ShaderHub._parametersDirty = true;
+                    }, { className: "contrast", width: "35%", skipReset: true, min: u.min, max: u.max, step: 0.1 } );
+                    overridePanel.addNumber( "Max", u.max, ( v ) => {
+                        u.max = v;
+                        uRangeComponent.setLimits( u.min, u.max );
+                        ShaderHub._parametersDirty = true;
+                    }, { nameWidth: "40%", width: "17%", skipReset: true, step: 0.1 } );
+                    overridePanel.addButton( null, "RemoveUniformButton", ( v ) => {
+                        // Check if the uniforms is used to recompile shaders or not
+                        const allCode = pass.getShaderCode( false );
+                        const idx = pass.uniforms.indexOf( u );
+                        pass.uniforms.splice( idx, 1 );
+                        this.customParametersPanel.refresh( overridePanel );
+                        if( allCode.match( new RegExp( `\\b${ u.name }\\b` ) ) )
+                        {
+                            ShaderHub.compileShader( true, pass );
+                        }
+                    }, { width: "6%", icon: "X", buttonClass: "bg-none", title: "Remove Uniform", tooltip: true } );
+                }
+
+                // Updates probably to the panel at the dialog
+                if( onRefresh )
+                {
+                    onRefresh();
+                }
+                else
+                {
+                    // Updates to the popover
+                    uniformsCountTitle.innerHTML = `Uniforms [${ pass.uniforms.length }]`;
+
+                    if( LX.Popover.activeElement )
+                    {
+                        LX.Popover.activeElement._adjustPosition();
+                    }
+                }
+            }
+        }
+
+        this.openCustomParamsButton = customTabInfoButtonsPanel.addButton( null, "OpenCustomParams", ( name, event ) => {
+            this.customParametersPanel.refresh()
+            this.openCustomUniforms( event.target );
+        }, { icon: "Settings2", title: "Custom Parameters", tooltip: true } );
+
+        /*
+            Compile Button
+        */
+
+        customTabInfoButtonsPanel.addButton( null, "CompileShaderButton", async () => {
+            await this.compileShader();
+            this.gpuCanvas.focus();
+        }, { icon: "Play", width: "32px", title: "Compile", tooltip: true } );
+
+        customTabInfoButtonsPanel.endLine();
+
+        p.root.prepend( customTabInfoButtonsPanel.root );
+    },
+
+    makeGPUCanvas()
+    {
+        const canvas = document.createElement("canvas");
+        canvas.className = "webgpu-canvas w-full h-full rounded-t-lg";
+        canvas.tabIndex = "0";
+
+        // Manage canvas resize
+        {
+            let iResize = ( xResolution, yResolution ) => {
+                canvas.width = xResolution;
+                canvas.height = yResolution;
+                ShaderHub.onShaderCanvasResized( xResolution, yResolution );
+            };
+
+            let bestAttemptFallback = () => {
+                let devicePixelRatio = window.devicePixelRatio || 1;
+                let xResolution = Math.round( canvas.offsetWidth  * devicePixelRatio ) | 0;
+                let yResolution = Math.round( canvas.offsetHeight * devicePixelRatio ) | 0;
+                iResize( xResolution, yResolution );
+            };
+
+            if( !window.ResizeObserver )
+            {
+                console.warn( "This browser doesn't support ResizeObserver." );
+                bestAttemptFallback();
+                window.addEventListener( "resize", bestAttemptFallback );
+            }
+            else
+            {
+                this.ro = new ResizeObserver( function( entries, observer )
+                {
+                    var entry = entries[ 0 ];
+                    if( !entry['devicePixelContentBoxSize'] )
+                    {
+                        observer.unobserve( canvas );
+                        console.warn( "This browser doesn't support ResizeObserver + device-pixel-content-box (2)" );
+                        bestAttemptFallback();
+                        window.addEventListener( "resize", bestAttemptFallback );
+                    }
+                    else
+                    {
+                        let box = entry.devicePixelContentBoxSize[ 0 ];
+                        iResize( box.inlineSize, box.blockSize );
+                    }
+                });
+
+                try
+                {
+                    this.ro.observe( canvas, { box: ["device-pixel-content-box"] } );
+                }
+                catch( e )
+                {
+                    console.warn( "This browser doesn't support ResizeObserver + device-pixel-content-box (1)");
+                    bestAttemptFallback();
+                    window.addEventListener( "resize", bestAttemptFallback );
+                }
+            }
+        }
+
+        let generateKbTexture = true;
+
+        canvas.addEventListener('keydown', async (e) => {
+            this.keyState.set( Utils.code2ascii( e.code ), true );
+            if( generateKbTexture ) await this.createKeyboardTexture();
+            generateKbTexture = false;
+            e.preventDefault();
+        }, false);
+
+        canvas.addEventListener('keyup', async (e) => {
+            this.keyState.set( Utils.code2ascii( e.code ), false );
+            this.keyToggleState.set( Utils.code2ascii( e.code ), !( this.keyToggleState.get( Utils.code2ascii( e.code ) ) ?? false ) );
+            this.keyPressed.set( Utils.code2ascii( e.code ), true );
+            this._anyKeyPressed = true;
+            await this.createKeyboardTexture();
+            generateKbTexture = true;
+            e.preventDefault();
+        }, false);
+
+        canvas.addEventListener("mousedown", (e) => {
+            this._mouseDown = e;
+            this.mousePosition = [ e.offsetX, e.offsetY ];
+            this.lastMousePosition = [ ...this.mousePosition ];
+            this._mousePressed = true;
+        });
+
+        canvas.addEventListener("mouseup", (e) => {
+            this._mouseDown = undefined;
+        });
+
+        canvas.addEventListener("mousemove", (e) => {
+            if( this._mouseDown )
+            {
+                this.mousePosition = [ e.offsetX, e.offsetY ];
+            }
+        });
+
+        return canvas;
+    },
+
+    openUniformsDialog()
+    {
+        const pass = ShaderHub.currentPass;
+        if( pass?.name === "Common" )
+        {
+            return;
+        }
+
+        if( this._lastUniformsDialog )
+        {
+            this._lastUniformsDialog.close();
+        }
+
+        const dialog = new LX.Dialog( `Uniforms [${ pass.uniforms.length }]`, null, {
+            modal: false, draggable: true, size: [ Math.min( 600, window.innerWidth - 64 ), "auto" ]
+        } );
+
+        // Put all the stuff in the dialog panel
+        this.customParametersPanel.refresh( dialog.panel );
+
+        const uniformsHeader = LX.makeContainer( ["auto", "auto"], "flex flex-row items-center", "", dialog.title );
+        const addUniformButton = new LX.Button( null, "AddNewCustomUniform", () => {
+            ShaderHub.addUniform();
+            this.customParametersPanel.refresh( dialog.panel, () => dialog.title.childNodes[ 0 ].textContent = `Uniforms [${ pass.uniforms.length }]` );
+        }, { icon: "Plus", className: "ml-auto self-center", buttonClass: "bg-none", title: "Add New Uniform", width: "38px" } );
+        uniformsHeader.appendChild( addUniformButton.root );
+        LX.makeContainer( [`auto`, "0.75rem"], "ml-2 mr-4 border-right border-colored fg-quaternary self-center items-center", "", uniformsHeader );
+        const closerButton = dialog.title.querySelector( "a" );
+        uniformsHeader.appendChild( closerButton );
+        // Re-add listener since it lost it changing the parent
+        closerButton.addEventListener( "click", dialog.close );
+
+        this._lastUniformsDialog = dialog;
+    },
+
+    openCustomUniforms( target )
+    {
+        target = target ?? this.openCustomParamsButton.root;
+
+        if( this._lastUniformsDialog )
+        {
+            this._lastUniformsDialog.close();
+        }
+
+        // Refresh content first
+        this.customParametersPanel.refresh();
+
+        new LX.Popover( target, [ this.customParametersPanel.root.parentElement ], { align: "start", side: "top" } );
+    },
+
+    async updateShaderChannelsView( pass )
+    {
+        pass = pass ?? ShaderHub.currentPass;
+
+        this.toggleShaderChannelsView( pass.type === "common" );
+
+        this.channelsContainer.innerHTML = "";
+
+        for( let i = 0; i < Constants.UNIFORM_CHANNELS_COUNT; i++ )
+        {
+            const channelContainer = LX.makeContainer( ["100%", "100%"], "relative text-center content-center rounded-lg bg-secondary hover:bg-tertiary cursor-pointer overflow-hidden", "", this.channelsContainer );
+            channelContainer.style.minHeight = "100px";
+            const channelImage = LX.makeElement( "img", "rounded-lg bg-secondary hover:bg-tertiary border-none", "", channelContainer );
+            channelImage.src = await ShaderHub.getChannelUrl( pass, i )
+            channelImage.style.width = "95%";
+            channelImage.style.height = "95%";
+            const channelTitle = LX.makeContainer( ["100%", "auto"], "p-2 absolute text-md bottom-0 channel-title pointer-events-none", `iChannel${ i }`, channelContainer );
+            channelContainer.addEventListener( "click", ( e ) => {
+                e.preventDefault();
+                ShaderHub.openAvailableChannels( i );
+            } );
+            channelContainer.addEventListener("contextmenu", ( e ) => {
+                e.preventDefault();
+                new LX.DropdownMenu( e.target, [
+                    { name: "Remove", className: "fg-error", callback: async () => await ShaderHub.removeUniformChannel( i ) },
+                ], { side: "top", align: "start" });
+            });
+        }
+    },
+
+    toggleShaderChannelsView( force )
+    {
+        this.channelsContainer.parentElement.classList.toggle( "hidden", force );
+    }
+};

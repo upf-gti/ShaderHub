@@ -226,6 +226,28 @@ class ShaderPass {
 
         return templateCodeLines.join( "\n" );
     }
+
+    resizeBuffer( resolutionX, resolutionY ) {
+
+        const oldResolution = this.resolution;
+        if( ( oldResolution[ 0 ] === resolutionX ) || ( oldResolution[ 1 ] === resolutionY ) )
+            return;
+
+        this.textures = [
+            this.device.createTexture({
+                label: "Buffer Pass Texture A",
+                size: [ resolutionX, resolutionY, 1 ],
+                format: navigator.gpu.getPreferredCanvasFormat(),
+                usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING
+            }),
+            this.device.createTexture({
+                label: "Buffer Pass Texture B",
+                size: [ resolutionX, resolutionY, 1 ],
+                format: navigator.gpu.getPreferredCanvasFormat(),
+                usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING
+            })
+        ];
+    }
 }
 
 class Shader {
