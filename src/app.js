@@ -452,6 +452,8 @@ const ShaderHub = {
 
             pass = pass ?? this.currentPass;
 
+            this.toggleShaderChannelsUIView( pass.type === "common" );
+
             this.channelsContainer.innerHTML = "";
 
             for( let i = 0; i < Constants.UNIFORM_CHANNELS_COUNT; i++ )
@@ -476,7 +478,26 @@ const ShaderHub = {
             }
         }
 
+        this.toggleShaderChannelsUIView = async ( force ) => {
+            this.channelsContainer.parentElement.classList.toggle( "hidden", force );
+        }
+
         document.title = `${ this.shader.name } (${ this.shader.author }) - ShaderHub`;
+
+        // Manage code area resize when channels are collapsed
+        {
+            if( window.ResizeObserver )
+            {
+                const ro = new ResizeObserver( function( entries, observer )
+                {
+                    var entry = entries[ 0 ];
+                    let box = entry.contentRect;
+                    codeArea.root.style.height = `calc(100% - ${ box.height }px)`;
+                });
+
+                ro.observe( shaderSettingsArea.root );
+            }
+        }
 
         const customSuggestions = [];
         Constants.DEFAULT_UNIFORM_NAMES.forEach( u => {
