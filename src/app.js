@@ -699,10 +699,9 @@ const ShaderHub = {
             let iResize = ( xResolution, yResolution ) => {
                 canvas.width = xResolution;
                 canvas.height = yResolution;
+                this.resizeBuffers( xResolution, yResolution );
                 this.resolutionX = xResolution;
                 this.resolutionY = yResolution;
-                // me.ResizeBuffers( xResolution, yResolution );
-                // resizeCallback( xResolution, yResolution );
             };
 
             let bestAttemptFallback = () => {
@@ -771,7 +770,7 @@ const ShaderHub = {
 
         canvas.addEventListener("mousedown", (e) => {
             this._mouseDown = e;
-            this.mousePosition = [ e.offsetX, this.gpuCanvas.offsetHeight - e.offsetY ];
+            this.mousePosition = [ e.offsetX, e.offsetY ];
             this.lastMousePosition = [ ...this.mousePosition ];
             this._mousePressed = true;
         });
@@ -783,7 +782,7 @@ const ShaderHub = {
         canvas.addEventListener("mousemove", (e) => {
             if( this._mouseDown )
             {
-                this.mousePosition = [ e.offsetX, this.gpuCanvas.offsetHeight - e.offsetY ];
+                this.mousePosition = [ e.offsetX, e.offsetY ];
             }
         });
 
@@ -796,12 +795,6 @@ const ShaderHub = {
             panel.addButton( null, "PauseTime", () => { this.timePaused = !this.timePaused }, { icon: "Pause", title: "Pause/Resume", tooltip: true, swap: "Play" } );
             panel.addLabel( "0.0", { signal: "@elapsed-time", xclassName: "ml-auto", xinputClass: "text-end" } );
             panel.endLine( "items-center h-full" );
-
-            // Mobile version cannot open uniforms box
-            if( mobile )
-            {
-                return;
-            }
 
             panel.sameLine();
             panel.addButton( null, "Record", ( name, event ) => {
@@ -816,7 +809,7 @@ const ShaderHub = {
         {
             await this.initGraphics( canvas );
 
-            const closeFn = ( name, e ) => {
+            const closeFn = async ( name, e ) => {
                 e.preventDefault();
                 e.stopPropagation();
                 editor.tabs.delete( name );
@@ -835,7 +828,7 @@ const ShaderHub = {
                     this.renderPipelines.splice( passIndex, 1 );
                     this.renderBindGroups.splice( passIndex, 1 );
 
-                    this.compileShader();
+                    await this.compileShader();
                 }
             };
 
@@ -845,7 +838,9 @@ const ShaderHub = {
                 const pass = {
                     name: "MainImage",
                     type: "image",
-                    codeLines: Shader.RENDER_MAIN_TEMPLATE
+                    codeLines: Shader.RENDER_MAIN_TEMPLATE,
+                    resolutionX: this.resolutionX,
+                    resolutionY: this.resolutionY
                 }
 
                 const shaderPass = new ShaderPass( this.shader, this.device, pass );
@@ -861,6 +856,9 @@ const ShaderHub = {
 
                 for( const pass of json.passes ?? [] )
                 {
+                    pass.resolutionX = this.resolutionX;
+                    pass.resolutionY = this.resolutionY;
+
                     // Push passes to the shader
                     const shaderPass = new ShaderPass( this.shader, this.device, pass );
                     if( pass.type === "buffer" )
@@ -886,6 +884,37 @@ const ShaderHub = {
 
             this.currentPass = this.shader.passes.at( -1 );
             this.editor.loadTab( this.currentPass.name );
+        }
+    },
+
+    resizeBuffers( resolutionX, resolutionY ) {
+
+        for( const pass of this.shader.passes )
+        {
+            if( pass.type !== "buffer" )
+                continue;
+
+            const oldResolution = [ this.resolutionX, this.resolutionY ];
+            if( ( oldResolution[ 0 ] === resolutionX ) || ( oldResolution[ 1 ] === resolutionY ) )
+                continue;
+
+            this.textures =
+            [
+                this.device.createTexture({
+                    label: "Buffer Pass Texture A",
+                    size: [ resolutionX, resolutionY, 1 ],
+                    format: navigator.gpu.getPreferredCanvasFormat(),
+                    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING
+                }),
+                this.device.createTexture({
+                    label: "Buffer Pass Texture B",
+                    size: [ resolutionX, resolutionY, 1 ],
+                    format: navigator.gpu.getPreferredCanvasFormat(),
+                    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING
+                })
+            ];
+
+            this.buffers[ pass.name ] = this.textures;
         }
     },
 
@@ -1146,19 +1175,19 @@ const ShaderHub = {
                         switch( document.name )
                         {
                             case "Keyboard":
-                            await this.createKeyboardTexture( this.currentChannelIndex, true );
-                            break;
+                                await this.createKeyboardTexture( this.currentChannelIndex, true );
+                                break;
                             case "BufferA":
                             case "BufferB":
                             case "BufferC":
                             case "BufferD":
-                            await this.loadBufferChannel( pass, document.name, this.currentChannelIndex, true );
-                            break;
+                                await this.loadBufferChannel( pass, document.name, this.currentChannelIndex, true );
+                                break;
                         }
                     }
                     else if( category === "texture" ) // Use this image as a texture
                     {
-                        this.loadTextureChannelFromFile( fileId, this.currentChannelIndex );
+                        await this.loadTextureChannelFromFile( fileId, this.currentChannelIndex );
                     }
 
                     this.currentChannelIndex = undefined;
@@ -1916,25 +1945,26 @@ const ShaderHub = {
         const imageName = "Keyboard";
         this.textures[ imageName ] = imageTexture;
 
-        for( const pass of this.shader.passes ?? [] )
+        const pass = this.currentPass;
+        const usedChannel = pass.channels.indexOf( imageName );
+        if( ( channel === undefined ) && usedChannel > -1 )
         {
-            const usedChannel = pass.channels.indexOf( imageName );
+            channel = usedChannel;
+        }
 
-            if( ( channel === undefined ) && usedChannel > -1 )
+        if( channel !== undefined )
+        {
+            pass.channels[ channel ] = imageName;
+
+            const passIndex = this.shader.passes.indexOf( pass );
+            this.renderPipelines[ passIndex ] = null;
+            this.renderBindGroups[ passIndex ] = null;
+
+            // await this.compileShader( false, pass );
+
+            if( updatePreview )
             {
-                channel = usedChannel;
-            }
-
-            if( channel !== undefined )
-            {
-                pass.channels[ channel ] = imageName;
-
-                await this.compileShader( false, pass );
-
-                if( updatePreview )
-                {
-                    this.channelsContainer.childNodes[ channel ].querySelector( "img" ).src = "images/keyboard.png";
-                }
+                this.channelsContainer.childNodes[ channel ].querySelector( "img" ).src = "images/keyboard.png";
             }
         }
     },
@@ -2075,7 +2105,7 @@ const ShaderHub = {
         pass.channels[ channel ] = file;
         await this.createTexture( file, channel, true );
 
-        this.compileShader( true, pass );
+        await this.compileShader( true, pass );
     },
 
     async removeUniformChannel( channel ) {
@@ -2092,7 +2122,7 @@ const ShaderHub = {
         this.channelsContainer.childNodes[ channel ].querySelector( "img" ).src = Constants.IMAGE_EMPTY_SRC;
 
         // Recreate everything
-        this.compileShader( true, pass );
+        await this.compileShader( true, pass );
     },
 
     async addUniform( name, value, min, max ) {

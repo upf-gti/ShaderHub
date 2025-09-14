@@ -21,16 +21,18 @@ class ShaderPass {
 
         if( this.type === "buffer" )
         {
+            this.resolution = [ data.resolutionX ?? 0, data.resolutionY ?? 0 ];
+
             this.textures = [
                 device.createTexture({
                     label: "Buffer Pass Texture A",
-                    size: [ 1280, 720, 1 ],
+                    size: [ this.resolution[ 0 ], this.resolution[ 1 ], 1 ],
                     format: navigator.gpu.getPreferredCanvasFormat(),
                     usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING
                 }),
                 device.createTexture({
                     label: "Buffer Pass Texture B",
-                    size: [ 1280, 720, 1 ],
+                    size: [ this.resolution[ 0 ], this.resolution[ 1 ], 1 ],
                     format: navigator.gpu.getPreferredCanvasFormat(),
                     usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING
                 })
@@ -96,7 +98,8 @@ class ShaderPass {
                         view: textureView,
                         clearValue: [0, 0, 0, 1],
                         loadOp: 'clear',
-                        storeOp: 'store',
+                        // loadOp: 'load',
+                        storeOp: 'store'
                     },
                 ],
             };
