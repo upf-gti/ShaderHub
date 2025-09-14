@@ -208,10 +208,10 @@ class ShaderPass {
             }
         }
 
-        // Add common block (TODO)
+        // Add common block
         {
-            const code = null;
-            const allCommon = code ? code.replaceAll( '\r', '' ).split( "\n" ) : [];
+            const commonPass = this.shader.passes.find( p => p.type === "common" );
+            const allCommon = commonPass?.codeLines ?? [];
             const commonIndex = templateCodeLines.indexOf( "$common" );
             console.assert( commonIndex > -1 );
             templateCodeLines.splice( commonIndex, 1, ...allCommon );

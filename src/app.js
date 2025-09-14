@@ -29,6 +29,7 @@ const ShaderHub =
     keyPressed: new Map(),
     mousePosition: [ 0, 0 ],
     lastMousePosition: [ 0, 0 ],
+    generateKbTexture: true,
 
     frameCount: 0,
     lastTime: 0,
@@ -41,11 +42,72 @@ const ShaderHub =
         await ui.init( fs );
     },
 
+    async onKeyDown( e )
+    {
+        this.keyState.set( Utils.code2ascii( e.code ), true );
+        if( this.generateKbTexture ) await this.createKeyboardTexture();
+        this.generateKbTexture = false;
+    },
+
+    async onKeyUp( e )
+    {
+        this.keyState.set( Utils.code2ascii( e.code ), false );
+        this.keyToggleState.set( Utils.code2ascii( e.code ), !( this.keyToggleState.get( Utils.code2ascii( e.code ) ) ?? false ) );
+        this.keyPressed.set( Utils.code2ascii( e.code ), true );
+        this._anyKeyPressed = true;
+        await this.createKeyboardTexture();
+        this.generateKbTexture = true;
+    },
+
+    async onMouseDown( e )
+    {
+        this._mouseDown = e;
+        this.mousePosition = [ e.offsetX, e.offsetY ];
+        this.lastMousePosition = [ ...this.mousePosition ];
+        this._mousePressed = true;
+    },
+
+    async onMouseUp( e )
+    {
+        this._mouseDown = undefined;
+    },
+
+    async onMouseMove( e )
+    {
+        if( this._mouseDown )
+        {
+            this.mousePosition = [ e.offsetX, e.offsetY ];
+        }
+    },
+
     async onShaderCanvasResized( xResolution, yResolution )
     {
         this.resizeBuffers( xResolution, yResolution );
         this.resolutionX = xResolution;
         this.resolutionY = yResolution;
+    },
+
+    async onShaderChannelSelected( category, name, fileId, index )
+    {
+        if( category === "misc" )
+        {
+            switch( name )
+            {
+                case "Keyboard":
+                    await this.createKeyboardTexture( index, true );
+                    break;
+                case "BufferA":
+                case "BufferB":
+                case "BufferC":
+                case "BufferD":
+                    await this.loadBufferChannel( this.currentPass, name, index, true );
+                    break;
+            }
+        }
+        else if( category === "texture" ) // Use this image as a texture
+        {
+            await this.loadTextureChannelFromFile( fileId, index );
+        }
     },
 
     async onShaderEditorCreated( shader, canvas )
@@ -131,8 +193,8 @@ const ShaderHub =
         ui.editor.loadTab( this.currentPass.name );
     },
 
-    onShaderPassCreated( passType, passName ) {
-
+    onShaderPassCreated( passType, passName )
+    {
         let indexOffset = -1;
 
         const shaderPass = new ShaderPass( this.shader, this.device, {
@@ -178,7 +240,7 @@ const ShaderHub =
         } );
 
         // Wait for the tab to be created
-        LX.doAsync( () => {
+        LX.doAsync( async () => {
 
             const closeIcon = LX.makeIcon( "X", { iconClass: "ml-2" } );
             LX.asTooltip( closeIcon, "Delete file" );
@@ -191,6 +253,10 @@ const ShaderHub =
 
             ui.editor.tabs.tabDOMs[ passName ].appendChild( closeIcon );
 
+            this.onShaderPassSelected( passName );
+
+            await this.compileShader( false );
+
         }, 10 );
     },
 
@@ -198,6 +264,7 @@ const ShaderHub =
     {
         this.currentPass = this.shader.passes.find( p => p.name === passName );
         console.assert( this.currentPass, `Cannot find pass ${ passName }` );
+        ui.updateShaderChannelsView( this.currentPass );
     },
 
     onShaderTimePaused()
@@ -232,8 +299,8 @@ const ShaderHub =
         LX.emit( "@elapsed-time", `${ this.elapsedTime.toFixed( 2 ) }s` );
     },
 
-    async getShaderById( id ) {
-
+    async getShaderById( id )
+    {
         let shaderData = null;
 
         // Create shader instance based on shader uid
@@ -298,8 +365,8 @@ const ShaderHub =
         return preview ? await fs.getFileUrl( preview ) : await fs.getFileUrl( assetFileId );
     },
 
-    resizeBuffers( resolutionX, resolutionY ) {
-
+    resizeBuffers( resolutionX, resolutionY )
+    {
         for( const pass of this.shader.passes )
         {
             if( pass.type !== "buffer" )
@@ -307,81 +374,6 @@ const ShaderHub =
 
             pass.resizeBuffer( resolutionX, resolutionY );
         }
-    },
-
-    async openAvailableChannels( channelIndex ) {
-
-        this.currentChannelIndex = channelIndex;
-
-        const _createChannelItems = async ( category, container ) => {
-
-            const result = await fs.listDocuments( FS.ASSETS_COLLECTION_ID, [
-                Query.equal( "category", category )
-            ] );
-
-            if( result.total === 0 )
-            {
-                LX.makeContainer( ["100%", "auto"], "mt-8 text-xxl font-medium justify-center text-center", "No channels found.", container );
-                return;
-            }
-
-            const passName = ui.editor.getSelectedTabName();
-            const pass = this.shader.passes.find( p => p.name === passName );
-
-            for( const document of result.documents )
-            {
-                const channelItem = LX.makeElement( "li", "relative flex rounded-lg bg-secondary hover:bg-tertiary overflow-hidden", "", container );
-                channelItem.style.maxHeight = "200px";
-                const channelPreview = LX.makeElement( "img", "w-full h-full rounded-t-lg bg-secondary hover:bg-tertiary border-none cursor-pointer", "", channelItem );
-                const fileId = document[ "file_id" ];
-                const preview = document[ "preview" ];
-                const localUrl = document[ "local_url" ];
-                channelPreview.src = preview ? await fs.getFileUrl( preview ) : ( fileId ? await fs.getFileUrl( fileId ) : ( localUrl ?? "images/shader_preview.png" ) );
-                const shaderDesc = LX.makeContainer( ["100%", "auto"], "absolute top-0 p-2 w-full bg-blur items-center select-none text-sm font-bold", `
-                    ${ document.name } (uint8)
-                `, channelItem );
-                channelItem.addEventListener( "click", async ( e ) => {
-                    e.preventDefault();
-                    if( category === "misc" )
-                    {
-                        switch( document.name )
-                        {
-                            case "Keyboard":
-                                await this.createKeyboardTexture( this.currentChannelIndex, true );
-                                break;
-                            case "BufferA":
-                            case "BufferB":
-                            case "BufferC":
-                            case "BufferD":
-                                await this.loadBufferChannel( pass, document.name, this.currentChannelIndex, true );
-                                break;
-                        }
-                    }
-                    else if( category === "texture" ) // Use this image as a texture
-                    {
-                        await this.loadTextureChannelFromFile( fileId, this.currentChannelIndex );
-                    }
-
-                    this.currentChannelIndex = undefined;
-                    dialog.close();
-                } );
-            }
-        }
-
-        const area = new LX.Area( { skipAppend: true } );
-        const tabs = area.addTabs( { parentClass: "bg-secondary p-4", sizes: [ "auto", "auto" ], contentClass: "bg-secondary p-4 pt-0" } );
-
-        const texturesContainer = LX.makeContainer( [ "100%", "100%" ], "grid channel-server-list gap-4 p-4 border rounded-lg justify-center overflow-scroll" );
-        await _createChannelItems( "texture", texturesContainer );
-        tabs.add( "Textures", texturesContainer, { selected: true } );
-
-        const miscContainer = LX.makeContainer( [ "100%", "100%" ], "grid channel-server-list gap-4 p-4 border rounded-lg justify-center overflow-scroll" );
-        await _createChannelItems( "misc", miscContainer );
-        tabs.add( "Misc", miscContainer, { xselected: true } );
-
-        let dialog = new LX.Dialog( `Channel${ channelIndex } input:`, (p) => {
-            p.attach( area );
-        }, { modal: false, close: true, minimize: false, size: [`${ Math.min( 1280, window.innerWidth - 64 ) }px`, "512px"], draggable: true });
     },
 
     requestFullscreen( element ) {
@@ -846,13 +838,15 @@ const ShaderHub =
                         await this.compileShader( true, pass );
                     }
 
-                    const bg = await this.createRenderBindGroup( pass, this.renderPipelines[ i ] );
+                    // Move bindgroups and pipelines to each pass
+                    // and remove this debug per-frame recreastion of BG
+                    // const bg = await this.createRenderBindGroup( pass, this.renderPipelines[ i ] );
 
                     const r = pass.draw(
                         this.device,
                         this.webGPUContext,
                         this.renderPipelines[ i ],
-                        bg,// this.renderBindGroups[ i ]
+                        this.renderBindGroups[ i ]
                     );
 
                     // Update buffers
@@ -885,6 +879,8 @@ const ShaderHub =
     },
 
     async createRenderPipeline( pass, updateBindGroup = true ) {
+
+        if( pass.type === "common" ) return;
 
         const result = await this.validateShader( pass.getShaderCode() );
         if( !result.valid )
@@ -1028,14 +1024,14 @@ const ShaderHub =
 
         if( updatePreview )
         {
-            this.channelsContainer.childNodes[ channel ].querySelector( "img" ).src = url;
+            ui.updateShaderChannelPreview( channel, url );
         }
 
         return imageTexture;
     },
 
-    async createKeyboardTexture( channel, updatePreview ) {
-
+    async createKeyboardTexture( channel, updatePreview )
+    {
         const dimensions = [ 256, 3 ];
         const data = [];
 
@@ -1099,13 +1095,13 @@ const ShaderHub =
 
             if( updatePreview )
             {
-                this.channelsContainer.childNodes[ channel ].querySelector( "img" ).src = "images/keyboard.png";
+                ui.updateShaderChannelPreview( channel, "images/keyboard.png" );
             }
         }
     },
 
-    async validateShader( code ) {
-
+    async validateShader( code )
+    {
         // Close all toasts
         document.querySelectorAll( ".lextoast" ).forEach( t => t.close() );
 
@@ -1134,17 +1130,17 @@ const ShaderHub =
         return { valid: true, module };
     },
 
-    _setEditorErrorBorder( errorCode = ERROR_CODE_DEFAULT ) {
-
+    setEditorErrorBorder( errorCode = ERROR_CODE_DEFAULT )
+    {
         ui.editor.area.root.parentElement.classList.toggle( "code-border-default", errorCode === ERROR_CODE_DEFAULT );
         ui.editor.area.root.parentElement.classList.toggle( "code-border-error", errorCode === ERROR_CODE_ERROR );
         ui.editor.area.root.parentElement.classList.toggle( "code-border-success", errorCode === ERROR_CODE_SUCCESS );
 
-        LX.doAsync( () => this._setEditorErrorBorder(), 2000 );
+        LX.doAsync( () => this.setEditorErrorBorder(), 2000 );
     },
 
-    async compileShader( showFeedback = true, pass ) {
-
+    async compileShader( showFeedback = true, pass )
+    {
         this._lastShaderCompilationWithErrors = false;
 
         ui.editor.processLines();
@@ -1167,7 +1163,7 @@ const ShaderHub =
                 this.renderPipelines[ passIndex ] = pipeline;
                 this.renderBindGroups[ passIndex ] = await this.createRenderBindGroup( pass, pipeline );
             }
-            else
+            else if( pipeline ) // error object
             {
                 // Open the tab with the error
                 ui.editor.loadTab( pass.name );
@@ -1184,7 +1180,7 @@ const ShaderHub =
 
                         if( showFeedback )
                         {
-                            this._setEditorErrorBorder( ERROR_CODE_ERROR );
+                            this.setEditorErrorBorder( ERROR_CODE_ERROR );
                             LX.toast( `❌ ${ LX.toTitleCase( msg.type ) }: ${ fragLineNumber }:${ msg.linePos }`, msg.message, { timeout: -1, position: "top-right" } );
                             ui.editor.code.childNodes[ fragLineNumber - 1 ]?.classList.add( msg.type === "error" ? "removed" : "debug");
                         }
@@ -1199,14 +1195,15 @@ const ShaderHub =
 
         if( showFeedback )
         {
-            this._setEditorErrorBorder( ERROR_CODE_SUCCESS );
+            this.setEditorErrorBorder( ERROR_CODE_SUCCESS );
             // LX.toast( `✅ No errors`, "Shader compiled successfully!", { position: "top-right" } );
         }
 
         return WEBGPU_OK;
     },
 
-    async shaderExists() {
+    async shaderExists()
+    {
         try {
             return await fs.getDocument( FS.SHADERS_COLLECTION_ID, this.shader.uid );
         } catch (error) {
@@ -1214,8 +1211,8 @@ const ShaderHub =
         }
     },
 
-    async loadBufferChannel( pass, bufferName, channel, updatePreview = false, forceCompile = false ) {
-
+    async loadBufferChannel( pass, bufferName, channel, updatePreview = false, forceCompile = false )
+    {
         pass.channels[ channel ] = bufferName;
 
         if( forceCompile )
@@ -1225,12 +1222,12 @@ const ShaderHub =
 
         if( updatePreview )
         {
-            this.channelsContainer.childNodes[ channel ].querySelector( "img" ).src = "images/buffer.png";
+            ui.updateShaderChannelPreview( channel, "images/buffer.png" );
         }
     },
 
-    async loadTextureChannelFromFile( file, channel ) {
-
+    async loadTextureChannelFromFile( file, channel )
+    {
         const pass = this.currentPass;
         if( pass.name === "Common" )
         {
@@ -1243,26 +1240,27 @@ const ShaderHub =
         await this.compileShader( true, pass );
     },
 
-    async removeUniformChannel( channel ) {
-
+    async removeUniformChannel( channel )
+    {
         const pass = this.currentPass;
         if( pass.name === "Common" )
-        {
             return;
-        }
 
         pass.channels[ channel ] = undefined;
 
         // Reset image
-        this.channelsContainer.childNodes[ channel ].querySelector( "img" ).src = Constants.IMAGE_EMPTY_SRC;
+        ui.updateShaderChannelPreview( channel, Constants.IMAGE_EMPTY_SRC );
 
         // Recreate everything
         await this.compileShader( true, pass );
     },
 
-    async addUniform( name, value, min, max ) {
-
+    async addUniform( name, value, min, max )
+    {
         const pass = this.currentPass;
+        if( pass.name === "Common" )
+            return;
+
         const uName = name ?? `iUniform${ pass.uniforms.length + 1 }`;
         pass.uniforms.push( { name: uName, value: value ?? 0, min: min ?? 0, max: max ?? 1 } );
         const allCode = pass.getShaderCode( false );
@@ -1272,8 +1270,8 @@ const ShaderHub =
         }
     },
 
-    async snapshotCanvas( outWidth, outHeight ) {
-
+    async snapshotCanvas( outWidth, outHeight )
+    {
         const width = outWidth ?? 640;
         const height = outHeight ?? 360;
         const blob = await (() => {return new Promise((resolve) =>
@@ -1292,15 +1290,15 @@ const ShaderHub =
         );
     },
 
-    async getCanvasSnapshot() {
-
+    async getCanvasSnapshot()
+    {
         const blob = await this.snapshotCanvas();
         const url = URL.createObjectURL( blob );
         window.open(url);
     },
 
-    quitIfWebGPUNotAvailable( adapter, device ) {
-
+    quitIfWebGPUNotAvailable( adapter, device )
+    {
         if( !device )
         {
             return this.quitIfAdapterNotAvailable( adapter );
@@ -1317,8 +1315,8 @@ const ShaderHub =
         return WEBGPU_OK;
     },
 
-    quitIfAdapterNotAvailable( adapter ) {
-
+    quitIfAdapterNotAvailable( adapter )
+    {
         if( !("gpu" in navigator) )
         {
             this.fail("'navigator.gpu' is not defined - WebGPU not available in this browser");
@@ -1335,8 +1333,8 @@ const ShaderHub =
         return WEBGPU_ERROR;
     },
 
-    fail( msg, msgTitle ) {
-
+    fail( msg, msgTitle )
+    {
         new LX.Dialog( msgTitle ?? "❌ WebGPU Error", (p) => {
             p.root.classList.add( "p-4" );
             p.root.innerHTML = msg;

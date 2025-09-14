@@ -3,7 +3,6 @@ import * as Constants from "./constants.js";
 import * as Utils from './utils.js';
 import { FS } from './fs.js';
 import { ShaderHub } from './app.js';
-import { Shader } from './graphics.js';
 
 const Query = Appwrite.Query;
 const mobile = Utils.isMobile();
@@ -397,7 +396,7 @@ export const ui = {
             statusShowEditorLanguage: false,
             statusShowEditorFilename: false,
             customSuggestions,
-            onCreateStatusPanel: ShaderHub.makeStatusBarButtons.bind( ShaderHub ),
+            onCreateStatusPanel: this.makeStatusBarButtons.bind( this ),
             onCtrlSpace: ShaderHub.compileShader.bind( ShaderHub ),
             onSave: ShaderHub.compileShader.bind( ShaderHub ),
             onRun: ShaderHub.compileShader.bind( ShaderHub ),
@@ -434,7 +433,6 @@ export const ui = {
             },
             onSelectTab: async ( name, editor ) => {
                 ShaderHub.onShaderPassSelected( name );
-                await this.updateShaderChannelsView();
             }
         });
 
@@ -718,6 +716,11 @@ export const ui = {
         }
 
         this.openCustomParamsButton = customTabInfoButtonsPanel.addButton( null, "OpenCustomParams", ( name, event ) => {
+
+            const pass = ShaderHub.currentPass;
+            if( pass.name === "Common" )
+                return;
+
             this.customParametersPanel.refresh()
             this.openCustomUniforms( event.target );
         }, { icon: "Settings2", title: "Custom Parameters", tooltip: true } );
@@ -795,41 +798,26 @@ export const ui = {
             }
         }
 
-        let generateKbTexture = true;
-
         canvas.addEventListener('keydown', async (e) => {
-            this.keyState.set( Utils.code2ascii( e.code ), true );
-            if( generateKbTexture ) await this.createKeyboardTexture();
-            generateKbTexture = false;
+            ShaderHub.onKeyDown( e );
             e.preventDefault();
         }, false);
 
         canvas.addEventListener('keyup', async (e) => {
-            this.keyState.set( Utils.code2ascii( e.code ), false );
-            this.keyToggleState.set( Utils.code2ascii( e.code ), !( this.keyToggleState.get( Utils.code2ascii( e.code ) ) ?? false ) );
-            this.keyPressed.set( Utils.code2ascii( e.code ), true );
-            this._anyKeyPressed = true;
-            await this.createKeyboardTexture();
-            generateKbTexture = true;
+            ShaderHub.onKeyUp( e );
             e.preventDefault();
         }, false);
 
         canvas.addEventListener("mousedown", (e) => {
-            this._mouseDown = e;
-            this.mousePosition = [ e.offsetX, e.offsetY ];
-            this.lastMousePosition = [ ...this.mousePosition ];
-            this._mousePressed = true;
+            ShaderHub.onMouseDown( e );
         });
 
         canvas.addEventListener("mouseup", (e) => {
-            this._mouseDown = undefined;
+            ShaderHub.onMouseUp( e );
         });
 
         canvas.addEventListener("mousemove", (e) => {
-            if( this._mouseDown )
-            {
-                this.mousePosition = [ e.offsetX, e.offsetY ];
-            }
+            ShaderHub.onMouseMove( e );
         });
 
         return canvas;
@@ -885,10 +873,66 @@ export const ui = {
         new LX.Popover( target, [ this.customParametersPanel.root.parentElement ], { align: "start", side: "top" } );
     },
 
+    async openAvailableChannels( channelIndex )
+    {
+        this.currentChannelIndex = channelIndex;
+
+        const _createChannelItems = async ( category, container ) => {
+
+            const result = await this.fs.listDocuments( FS.ASSETS_COLLECTION_ID, [
+                Query.equal( "category", category )
+            ] );
+
+            if( result.total === 0 )
+            {
+                LX.makeContainer( ["100%", "auto"], "mt-8 text-xxl font-medium justify-center text-center", "No channels found.", container );
+                return;
+            }
+
+            for( const document of result.documents )
+            {
+                const channelItem = LX.makeElement( "li", "relative flex rounded-lg bg-secondary hover:bg-tertiary overflow-hidden", "", container );
+                channelItem.style.maxHeight = "200px";
+                const channelPreview = LX.makeElement( "img", "w-full h-full rounded-t-lg bg-secondary hover:bg-tertiary border-none cursor-pointer", "", channelItem );
+                const fileId = document[ "file_id" ];
+                const preview = document[ "preview" ];
+                const localUrl = document[ "local_url" ];
+                channelPreview.src = preview ? await this.fs.getFileUrl( preview ) : ( fileId ? await this.fs.getFileUrl( fileId ) : ( localUrl ?? "images/shader_preview.png" ) );
+                const shaderDesc = LX.makeContainer( ["100%", "auto"], "absolute top-0 p-2 w-full bg-blur items-center select-none text-sm font-bold", `
+                    ${ document.name } (uint8)
+                `, channelItem );
+                channelItem.addEventListener( "click", async ( e ) => {
+                    e.preventDefault();
+                    ShaderHub.onShaderChannelSelected( category, document.name, fileId, this.currentChannelIndex );
+                    this.currentChannelIndex = undefined;
+                    dialog.close();
+                } );
+            }
+        }
+
+        const area = new LX.Area( { skipAppend: true } );
+        const tabs = area.addTabs( { parentClass: "bg-secondary p-4", sizes: [ "auto", "auto" ], contentClass: "bg-secondary p-4 pt-0" } );
+
+        const texturesContainer = LX.makeContainer( [ "100%", "100%" ], "grid channel-server-list gap-4 p-4 border rounded-lg justify-center overflow-scroll" );
+        await _createChannelItems( "texture", texturesContainer );
+        tabs.add( "Textures", texturesContainer, { selected: true } );
+
+        const miscContainer = LX.makeContainer( [ "100%", "100%" ], "grid channel-server-list gap-4 p-4 border rounded-lg justify-center overflow-scroll" );
+        await _createChannelItems( "misc", miscContainer );
+        tabs.add( "Misc", miscContainer, { xselected: true } );
+
+        let dialog = new LX.Dialog( `Channel${ channelIndex } input:`, (p) => {
+            p.attach( area );
+        }, { modal: false, close: true, minimize: false, size: [`${ Math.min( 1280, window.innerWidth - 64 ) }px`, "512px"], draggable: true });
+    },
+
+    async updateShaderChannelPreview( channel, url )
+    {
+        this.channelsContainer.childNodes[ channel ].querySelector( "img" ).src = url;
+    },
+
     async updateShaderChannelsView( pass )
     {
-        pass = pass ?? ShaderHub.currentPass;
-
         this.toggleShaderChannelsView( pass.type === "common" );
 
         this.channelsContainer.innerHTML = "";
@@ -904,7 +948,7 @@ export const ui = {
             const channelTitle = LX.makeContainer( ["100%", "auto"], "p-2 absolute text-md bottom-0 channel-title pointer-events-none", `iChannel${ i }`, channelContainer );
             channelContainer.addEventListener( "click", ( e ) => {
                 e.preventDefault();
-                ShaderHub.openAvailableChannels( i );
+                this.openAvailableChannels( i );
             } );
             channelContainer.addEventListener("contextmenu", ( e ) => {
                 e.preventDefault();
