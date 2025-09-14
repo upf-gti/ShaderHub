@@ -1,4 +1,45 @@
 import * as Constants from "./constants.js";
+import { ShaderHub } from './app.js';
+
+const WEBGPU_OK     = 0;
+const WEBGPU_ERROR  = 1;
+
+class FPSCounter
+{
+    constructor()
+    {
+        this.frame = 0;
+        this.to = 0;
+        this.fps = 0;
+    }
+
+    reset()
+    {
+        this.frame = 0;
+        this.to = 0;
+        this.fps = 60.0;
+    }
+
+    get()
+    {
+        return Math.floor( this.fps );
+    }
+
+    count( time )
+    {
+        this.frame++;
+
+        if( ( time - this.to ) > 500.0 )
+        {
+            this.fps = 1000.0 * this.frame / ( time - this.to );
+            this.frame = 0;
+            this.to = time;
+            return true;
+        }
+
+        return false;
+    }
+}
 
 // Each shader pass corresponds to a shader file
 class ShaderPass {
@@ -40,20 +81,26 @@ class ShaderPass {
         }
     }
 
-    draw( device, ctx, renderPipeline, renderBindGroup ) {
-
+    async draw( format, ctx, buffers, textures )
+    {
         if( this.type === "common" )
         {
             return;
-        } 
-        else if( this.type === "image" )
-        {
-            if( !renderPipeline )
-            {
-                return;
-            }
+        }
 
-            const commandEncoder = device.createCommandEncoder();
+        if( !this.pipeline )
+        {
+            await this.createPipeline( format );
+        }
+
+        if( !this.bindGroup )
+        {
+            await this.createBindGroup( buffers, textures );
+        }
+
+        if( this.type === "image" )
+        {
+            const commandEncoder = this.device.createCommandEncoder();
             const textureView = ctx.getCurrentTexture().createView();
 
             const renderPassDescriptor = {
@@ -68,28 +115,28 @@ class ShaderPass {
             };
 
             const passEncoder = commandEncoder.beginRenderPass( renderPassDescriptor );
-            passEncoder.setPipeline( renderPipeline );
+            passEncoder.setPipeline( this.pipeline );
 
-            if( renderBindGroup )
+            if( this.bindGroup )
             {
-                passEncoder.setBindGroup( 0, renderBindGroup );
+                passEncoder.setBindGroup( 0, this.bindGroup );
             }
 
             passEncoder.draw( 6 );
             passEncoder.end();
 
-            device.queue.submit( [ commandEncoder.finish() ] );
+            this.device.queue.submit( [ commandEncoder.finish() ] );
         }
         else if( this.type === "buffer" )
         {
-            if( !renderPipeline || !this.textures[ 0 ] || !this.textures[ 1 ] )
+            if( !this.textures[ 0 ] || !this.textures[ 1 ] )
             {
                 return;
             }
 
             const inputTex = this.textures[this.frameCount % 2]; // previous frame
             const renderTarget = this.textures[(this.frameCount + 1) % 2]; // this frame
-            const commandEncoder = device.createCommandEncoder();
+            const commandEncoder = this.device.createCommandEncoder();
             const textureView = renderTarget.createView();
 
             const renderPassDescriptor = {
@@ -105,17 +152,17 @@ class ShaderPass {
             };
 
             const passEncoder = commandEncoder.beginRenderPass( renderPassDescriptor );
-            passEncoder.setPipeline( renderPipeline );
+            passEncoder.setPipeline( this.pipeline );
 
-            if( renderBindGroup )
+            if( this.bindGroup )
             {
-                passEncoder.setBindGroup( 0, renderBindGroup );
+                passEncoder.setBindGroup( 0, this.bindGroup );
             }
 
             passEncoder.draw( 6 );
             passEncoder.end();
 
-            device.queue.submit( [ commandEncoder.finish() ] );
+            this.device.queue.submit( [ commandEncoder.finish() ] );
 
             this.frameCount++;
 
@@ -123,8 +170,133 @@ class ShaderPass {
         }
     }
 
-    getShaderCode( includeBindings = true ) {
+    async createPipeline( format )
+    {
+        if( this.type === "common" ) return;
 
+        const result = await ShaderHub.validateShader( this.getShaderCode() );
+        if( !result.valid )
+        {
+            return result;
+        }
+
+        this.pipeline = await this.device.createRenderPipeline({
+            layout: 'auto',
+            vertex: {
+                module: result.module,
+            },
+            fragment: {
+                module: result.module,
+                targets: [
+                    {
+                        format
+                    },
+                ],
+            },
+            primitive: {
+                topology: 'triangle-list',
+            },
+        });
+
+        console.warn( "Info: Render Pipeline created!" );
+
+        return this.pipeline;
+    }
+
+    async createBindGroup( buffers, textures )
+    {
+        if( !this.pipeline )
+        {
+            return;
+        }
+
+        let bindingIndex = 0;
+
+        const entries = [
+            {
+                binding: bindingIndex++,
+                resource: { buffer: buffers[ "time" ] }
+            },
+            {
+                binding: bindingIndex++,
+                resource: { buffer: buffers[ "timeDelta" ] }
+            },
+            {
+                binding: bindingIndex++,
+                resource: { buffer: buffers[ "frameCount" ] }
+            },
+            {
+                binding: bindingIndex++,
+                resource: { buffer: buffers[ "resolution" ] }
+            },
+            {
+                binding: bindingIndex++,
+                resource: { buffer: buffers[ "mouse" ] }
+            }
+        ]
+
+        const customUniformCount = this.uniforms.length;
+        if( customUniformCount )
+        {
+            this.uniforms.map( ( u, index ) => {
+                const buffer = this.uniformBuffers[ index ];
+                this.device.queue.writeBuffer(
+                    buffer,
+                    0,
+                    new Float32Array([ u.value ])
+                );
+                entries.push( {
+                    binding: bindingIndex++,
+                    resource: {
+                        buffer,
+                    }
+                } );
+            } );
+        }
+
+        const bindings = this.channels.filter( u => u !== undefined && textures[ u ] );
+
+        if( bindings.length )
+        {
+            entries.push( ...this.channels.map( ( channelName, index ) => {
+                if( !channelName ) return;
+                let texture = textures[ channelName ];
+                if( !texture ) return;
+                texture = ( texture instanceof Array ) ? texture[ Constants.BUFFER_PASS_BIND_TEXTURE_INDEX ] : texture;
+                return { binding: bindingIndex++, resource: texture.createView() };
+            } ).filter( u => u !== undefined ) );
+            entries.push( { binding: bindingIndex++, resource: this.sampler } );
+        }
+
+        this.bindGroup = await this.device.createBindGroup({
+            layout: this.pipeline.getBindGroupLayout( 0 ),
+            entries
+        });
+
+        console.warn( "Info: Render Bind Group created!" );
+
+        return this.bindGroup;
+    }
+
+    async compile( format, buffers, textures )
+    {
+        const p = await this.createPipeline( format );
+        if( p?.constructor !== GPURenderPipeline )
+        {
+            return p;
+        }
+
+        const bg = await this.createBindGroup( buffers, textures );
+        if( bg?.constructor !== GPUBindGroup )
+        {
+            return WEBGPU_ERROR;
+        }
+        
+        return WEBGPU_OK;
+    }
+
+    getShaderCode( includeBindings = true )
+    {
         const templateCodeLines = [ ...( this.shader.type === "render" ) ? Shader.RENDER_SHADER_TEMPLATE : Shader.COMPUTER_SHADER_TEMPLATE ];
 
         if( includeBindings )
@@ -363,4 +535,4 @@ Shader.RENDER_BUFFER_TEMPLATE = [
 
 Shader.COMPUTER_SHADER_TEMPLATE = [];
 
-export { Shader, ShaderPass };
+export { Shader, ShaderPass, FPSCounter };

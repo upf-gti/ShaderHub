@@ -560,7 +560,8 @@ export const ui = {
             panel.sameLine();
             panel.addButton( null, "ResetTime", () => ShaderHub.onShaderTimeReset(), { icon: "SkipBack", title: "Reset time", tooltip: true } );
             panel.addButton( null, "PauseTime", () => ShaderHub.onShaderTimePaused(), { icon: "Pause", title: "Pause/Resume", tooltip: true, swap: "Play" } );
-            panel.addLabel( "0.0", { signal: "@elapsed-time", xclassName: "ml-auto", xinputClass: "text-end" } );
+            panel.addLabel( "0.0", { signal: "@elapsed-time", inputClass: "size-content" } );
+            panel.addLabel( "0 FPS", { signal: "@fps", inputClass: "size-content" } );
             panel.endLine( "items-center h-full" );
 
             panel.sameLine();

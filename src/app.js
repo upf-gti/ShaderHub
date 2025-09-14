@@ -5,7 +5,7 @@ import * as Constants from "./constants.js";
 import * as Utils from './utils.js';
 import { FS } from './fs.js';
 import { ui } from './ui.js';
-import { Shader, ShaderPass } from './graphics.js';
+import { FPSCounter, Shader, ShaderPass } from './graphics.js';
 
 const WEBGPU_OK     = 0;
 const WEBGPU_ERROR  = 1;
@@ -15,6 +15,7 @@ const ERROR_CODE_SUCCESS    = 1;
 const ERROR_CODE_ERROR      = 2;
 
 const fs = new FS();
+const fps = new FPSCounter();
 const Query = Appwrite.Query;
 
 const ShaderHub =
@@ -40,6 +41,142 @@ const ShaderHub =
     {
         await fs.detectAutoLogin();
         await ui.init( fs );
+    },
+
+    async onFrame()
+    {
+        const now = LX.getTime();
+
+        this.timeDelta = ( now - this.lastTime ) / 1000;
+
+        fps.count( now );
+
+        if( !this.timePaused )
+        {
+            this.device.queue.writeBuffer(
+                this.gpuBuffers[ "timeDelta" ],
+                0,
+                new Float32Array([ this.timeDelta ])
+            );
+
+            this.device.queue.writeBuffer(
+                this.gpuBuffers[ "time" ],
+                0,
+                new Float32Array([ this.elapsedTime ])
+            );
+
+            this.elapsedTime += this.timeDelta;
+
+            this.device.queue.writeBuffer(
+                this.gpuBuffers[ "frameCount" ],
+                0,
+                new Int32Array([ this.frameCount ])
+            );
+
+            this.frameCount++;
+
+            LX.emit( "@elapsed-time", `${ this.elapsedTime.toFixed( 2 ) }s` );
+            LX.emit( "@fps", `${ fps.get() } FPS` );
+        }
+        this.device.queue.writeBuffer(
+            this.gpuBuffers[ "resolution" ],
+            0,
+            new Float32Array([ this.resolutionX ?? this.gpuCanvas.offsetWidth, this.resolutionY ?? this.gpuCanvas.offsetHeight ])
+        );
+
+        this.device.queue.writeBuffer(
+            this.gpuBuffers[ "mouse" ],
+            0,
+            new Float32Array([
+                this.mousePosition[ 0 ], this.mousePosition[ 1 ],
+                this.lastMousePosition[ 0 ] * ( this._mouseDown ? 1.0 : -1.0 ), this.lastMousePosition[ 1 ] * ( this._mousePressed ? 1.0 : -1.0 ) ])
+        );
+
+        this.lastTime = now;
+
+        for( let i = 0; i < this.shader.passes.length; ++i )
+        {
+            // Buffers and images draw
+            const pass = this.shader.passes[ i ];
+            if( pass.type === "common" ) continue;
+
+            // Create uniform buffers if necessary
+            for( let c = 0; c < pass.channels?.length ?? 0; ++c )
+            {
+                const isCurrentPass = ( this.currentPass.name === pass.name );
+                const channelName = pass.channels[ c ];
+                if( !channelName || this.gpuTextures[ channelName ] ) continue; // undefined or already created
+
+                if( channelName === "Keyboard" )
+                {
+                    await this.createKeyboardTexture( c, true );
+                    continue;
+                }
+                else if( channelName.startsWith( "Buffer" ) )
+                {
+                    await this.loadBufferChannel( pass, channelName, c, isCurrentPass )
+                    continue;
+                }
+
+                // Only update preview in case that's the current pass
+                await this.createTexture( channelName, c, isCurrentPass );
+            }
+
+            if( this._parametersDirty && pass.uniforms.length )
+            {
+                pass.uniforms.map( ( u, index ) => {
+                    this.device.queue.writeBuffer(
+                        pass.uniformBuffers[ index ],
+                        0,
+                        new Float32Array([ u.value ])
+                    );
+                } );
+
+                this._parametersDirty = false;
+            }
+
+            if( !this._lastShaderCompilationWithErrors )
+            {
+                // if( !this.renderPipelines[ i ] )
+                // {
+                //     await this.compileShader( true, pass );
+                // }
+
+                // Move bindgroups and pipelines to each pass
+                // and remove this debug per-frame recreastion of BG
+                // const bg = await this.createRenderBindGroup( pass, this.renderPipelines[ i ] );
+
+                const r = await pass.draw(
+                    this.presentationFormat,
+                    this.webGPUContext,
+                    this.gpuBuffers,
+                    this.gpuTextures
+                );
+
+                // Update buffers
+                if( pass.type === "buffer" )
+                {
+                    this.gpuTextures[ pass.name ] = r;
+                }
+            }
+        }
+
+        if( this._anyKeyPressed )
+        {
+            // event consumed, Clean input
+            for( const [ name, value ] of this.keyPressed )
+            {
+                this.keyPressed.set( name, false );
+            }
+
+            await this.createKeyboardTexture();
+
+            this._anyKeyPressed = false;
+        }
+
+        this._mousePressed = false;
+
+        requestAnimationFrame( this.onFrame.bind( this ) );
     },
 
     async onKeyDown( e )
@@ -274,6 +411,8 @@ const ShaderHub =
 
     onShaderTimeReset()
     {
+        fps.reset();
+
         this.frameCount = 0;
         this.elapsedTime = 0;
         this.timeDelta = 0;
@@ -683,8 +822,8 @@ const ShaderHub =
         }
     },
 
-    async initGraphics( canvas ) {
-
+    async initGraphics( canvas )
+    {
         this.gpuCanvas = canvas;
         this.adapter = await navigator.gpu?.requestAdapter({
             featureLevel: 'compatibility',
@@ -742,259 +881,11 @@ const ShaderHub =
             minFilter: 'linear',
         });
 
-        const frame = async () => {
-
-            const now = LX.getTime();
-
-            this.timeDelta = ( now - this.lastTime ) / 1000;
-
-            if( !this.timePaused )
-            {
-                this.device.queue.writeBuffer(
-                    this.gpuBuffers[ "timeDelta" ],
-                    0,
-                    new Float32Array([ this.timeDelta ])
-                );
-
-                this.device.queue.writeBuffer(
-                    this.gpuBuffers[ "time" ],
-                    0,
-                    new Float32Array([ this.elapsedTime ])
-                );
-
-                this.elapsedTime += this.timeDelta;
-
-                this.device.queue.writeBuffer(
-                    this.gpuBuffers[ "frameCount" ],
-                    0,
-                    new Int32Array([ this.frameCount ])
-                );
-
-                this.frameCount++;
-
-                LX.emit( "@elapsed-time", `${ this.elapsedTime.toFixed( 2 ) }s` );
-            }
-            this.device.queue.writeBuffer(
-                this.gpuBuffers[ "resolution" ],
-                0,
-                new Float32Array([ this.resolutionX ?? this.gpuCanvas.offsetWidth, this.resolutionY ?? this.gpuCanvas.offsetHeight ])
-            );
-
-            this.device.queue.writeBuffer(
-                this.gpuBuffers[ "mouse" ],
-                0,
-                new Float32Array([
-                    this.mousePosition[ 0 ], this.mousePosition[ 1 ],
-                    this.lastMousePosition[ 0 ] * ( this._mouseDown ? 1.0 : -1.0 ), this.lastMousePosition[ 1 ] * ( this._mousePressed ? 1.0 : -1.0 ) ])
-            );
-
-            this.lastTime = now;
-
-            for( let i = 0; i < this.shader.passes.length; ++i )
-            {
-                // Buffers and images draw
-                const pass = this.shader.passes[ i ];
-                if( pass.type === "common" ) continue;
-
-                // Create uniform buffers if necessary
-                for( let c = 0; c < pass.channels?.length ?? 0; ++c )
-                {
-                    const isCurrentPass = ( this.currentPass.name === pass.name );
-                    const channelName = pass.channels[ c ];
-                    if( !channelName || this.gpuTextures[ channelName ] ) continue; // undefined or already created
-
-                    if( channelName === "Keyboard" )
-                    {
-                        await this.createKeyboardTexture( c, true );
-                        continue;
-                    }
-                    else if( channelName.startsWith( "Buffer" ) )
-                    {
-                        await this.loadBufferChannel( pass, channelName, c, isCurrentPass )
-                        continue;
-                    }
-
-                    // Only update preview in case that's the current pass
-                    await this.createTexture( channelName, c, isCurrentPass );
-                }
-
-                if( this._parametersDirty && pass.uniforms.length )
-                {
-                    pass.uniforms.map( ( u, index ) => {
-                        this.device.queue.writeBuffer(
-                            pass.uniformBuffers[ index ],
-                            0,
-                            new Float32Array([ u.value ])
-                        );
-                    } );
-
-                    this._parametersDirty = false;
-                }
-
-                if( !this._lastShaderCompilationWithErrors )
-                {
-                    if( !this.renderPipelines[ i ] )
-                    {
-                        await this.compileShader( true, pass );
-                    }
-
-                    // Move bindgroups and pipelines to each pass
-                    // and remove this debug per-frame recreastion of BG
-                    // const bg = await this.createRenderBindGroup( pass, this.renderPipelines[ i ] );
-
-                    const r = pass.draw(
-                        this.device,
-                        this.webGPUContext,
-                        this.renderPipelines[ i ],
-                        this.renderBindGroups[ i ]
-                    );
-
-                    // Update buffers
-                    if( pass.type === "buffer" )
-                    {
-                        this.gpuTextures[ pass.name ] = r;
-                    }
-                }
-            }
-
-            if( this._anyKeyPressed )
-            {
-                // event consumed, Clean input
-                for( const [ name, value ] of this.keyPressed )
-                {
-                    this.keyPressed.set( name, false );
-                }
-
-                await this.createKeyboardTexture();
-
-                this._anyKeyPressed = false;
-            }
-
-            this._mousePressed = false;
-
-            requestAnimationFrame( frame );
-        }
-
-        requestAnimationFrame( frame );
+        requestAnimationFrame( this.onFrame.bind( this) );
     },
 
-    async createRenderPipeline( pass, updateBindGroup = true ) {
-
-        if( pass.type === "common" ) return;
-
-        const result = await this.validateShader( pass.getShaderCode() );
-        if( !result.valid )
-        {
-            return result;
-        }
-
-        const renderPipeline = await this.device.createRenderPipeline({
-            layout: 'auto',
-            vertex: {
-                module: result.module,
-            },
-            fragment: {
-                module: result.module,
-                targets: [
-                    {
-                        format: this.presentationFormat,
-                    },
-                ],
-            },
-            primitive: {
-                topology: 'triangle-list',
-            },
-        });
-
-        console.warn( "Info: Render Pipeline created!" );
-
-        if( updateBindGroup )
-        {
-            return [ renderPipeline, await this.createRenderBindGroup( pass, renderPipeline ) ];
-        }
-        else
-        {
-            return renderPipeline;
-        }
-    },
-
-    async createRenderBindGroup( pass, renderPipeline ) {
-
-        if( !renderPipeline )
-        {
-            return;
-        }
-
-        let bindingIndex = 0;
-
-        const entries = [
-            {
-                binding: bindingIndex++,
-                resource: { buffer: this.gpuBuffers[ "time" ] }
-            },
-            {
-                binding: bindingIndex++,
-                resource: { buffer: this.gpuBuffers[ "timeDelta" ] }
-            },
-            {
-                binding: bindingIndex++,
-                resource: { buffer: this.gpuBuffers[ "frameCount" ] }
-            },
-            {
-                binding: bindingIndex++,
-                resource: { buffer: this.gpuBuffers[ "resolution" ] }
-            },
-            {
-                binding: bindingIndex++,
-                resource: { buffer: this.gpuBuffers[ "mouse" ] }
-            }
-        ]
-
-        const customUniformCount = pass.uniforms.length;
-        if( customUniformCount )
-        {
-            pass.uniforms.map( ( u, index ) => {
-                const buffer = pass.uniformBuffers[ index ];
-                this.device.queue.writeBuffer(
-                    buffer,
-                    0,
-                    new Float32Array([ u.value ])
-                );
-                entries.push( {
-                    binding: bindingIndex++,
-                    resource: {
-                        buffer,
-                    }
-                } );
-            } );
-        }
-
-        const bindings = pass.channels.filter( u => u !== undefined && this.gpuTextures[ u ] );
-
-        if( bindings.length )
-        {
-            entries.push( ...pass.channels.map( ( channelName, index ) => {
-                if( !channelName ) return;
-                let texture = this.gpuTextures[ channelName ];
-                if( !texture ) return;
-                texture = ( texture instanceof Array ) ? texture[ Constants.BUFFER_PASS_BIND_TEXTURE_INDEX ] : texture;
-                return { binding: bindingIndex++, resource: texture.createView() };
-            } ).filter( u => u !== undefined ) );
-            entries.push( { binding: bindingIndex++, resource: this.sampler } );
-        }
-
-        const renderBindGroup = await this.device.createBindGroup({
-            layout: renderPipeline.getBindGroupLayout( 0 ),
-            entries
-        });
-
-        console.warn( "Info: Render Bind Group created!" );
-
-        return renderBindGroup;
-    },
-
-    async createTexture( fileId, channel, updatePreview = false, options = { } ) {
-
+    async createTexture( fileId, channel, updatePreview = false, options = { } )
+    {
         if( !fileId )
         {
             return;
@@ -1156,14 +1047,8 @@ const ShaderHub =
             console.assert( pass.codeLines, `No tab with name ${ pass.name }` );
             if( pass.type === "common" ) continue;
 
-            const passIndex = this.shader.passes.indexOf( pass );
-            const pipeline = await this.createRenderPipeline( pass, false );
-            if( pipeline.constructor === GPURenderPipeline ) // success, no errors
-            {
-                this.renderPipelines[ passIndex ] = pipeline;
-                this.renderBindGroups[ passIndex ] = await this.createRenderBindGroup( pass, pipeline );
-            }
-            else if( pipeline ) // error object
+            const result = await pass.compile( this.presentationFormat, this.gpuBuffers, this.gpuTextures );
+            if( result !== WEBGPU_OK ) // error object
             {
                 // Open the tab with the error
                 ui.editor.loadTab( pass.name );
@@ -1171,10 +1056,10 @@ const ShaderHub =
                 // Make async so the tab is opened before adding the error feedback
                 LX.doAsync( () => {
 
-                    const mainImageLineOffset = pipeline.code.split( "\n" ).indexOf( pass.codeLines[ 0 ] );
+                    const mainImageLineOffset = result.code.split( "\n" ).indexOf( pass.codeLines[ 0 ] );
                     console.assert( mainImageLineOffset > 0 );
 
-                    for( const msg of pipeline.messages )
+                    for( const msg of result.messages )
                     {
                         const fragLineNumber = msg.lineNum - ( mainImageLineOffset );
 
@@ -1196,7 +1081,6 @@ const ShaderHub =
         if( showFeedback )
         {
             this.setEditorErrorBorder( ERROR_CODE_SUCCESS );
-            // LX.toast( `✅ No errors`, "Shader compiled successfully!", { position: "top-right" } );
         }
 
         return WEBGPU_OK;
