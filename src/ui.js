@@ -9,8 +9,8 @@ const mobile = Utils.isMobile();
 
 export const ui = {
 
-    async init( fs ) {
-
+    async init( fs )
+    {
         this.fs = fs;
         this.area = await LX.init();
 
@@ -63,7 +63,7 @@ export const ui = {
                 }
                 else
                 {
-                    m.add( "Login", { icon: "LogIn", callback: () => ShaderHub.openLoginDialog() } );
+                    m.add( "Login", { icon: "LogIn", callback: () => this.openLoginDialog() } );
                     m.add( "Create account", { icon: "UserPlus", callback: () => ShaderHub.openSignUpDialog() } );
                 }
 
@@ -115,7 +115,7 @@ export const ui = {
                 }
                 else
                 {
-                    ShaderHub.openLoginDialog();
+                    this.openLoginDialog();
                 }
             } );
         }
@@ -146,8 +146,8 @@ export const ui = {
         }
     },
 
-    async makeBrowseList() {
-
+    async makeBrowseList()
+    {
         var [ topArea, bottomArea ] = this.area.split({ type: "vertical", sizes: ["calc(100% - 48px)", null], resize: false });
         topArea.root.className += " overflow-scroll";
         bottomArea.root.className += " items-center content-center";
@@ -259,8 +259,8 @@ export const ui = {
         }, 200 );
     },
 
-    async makeProfileView( userID ) {
-    
+    async makeProfileView( userID )
+    {
         let [ topArea, bottomArea ] = this.area.split({ type: "vertical", sizes: ["calc(100% - 48px)", null], resize: false });
         topArea.root.className += " overflow-scroll";
         bottomArea.root.className += " items-center content-center";
@@ -338,8 +338,8 @@ export const ui = {
         }
     },
 
-    async makeShaderView( shaderUid ) {
-
+    async makeShaderView( shaderUid )
+    {
         const shader = await ShaderHub.getShaderById( shaderUid );
         const isNewShader = ( shaderUid === "new" );
 
@@ -575,8 +575,8 @@ export const ui = {
         }
     },
 
-    async makeStatusBarButtons( p, editor ) {
-
+    async makeStatusBarButtons( p, editor )
+    {
         const customTabInfoButtonsPanel = new LX.Panel( { className: "flex flex-row items-center", height: "auto" } );
 
         customTabInfoButtonsPanel.sameLine();
@@ -674,16 +674,16 @@ export const ui = {
                     overridePanel.addNumber( "Min", u.min, ( v ) => {
                         u.min = v;
                         uRangeComponent.setLimits( u.min, u.max );
-                        ShaderHub._parametersDirty = true;
+                        pass.uniformsDirty = true;
                     }, { nameWidth: "40%", width: "17%", skipReset: true, step: 0.1 } );
                     const uRangeComponent = overridePanel.addRange( null, u.value, ( v ) => {
                         u.value = v;
-                        ShaderHub._parametersDirty = true;
+                        pass.uniformsDirty = true;
                     }, { className: "contrast", width: "35%", skipReset: true, min: u.min, max: u.max, step: 0.1 } );
                     overridePanel.addNumber( "Max", u.max, ( v ) => {
                         u.max = v;
                         uRangeComponent.setLimits( u.min, u.max );
-                        ShaderHub._parametersDirty = true;
+                        pass.uniformsDirty = true;
                     }, { nameWidth: "40%", width: "17%", skipReset: true, step: 0.1 } );
                     overridePanel.addButton( null, "RemoveUniformButton", ( v ) => {
                         // Check if the uniforms is used to recompile shaders or not
@@ -822,6 +822,97 @@ export const ui = {
         });
 
         return canvas;
+    },
+
+    openLoginDialog()
+    {
+        const dialog = new LX.Dialog( "Login", ( p ) => {
+            const formData = { email: { label: "Email", value: "", icon: "AtSign" }, password: { label: "Password", icon: "Key", value: "", type: "password" } };
+            const form = p.addForm( null, formData, async (value, event) => {
+                await this.fs.login( value.email, value.password, ( user, session ) => {
+                    dialog.close();
+                    const loginButton = document.getElementById( "loginOptionsButton" );
+                    if( loginButton )
+                    {
+                        loginButton.innerHTML = `<span class="decoration-none fg-secondary">${ this.fs.user.email }</span>
+                                                    ${ LX.makeIcon("ChevronsUpDown", { iconClass: "pl-2" } ).innerHTML }`;
+                    }
+                    document.getElementById( "signupContainer" )?.classList.add( "hidden" );
+                    document.querySelectorAll( ".lextoast" ).forEach( t => t.close() );
+                    LX.toast( `✅ Logged in`, `User: ${ value.email }`, { position: "top-right" } );
+                }, (err) => {
+                    LX.toast( `❌ Error`, err, { timeout: -1, position: "top-right" } );
+                } );
+            }, { primaryActionName: "Login" });
+            form.root.querySelector( "button" ).classList.add( "mt-2" );
+        }, { modal: true } );
+    },
+
+    openSignUpDialog()
+    {
+        const dialog = new LX.Dialog( "Create account", ( p ) => {
+
+            const namePattern = LX.buildTextPattern( { minLength: Constants.USERNAME_MIN_LENGTH } );
+            const passwordPattern = LX.buildTextPattern( { minLength: Constants.PASSWORD_MIN_LENGTH, digit: true } );
+
+            const formData = {
+                name: { label: "Name", value: "", icon: "User", xpattern: namePattern },
+                email: { label: "Email", value: "", icon: "AtSign" },
+                password: { label: "Password", value: "", type: "password", icon: "Key", xpattern: passwordPattern },
+                confirmPassword: { label: "Confirm password", value: "", type: "password", icon: "Key" }
+            };
+
+            const form = p.addForm( null, formData, async (value, event) => {
+
+                errorMsg.set( "" );
+
+                if( !( value.name.match( new RegExp( namePattern ) ) ) )
+                {
+                    errorMsg.set( `❌ Name is too short. Please use at least ${ Constants.USERNAME_MIN_LENGTH } characters.` );
+                    return;
+                }
+                else if( !( value.email.match( /^[^\s@]+@[^\s@]+\.[^\s@]+$/ ) ) )
+                {
+                    errorMsg.set( "❌ Please enter a valid email address." );
+                    return;
+                }
+                else if( value.password.length < Constants.PASSWORD_MIN_LENGTH )
+                {
+                    errorMsg.set( `❌ Password is too short. Please use at least ${ Constants.PASSWORD_MIN_LENGTH } characters.` );
+                    return;
+                }
+                else if( !( value.password.match( new RegExp( passwordPattern ) ) ) )
+                {
+                    errorMsg.set( `❌ Password must contain at least 1 digit.` );
+                    return;
+                }
+                else if( value.password !== value.confirmPassword )
+                {
+                    errorMsg.set( "❌ The password and confirmation fields must match." );
+                    return;
+                }
+
+                await this.fs.createAccount( value.email, value.password, value.name, async ( user ) => {
+                    dialog.close();
+                    document.querySelectorAll( ".lextoast" ).forEach( t => t.close() );
+                    LX.toast( `✅ Account created!`, `You can now login with your email: ${ value.email }`, { position: "top-right" } );
+
+                    // Update DB
+                    {
+                        const result = await this.fs.createDocument( FS.USERS_COLLECTION_ID, {
+                            "user_id": user[ "$id" ],
+                            "user_name": value.name
+                        } );
+                    }
+
+                    this.openLoginDialog();
+                }, (err) => {
+                    errorMsg.set( `❌ ${ err }` );
+                } );
+            }, { primaryActionName: "SignUp" });
+            form.root.querySelector( "button" ).classList.add( "mt-2" );
+            const errorMsg = p.addTextArea( null, "", null, { inputClass: "fg-secondary", disabled: true, fitHeight: true } );
+        }, { modal: true } );
     },
 
     openUniformsDialog()

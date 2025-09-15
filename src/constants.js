@@ -6,8 +6,8 @@ export const USERNAME_MIN_LENGTH = 3;
 export const PASSWORD_MIN_LENGTH = 8;
 
 // Graphics
-export const BUFFER_PASS_BIND_TEXTURE_INDEX            = 0;
-export const BUFFER_PASS_RENDERTARGET_TEXTURE_INDEX    = 1;
+export const BUFFER_PASS_TEXTURE_A_INDEX = 0;
+export const BUFFER_PASS_TEXTURE_B_INDEX = 1;
 
 export const UNIFORM_CHANNELS_COUNT = 4;
 export const DEFAULT_UNIFORMS_LIST = [

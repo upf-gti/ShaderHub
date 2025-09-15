@@ -100,64 +100,45 @@ const ShaderHub =
             const pass = this.shader.passes[ i ];
             if( pass.type === "common" ) continue;
 
-            // Create uniform buffers if necessary
+            // Fill buffers and textures for each pass channel
             for( let c = 0; c < pass.channels?.length ?? 0; ++c )
             {
                 const isCurrentPass = ( this.currentPass.name === pass.name );
                 const channelName = pass.channels[ c ];
-                if( !channelName || this.gpuTextures[ channelName ] ) continue; // undefined or already created
+                if( !channelName ) continue;
 
-                if( channelName === "Keyboard" )
+                if( !this.gpuTextures[ channelName ] )
                 {
-                    await this.createKeyboardTexture( c, true );
-                    continue;
-                }
-                else if( channelName.startsWith( "Buffer" ) )
-                {
-                    await this.loadBufferChannel( pass, channelName, c, isCurrentPass )
-                    continue;
+                    if( channelName === "Keyboard" )
+                    {
+                        await this.createKeyboardTexture( c, true );
+                    }
+                    else if( channelName.startsWith( "Buffer" ) )
+                    {
+                        await this.loadBufferChannel( pass, channelName, c, isCurrentPass )
+                    }
+                    else // Texture from file
+                    {
+                        // Only update preview in case that's the current pass
+                        await this.createTexture( channelName, c, isCurrentPass );
+                    }
                 }
 
-                // Only update preview in case that's the current pass
-                await this.createTexture( channelName, c, isCurrentPass );
+                pass.setChannelTexture(  c, this.gpuTextures[ channelName ] );
             }
 
-            if( this._parametersDirty && pass.uniforms.length )
+            if( pass.uniformsDirty )
             {
-                pass.uniforms.map( ( u, index ) => {
-                    this.device.queue.writeBuffer(
-                        pass.uniformBuffers[ index ],
-                        0,
-                        new Float32Array([ u.value ])
-                    );
-                } );
-
-                this._parametersDirty = false;
+                pass.updateUniforms();
             }
 
             if( !this._lastShaderCompilationWithErrors )
             {
-                // if( !this.renderPipelines[ i ] )
-                // {
-                //     await this.compileShader( true, pass );
-                // }
-
-                // Move bindgroups and pipelines to each pass
-                // and remove this debug per-frame recreastion of BG
-                // const bg = await this.createRenderBindGroup( pass, this.renderPipelines[ i ] );
-
-                const r = await pass.draw(
+                await pass.draw(
                     this.presentationFormat,
                     this.webGPUContext,
-                    this.gpuBuffers,
-                    this.gpuTextures
+                    this.gpuBuffers
                 );
-
-                // Update buffers
-                if( pass.type === "buffer" )
-                {
-                    this.gpuTextures[ pass.name ] = r;
-                }
             }
         }
 
@@ -515,8 +496,8 @@ const ShaderHub =
         }
     },
 
-    requestFullscreen( element ) {
-
+    requestFullscreen( element )
+    {
         element = element ?? this.gpuCanvas;
 
         if( element == null ) element = document.documentElement;
@@ -528,117 +509,32 @@ const ShaderHub =
         if( element.focus ) element.focus();
     },
 
-    isFullScreen() {
+    isFullScreen()
+    {
         return document.fullscreen || document.mozFullScreen || document.webkitIsFullScreen || document.msFullscreenElement;
     },
 
-    exitFullscreen() {
+    exitFullscreen()
+    {
         if( document.exitFullscreen ) document.exitFullscreen();
         else if( document.msExitFullscreen ) document.msExitFullscreen();
         else if( document.mozCancelFullScreen ) document.mozCancelFullScreen();
         else if( document.webkitExitFullscreen ) document.webkitExitFullscreen();
     },
 
-    openProfile( userID ) {
+    openProfile( userID )
+    {
         window.location.href = `${ window.location.origin + window.location.pathname }?profile=${ userID }`;
     },
 
-    openLoginDialog() {
-
-        const dialog = new LX.Dialog( "Login", ( p ) => {
-            const formData = { email: { label: "Email", value: "", icon: "AtSign" }, password: { label: "Password", icon: "Key", value: "", type: "password" } };
-            const form = p.addForm( null, formData, async (value, event) => {
-                await fs.login( value.email, value.password, ( user, session ) => {
-                    dialog.close();
-                    const loginButton = document.getElementById( "loginOptionsButton" );
-                    if( loginButton )
-                    {
-                        loginButton.innerHTML = `<span class="decoration-none fg-secondary">${ fs.user.email }</span>
-                                                    ${ LX.makeIcon("ChevronsUpDown", { iconClass: "pl-2" } ).innerHTML }`;
-                    }
-                    document.getElementById( "signupContainer" )?.classList.add( "hidden" );
-                    document.querySelectorAll( ".lextoast" ).forEach( t => t.close() );
-                    LX.toast( `✅ Logged in`, `User: ${ value.email }`, { position: "top-right" } );
-                }, (err) => {
-                    LX.toast( `❌ Error`, err, { timeout: -1, position: "top-right" } );
-                } );
-            }, { primaryActionName: "Login" });
-            form.root.querySelector( "button" ).classList.add( "mt-2" );
-        }, { modal: true } );
-    },
-
-    openSignUpDialog() {
-
-        const dialog = new LX.Dialog( "Create account", ( p ) => {
-
-            const namePattern = LX.buildTextPattern( { minLength: Constants.USERNAME_MIN_LENGTH } );
-            const passwordPattern = LX.buildTextPattern( { minLength: Constants.PASSWORD_MIN_LENGTH, digit: true } );
-            const formData = {
-                name: { label: "Name", value: "", icon: "User", xpattern: namePattern },
-                email: { label: "Email", value: "", icon: "AtSign" },
-                password: { label: "Password", value: "", type: "password", icon: "Key", xpattern: passwordPattern },
-                confirmPassword: { label: "Confirm password", value: "", type: "password", icon: "Key" }
-            };
-            const form = p.addForm( null, formData, async (value, event) => {
-
-                errorMsg.set( "" );
-
-                if( !( value.name.match( new RegExp( namePattern ) ) ) )
-                {
-                    errorMsg.set( `❌ Name is too short. Please use at least ${ Constants.USERNAME_MIN_LENGTH } characters.` );
-                    return;
-                }
-                else if( !( value.email.match( /^[^\s@]+@[^\s@]+\.[^\s@]+$/ ) ) )
-                {
-                    errorMsg.set( "❌ Please enter a valid email address." );
-                    return;
-                }
-                else if( value.password.length < Constants.PASSWORD_MIN_LENGTH )
-                {
-                    errorMsg.set( `❌ Password is too short. Please use at least ${ Constants.PASSWORD_MIN_LENGTH } characters.` );
-                    return;
-                }
-                else if( !( value.password.match( new RegExp( passwordPattern ) ) ) )
-                {
-                    errorMsg.set( `❌ Password must contain at least 1 digit.` );
-                    return;
-                }
-                else if( value.password !== value.confirmPassword )
-                {
-                    errorMsg.set( "❌ The password and confirmation fields must match." );
-                    return;
-                }
-
-                await fs.createAccount( value.email, value.password, value.name, async ( user ) => {
-                    dialog.close();
-                    document.querySelectorAll( ".lextoast" ).forEach( t => t.close() );
-                    LX.toast( `✅ Account created!`, `You can now login with your email: ${ value.email }`, { position: "top-right" } );
-
-                    // Update DB
-                    {
-                        const result = await fs.createDocument( FS.USERS_COLLECTION_ID, {
-                            "user_id": user[ "$id" ],
-                            "user_name": value.name
-                        } );
-                    }
-
-                    this.openLoginDialog();
-                }, (err) => {
-                    errorMsg.set( `❌ ${ err }` );
-                } );
-            }, { primaryActionName: "SignUp" });
-            form.root.querySelector( "button" ).classList.add( "mt-2" );
-            const errorMsg = p.addTextArea( null, "", null, { inputClass: "fg-secondary", disabled: true, fitHeight: true } );
-        }, { modal: true } );
-    },
-
-    createNewShader() {
+    createNewShader()
+    {
         // Only crete a new shader view, nothing to save now
         window.location.href = `${ window.location.origin + window.location.pathname }?shader=new`;
     },
 
-    async updateShaderName( shaderName ) {
-
+    async updateShaderName( shaderName )
+    {
         const shaderUid = this.shader.uid;
 
         // update DB
@@ -647,8 +543,8 @@ const ShaderHub =
         this.shader.name = shaderName;
     },
 
-    async saveShaderFiles() {
-
+    async saveShaderFiles()
+    {
         // Upload file and get id
         const filename = `${ LX.toCamelCase( this.shader.name ) }.json`;
         const text = JSON.stringify( {
@@ -661,8 +557,8 @@ const ShaderHub =
         return result[ "$id" ];
     },
 
-    async saveShader( existingShader ) {
-
+    async saveShader( existingShader )
+    {
         if( !fs.user )
         {
             console.warn( "Login to save your shader!" );
@@ -713,8 +609,8 @@ const ShaderHub =
         } );
     },
 
-    async overrideShader( shaderMetadata ) {
-
+    async overrideShader( shaderMetadata )
+    {
         // Delete old file first
         const fileId = shaderMetadata[ "file_id" ];
         await fs.deleteFile( fileId );
@@ -734,8 +630,8 @@ const ShaderHub =
         LX.toast( `✅ Shader updated`, `Shader: ${ this.shader.name } by ${ fs.user.name }`, { position: "top-right" } );
     },
 
-    async deleteShader() {
-
+    async deleteShader()
+    {
         let result = await this.shaderExists();
         if( !result )
         {
@@ -772,8 +668,8 @@ const ShaderHub =
         }, { modal: true } );
     },
 
-    async remixShader() {
-
+    async remixShader()
+    {
         // Save the shader with you as the author id
         // Create a new col to store original_id so it can be shown in the page
         // Get the new shader id, and reload page in shader view with that id
@@ -798,8 +694,8 @@ const ShaderHub =
         window.location.href = `${ window.location.origin + window.location.pathname }?shader=${ result[ "$id" ] }`;
     },
 
-    async updateShaderPreview( shaderUid, showFeedback = true ) {
-
+    async updateShaderPreview( shaderUid, showFeedback = true )
+    {
         shaderUid = shaderUid ?? this.shader.uid;
 
         // Delete old preview first if necessary
@@ -876,7 +772,7 @@ const ShaderHub =
             });
         }
 
-        this.sampler = this.device.createSampler({
+        this.globalSampler = this.device.createSampler({
             magFilter: 'linear',
             minFilter: 'linear',
         });
@@ -1050,8 +946,7 @@ const ShaderHub =
             const result = await pass.compile( this.presentationFormat, this.gpuBuffers, this.gpuTextures );
             if( result !== WEBGPU_OK ) // error object
             {
-                // Open the tab with the error
-                ui.editor.loadTab( pass.name );
+                ui.editor.loadTab( pass.name ); // Open the tab with the error
 
                 // Make async so the tab is opened before adding the error feedback
                 LX.doAsync( () => {
