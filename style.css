@@ -92,9 +92,15 @@
 	grid-template-columns:repeat(4, 1fr);
 }
 
-/* .channel-list > div {
-	aspect-ratio: 1 / 1;
-} */
+.help-content {
+	margin-left: auto;
+    margin-right: auto;
+    max-width: 1400px;
+}
+
+.help-content p, .help-content li {
+	color: var(--global-text-secondary);
+}
 
 @media (min-width: 0px) {
 	.shader-list {

@@ -1,6 +1,4 @@
 import { LX } from 'lexgui';
-// import 'lexgui/extensions/codeeditor.js';
-import './extra/codeeditor.js';
 import * as Constants from "./constants.js";
 import * as Utils from './utils.js';
 import { FS } from './fs.js';
@@ -78,6 +76,7 @@ const ShaderHub =
             LX.emit( "@elapsed-time", `${ this.elapsedTime.toFixed( 2 ) }s` );
             LX.emit( "@fps", `${ fps.get() } FPS` );
         }
+
         this.device.queue.writeBuffer(
             this.gpuBuffers[ "resolution" ],
             0,

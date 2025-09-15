@@ -1,4 +1,7 @@
 import { LX } from 'lexgui';
+// import 'lexgui/extensions/codeeditor.js';
+import 'lexgui/extensions/docmaker.js';
+import './extra/codeeditor.js';
 import * as Constants from "./constants.js";
 import * as Utils from './utils.js';
 import { FS } from './fs.js';
@@ -33,6 +36,9 @@ export const ui = {
                 },
                 {
                     name: "Browse", callback: () => window.location.href = `${ window.location.origin + window.location.pathname }`
+                },
+                {
+                    name: "Help", callback: () => window.location.href = `${ window.location.origin + window.location.pathname + "#help" }`
                 }
             );
         }
@@ -142,6 +148,14 @@ export const ui = {
         }
         else
         {
+            // Help page
+            const hash = window.location.hash ?? "";
+            if( hash === "#help" )
+            {
+                this.makeHelpView();
+                return;
+            }
+
             await this.makeBrowseList();
         }
     },
@@ -256,7 +270,7 @@ export const ui = {
             {
                 LX.makeContainer( ["100%", "auto"], "text-xxl font-medium justify-center text-center", "No shaders found.", topArea );
             }
-        }, 200 );
+        }, 10 );
     },
 
     async makeProfileView( userID )
@@ -573,6 +587,74 @@ export const ui = {
 
             ShaderHub.onShaderEditorCreated( shader, canvas );
         }
+    },
+
+    makeHelpView()
+    {
+        const header = LX.makeContainer( [ null, "200px" ], "flex flex-col gap-2 items-center place-content-center", `
+            <a><span class="fg-secondary">Documentation</span></a>
+            <h1>Get started with ShaderHub</h1>
+        `, this.area );
+
+        const headerButtons = LX.makeContainer( [ "auto", "auto" ], "flex flex-row p-2", ``, header );
+        const getStartedButton = new LX.Button( null, "Get Started", () => ShaderHub.createNewShader(), { buttonClass: "contrast p-1 px-3" } );
+        headerButtons.appendChild( getStartedButton.root );
+
+        const content = LX.makeContainer( [ null, "calc(100% - 200px)" ], "help-content flex flex-col border-top gap-2 px-10 py-8 overflow-scroll", "", this.area );
+        SET_DOM_TARGET( content );
+
+        MAKE_HEADER( "Creating Shaders.", "h1", "creating-shaders" );
+
+        MAKE_LINE_BREAK();
+
+        MAKE_PARAGRAPH( `ShaderHub lets you create and run shaders right in your browser using WebGPU. You can write code, plug in textures or uniforms, and instantly see the results on the canvas—no setup, no downloads, just shaders that run on the web.` );
+        MAKE_PARAGRAPH( `To create a new shader, simply click on the "New" button in the top menu bar. This will open a new shader editor where you can start coding your shader. The editor supports multiple passes, allowing you to create complex effects by layering different shaders together.
+        Once you've written your shader code, you can compile and run it by clicking the "Run" button or using the Ctrl+S or Ctrl+Enter shortcuts. The shader will be executed on the canvas, and you can see the results in real-time.` );
+
+        MAKE_LINE_BREAK();
+
+        MAKE_HEADER( "Shader Passes.", "h2", "shader-passes" );
+
+        MAKE_PARAGRAPH( `ShaderHub supports multiple shader passes, which are essentially different stages of rendering that can be combined to create complex visual effects. There are two types of passes you can create: Buffer and Common.` );
+
+        MAKE_BULLET_LIST( [
+            `Buffers: Offscreen render targets that can be used to store intermediate results. You can create up to four buffer passes, which can be referenced in subsequent passes using the iChannel uniforms (iChannel0, iChannel1, etc.). This allows you to build effects step by step, using the output of one pass as the input for another.`,
+            `Common: Used for shared code that can be included in other passes. This is useful for defining functions or variables that you want to reuse across multiple shader passes. You can only have one Common pass per shader.`
+        ] );
+
+        MAKE_PARAGRAPH( `To create a new pass, click on the "+" button in the editor's tab bar and select the type of pass you want to create. You can then write your shader code in the new tab that appears.` );
+
+        MAKE_LINE_BREAK();
+
+        MAKE_HEADER( "Uniforms and Textures.", "h2", "uniforms-and-textures" );
+
+        MAKE_PARAGRAPH( `Uniforms are global variables that can be passed to your shader code. ShaderHub provides a set of default uniforms, such as iTime (elapsed time), iResolution (canvas resolution), and iMouse (mouse position), which you can use to create dynamic effects.` );
+
+        MAKE_PARAGRAPH( `In addition to the default uniforms, you can also create custom uniforms to pass additional data to your shaders. To add a custom uniform, first open the Custom Uniforms popover using the button at the status bar (bottom of the editor), then click on the "+" button. You can specify the name and type of the uniform, and it will be available for use in your shader code.` );
+
+        MAKE_PARAGRAPH( `Textures can be used in your shaders by assigning them to the iChannel uniforms. You must use existing textures from the ShaderHub library. To assign a texture to an iChannel, click on the corresponding channel in the status bar and select the texture you want to use.` );
+
+        MAKE_LINE_BREAK();
+
+        MAKE_HEADER( "Saving and Sharing Shaders.", "h2", "saving-and-sharing-shaders" );
+
+        MAKE_PARAGRAPH( `Once you've created a shader that you're happy with, you can save it to your ShaderHub account by clicking the "Save" button in the shader options menu. This will store your shader in the server, allowing you to access it from any device.` );
+
+        MAKE_PARAGRAPH( `You can also share your shaders with others by providing them with a direct link. Simply copy the URL from your browser's address bar and send it to anyone you want to share your shader with. They will be able to view, edit and run your shader in their own browser (not save it!).` );
+
+        // MAKE_PARAGRAPH( `If you want to allow others to remix your shader, you can enable the remix option in the shader settings. This will let other users create their own versions of your shader while still giving you credit as the original author.` );
+
+        MAKE_LINE_BREAK();
+
+    //     MAKE_CODE( `@[com]// Split main area in 2 sections (2 Areas)@
+    // @let@ [ left, right ] = area.@[mtd]split@({
+    //     sizes: [@"70%"@, @"30%"@]
+    // });
+    // @[com]// Split again left area this time vertically@
+    // @let@ [ leftUp, leftBottom ] = leftArea.@[mtd]split@({
+    //     type: @"vertical"@,
+    //     sizes: [@"80vh"@, @"20vh"@]
+    // });` );
     },
 
     async makeStatusBarButtons( p, editor )
