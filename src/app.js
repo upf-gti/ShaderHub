@@ -36,33 +36,6 @@ const ShaderHub =
     timePaused: false,
     capturer: null,
 
-    startCapture() {
-        this.frameCount = 1;
-        this.capturer = new CCapture( { format: 'gif', framerate: 30, workersPath: './src/extra/' } );
-        // this.capturer.start();
-        // LX.doAsync( () => {
-        //     this.saveCapture();
-        // }, 2000 )
-    },
-
-    saveCapture() {
-
-        if( !this.capturer )
-        {
-            return;
-        }
-
-        this.capturer.stop();
-
-        this.capturer.save();
-
-        delete this.capturer;
-        delete this.frameCount;
-
-        // custom save, will get a blob in the callback
-        // this.capturer.save( function( blob ) { /* ... */ } );
-    },
-
     async init()
     {
         await fs.detectAutoLogin();
@@ -186,15 +159,11 @@ const ShaderHub =
 
         if( this.capturer )
         {
-            if( this.frameCount == 1 )
-            {
-                this.capturer.start();
-            }
-
             this.capturer.capture( this.gpuCanvas );
-            this.frameCount++;
 
-            if( this.frameCount == 100 )
+            this.captureFrameCount++;
+
+            if( this.captureFrameCount == this.exportFramesCount )
             {
                 this.saveCapture();
             }
@@ -1090,6 +1059,31 @@ const ShaderHub =
         {
             await this.createRenderPipeline( pass, true );
         }
+    },
+
+    startCapture( captureFormat = 'gif', exportFramesCount = 120, captureFrameRate = 30 )
+    {
+        this.exportFramesCount = exportFramesCount;
+        this.captureFrameCount = 1;
+        this.capturer = new CCapture( { format: captureFormat, framerate: captureFrameRate, workersPath: './src/extra/' } );
+        this.capturer.start();
+    },
+
+    saveCapture()
+    {
+        if( !this.capturer )
+        {
+            return;
+        }
+
+        this.capturer.stop();
+        this.capturer.save();
+
+        delete this.capturer;
+        delete this.frameCount;
+
+        // custom save, will get a blob in the callback
+        // this.capturer.save( function( blob ) { /* ... */ } );
     },
 
     async snapshotCanvas( outWidth, outHeight )

@@ -513,7 +513,7 @@ export const ui = {
                         {
                             dmOptions.push(
                                 { name: "Save Shader", icon: "Save", callback: () => ShaderHub.saveShader( result ) },
-                                { name: "Settings", icon: "Settings", callback: () => this.openShaderSettingsDialog( result ) }
+                                isNewShader ? 0 : { name: "Settings", icon: "Settings", callback: () => this.openShaderSettingsDialog( result ) }
                             );
 
                             if( result )
@@ -587,7 +587,35 @@ export const ui = {
 
             panel.sameLine();
             panel.addButton( null, "Record", ( name, event ) => {
-                // TODO: Record gif/video/...
+                const button = event.target;
+                button["Format"] = button["Format"] ?? "gif";
+                button["Frames"] = button["Frames"] ?? "120";
+
+                LX.addDropdownMenu( button, [
+                    {
+                        name: "Format",
+                        icon: "FileArchive",
+                        closeOnClick: false,
+                        options: [
+                            { name: "gif" },
+                            { name: "png" },
+                            { name: "webm" }
+                        ]
+                    },
+                    {
+                        name: "Frames",
+                        icon: "Film",
+                        closeOnClick: false,
+                        options: [
+                            { name: "60" },
+                            { name: "120" },
+                            { name: "180" },
+                            { name: "240" },
+                            { name: "300" }
+                        ]
+                    },
+                    { name: "Start Capture", icon: "Video", callback: () => ShaderHub.startCapture( button["Format"], parseInt( button["Frames"] ) ) },
+                ], { side: "bottom", align: "end" });
             }, { icon: "Video", className: "ml-auto", title: "Record", tooltip: true } );
             panel.addButton( null, "Fullscreen", () => ShaderHub.requestFullscreen(), { icon: "Fullscreen", title: "Fullscreen", tooltip: true } );
             panel.endLine( "items-center h-full ml-auto" );
@@ -1187,7 +1215,7 @@ export const ui = {
             channelContainer.addEventListener("contextmenu", ( e ) => {
                 e.preventDefault();
                 new LX.DropdownMenu( e.target, [
-                    { name: "Remove", className: "fg-error", callback: async () => await ShaderHub.removeUniformChannel( i ) },
+                    { name: "Remove", className: "bg-error fg-white", callback: async () => await ShaderHub.removeUniformChannel( i ) },
                 ], { side: "top", align: "start" });
             });
         }
