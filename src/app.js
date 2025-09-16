@@ -215,29 +215,6 @@ const ShaderHub =
         this.resolutionY = yResolution;
     },
 
-    async onShaderChannelSelected( category, name, fileId, index )
-    {
-        if( category === "misc" )
-        {
-            switch( name )
-            {
-                case "Keyboard":
-                    await this.createKeyboardTexture( index, true );
-                    break;
-                case "BufferA":
-                case "BufferB":
-                case "BufferC":
-                case "BufferD":
-                    await this.loadBufferChannel( this.currentPass, name, index, true );
-                    break;
-            }
-        }
-        else if( category === "texture" ) // Use this image as a texture
-        {
-            await this.loadTextureChannelFromFile( fileId, index );
-        }
-    },
-
     async onShaderEditorCreated( shader, canvas )
     {
         this.shader = shader;
@@ -386,11 +363,11 @@ const ShaderHub =
         }, 10 );
     },
 
-    onShaderPassSelected( passName )
+    async onShaderPassSelected( passName )
     {
         this.currentPass = this.shader.passes.find( p => p.name === passName );
         console.assert( this.currentPass, `Cannot find pass ${ passName }` );
-        ui.updateShaderChannelsView( this.currentPass );
+        await ui.updateShaderChannelsView();
     },
 
     onShaderTimePaused()
@@ -480,17 +457,28 @@ const ShaderHub =
         return new Shader( shaderData );
     },
 
-    async getChannelUrl( pass, channel )
+    async getChannelMetadata( pass, channel )
     {
-        if( !pass ) return Constants.IMAGE_EMPTY_SRC;
-        const assetFileId = pass.channels[ channel ];
-        if( !assetFileId ) return Constants.IMAGE_EMPTY_SRC;
-        if( assetFileId === "Keyboard" ) return "images/keyboard.png";
-        if( assetFileId.startsWith( "Buffer" ) ) return "images/buffer.png";
-        const result = await fs.listDocuments( FS.ASSETS_COLLECTION_ID, [ Query.equal( "file_id", assetFileId ) ] );
-        console.assert( result.total == 1, `Inconsistent asset list for file id ${ assetFileId }` );
-        const preview = result.documents[ 0 ][ "preview" ];
-        return preview ? await fs.getFileUrl( preview ) : await fs.getFileUrl( assetFileId );
+        let name = pass.channels[ channel ], url = null;
+
+        if( !pass ) url = Constants.IMAGE_EMPTY_SRC;
+        else
+        {
+            const assetFileId = pass.channels[ channel ];
+            if( !assetFileId ) url = Constants.IMAGE_EMPTY_SRC;
+            else if( assetFileId === "Keyboard" ) url = "images/keyboard.png";
+            else if( assetFileId.startsWith( "Buffer" ) ) url = "images/buffer.png";
+            else
+            {
+                const result = await fs.listDocuments( FS.ASSETS_COLLECTION_ID, [ Query.equal( "file_id", assetFileId ) ] );
+                console.assert( result.total == 1, `Inconsistent asset list for file id ${ assetFileId }` );
+                const preview = result.documents[ 0 ][ "preview" ];
+                url = preview ? await fs.getFileUrl( preview ) : await fs.getFileUrl( assetFileId );
+                name = result.documents[ 0 ].name;
+            }
+        }
+
+        return { url, name }
     },
 
     resizeBuffers( resolutionX, resolutionY )
@@ -819,7 +807,7 @@ const ShaderHub =
 
         if( updatePreview )
         {
-            ui.updateShaderChannelPreview( channel, url );
+            await ui.updateShaderChannelsView();
         }
 
         return imageTexture;
@@ -884,7 +872,7 @@ const ShaderHub =
 
             if( updatePreview )
             {
-                ui.updateShaderChannelPreview( channel, "images/keyboard.png" );
+                await ui.updateShaderChannelsView( pass );
             }
         }
     },
@@ -973,7 +961,7 @@ const ShaderHub =
 
         if( updatePreview )
         {
-            ui.updateShaderChannelPreview( channel, "images/buffer.png" );
+            await ui.updateShaderChannelsView( pass );
         }
     },
 
@@ -986,6 +974,7 @@ const ShaderHub =
         }
 
         pass.channels[ channel ] = file;
+
         await this.createTexture( file, channel, true );
 
         await this.compileShader( true, pass );
@@ -1000,7 +989,7 @@ const ShaderHub =
         pass.channels[ channel ] = undefined;
 
         // Reset image
-        ui.updateShaderChannelPreview( channel, Constants.IMAGE_EMPTY_SRC );
+        await ui.updateShaderChannelsView( pass );
 
         // Recreate everything
         await this.compileShader( true, pass );

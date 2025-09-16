@@ -1187,14 +1187,12 @@ export const ui = {
         new LX.Popover( target, [ this.customParametersPanel.root.parentElement ], { align: "start", side: "top" } );
     },
 
-    async openAvailableChannels( channelIndex )
+    async openAvailableChannels( pass, channelIndex )
     {
         if( this._lastOpenedDialog )
         {
             this._lastOpenedDialog.close();
         }
-
-        this.currentChannelIndex = channelIndex;
 
         const _createChannelItems = async ( category, container ) => {
 
@@ -1222,8 +1220,7 @@ export const ui = {
                 `, channelItem );
                 channelItem.addEventListener( "click", async ( e ) => {
                     e.preventDefault();
-                    ShaderHub.onShaderChannelSelected( category, document.name, fileId, this.currentChannelIndex );
-                    this.currentChannelIndex = undefined;
+                    pass.channels[ channelIndex ] = fileId ?? document.name;
                     dialog.close();
                 } );
             }
@@ -1247,13 +1244,10 @@ export const ui = {
         this._lastOpenedDialog = dialog;
     },
 
-    async updateShaderChannelPreview( channel, url )
-    {
-        this.channelsContainer.childNodes[ channel ].querySelector( "img" ).src = url;
-    },
-
     async updateShaderChannelsView( pass )
     {
+        pass = pass ?? ShaderHub.currentPass;
+
         this.toggleShaderChannelsView( pass.type === "common" );
 
         this.channelsContainer.innerHTML = "";
@@ -1263,13 +1257,15 @@ export const ui = {
             const channelContainer = LX.makeContainer( ["100%", "100%"], "relative text-center content-center rounded-lg bg-secondary hover:bg-tertiary cursor-pointer overflow-hidden", "", this.channelsContainer );
             channelContainer.style.minHeight = "100px";
             const channelImage = LX.makeElement( "img", "rounded-lg bg-secondary hover:bg-tertiary border-none", "", channelContainer );
-            channelImage.src = await ShaderHub.getChannelUrl( pass, i )
+            const metadata = await ShaderHub.getChannelMetadata( pass, i );
+            channelImage.src = metadata.url ?? Constants.IMAGE_EMPTY_SRC;
             channelImage.style.width = "95%";
             channelImage.style.height = "95%";
-            const channelTitle = LX.makeContainer( ["100%", "auto"], "p-2 absolute text-md bottom-0 channel-title pointer-events-none", `iChannel${ i }`, channelContainer );
-            channelContainer.addEventListener( "click", ( e ) => {
+            const channelTitle = LX.makeContainer( ["100%", "auto"], "p-2 absolute bg-secondary text-md text-center content-center bottom-0 channel-title pointer-events-none",
+                metadata.name ? `${ metadata.name } (iChannel${ i })` : `iChannel${ i }`, channelContainer );
+            channelContainer.addEventListener( "click", async ( e ) => {
                 e.preventDefault();
-                this.openAvailableChannels( i );
+                await this.openAvailableChannels( pass, i );
             } );
             channelContainer.addEventListener("contextmenu", ( e ) => {
                 e.preventDefault();
