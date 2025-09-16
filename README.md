@@ -13,6 +13,7 @@ Roadmap:
 - [ ] Submit form for Login (LX)
 - [ ] Give more info on form validation errors (LX)
 
+- [x] Allow shader remixable or not
 - [x] Help/Docs section
 - [x] Shader buffers
 - [x] Fullscreen mode

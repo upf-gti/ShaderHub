@@ -96,6 +96,19 @@
 	margin-left: auto;
     margin-right: auto;
     max-width: 1400px;
+
+	/* https://pqina.nl/blog/fade-out-overflow-using-css-mask-image/ */
+    --scrollbar-width: 8px;
+    --mask-height: 64px;
+	padding-bottom: var(--mask-height);
+    --mask-image-content: linear-gradient(to bottom, black calc(100% - var(--mask-height)), transparent);
+    --mask-size-content: calc(100% - var(--scrollbar-width)) 100%;
+    --mask-image-scrollbar: linear-gradient(black, black);
+    --mask-size-scrollbar: var(--scrollbar-width) 100%;
+    mask-image: var(--mask-image-content), var(--mask-image-scrollbar);
+    mask-size: var(--mask-size-content), var(--mask-size-scrollbar);
+    mask-position: 0 0, 100% 0;
+    mask-repeat: no-repeat, no-repeat;
 }
 
 .help-content p, .help-content li {

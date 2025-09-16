@@ -603,7 +603,7 @@ const ShaderHub =
 
                 // Close dialog on succeed and show toast
                 dialog.close();
-                LX.toast( `✅ Shader saved`, `Shader: ${ shaderName } by ${ fs.user.name }`, { position: "top-right" } );
+                Utils.toast( `✅ Shader saved`, `Shader: ${ shaderName } by ${ fs.user.name }` );
             }, { width: "50%", buttonClass: "contrast" } );
         } );
     },
@@ -626,7 +626,7 @@ const ShaderHub =
         // Update canvas snapshot
         await this.updateShaderPreview( this.shader.uid, false );
 
-        LX.toast( `✅ Shader updated`, `Shader: ${ this.shader.name } by ${ fs.user.name }`, { position: "top-right" } );
+        Utils.toast( `✅ Shader updated`, `Shader: ${ this.shader.name } by ${ fs.user.name }` );
     },
 
     async deleteShader()
@@ -653,7 +653,7 @@ const ShaderHub =
                 await fs.deleteFile( result.files[ 0 ][ "$id" ] );
             }
 
-            LX.toast( `✅ Shader deleted`, `Shader: ${ this.shader.name } by ${ fs.user.name }`, { position: "top-right" } );
+            Utils.toast( `✅ Shader deleted`, `Shader: ${ this.shader.name } by ${ fs.user.name }` );
 
         };
 
@@ -713,7 +713,7 @@ const ShaderHub =
 
         if( showFeedback )
         {
-            LX.toast( `✅ Shader preview updated`, `Shader: ${ this.shader.name } by ${ fs.user.name }`, { position: "top-right" } );
+            Utils.toast( `✅ Shader preview updated`, `Shader: ${ this.shader.name } by ${ fs.user.name }` );
         }
     },
 
@@ -960,7 +960,7 @@ const ShaderHub =
                         if( showFeedback )
                         {
                             this.setEditorErrorBorder( ERROR_CODE_ERROR );
-                            LX.toast( `❌ ${ LX.toTitleCase( msg.type ) }: ${ fragLineNumber }:${ msg.linePos }`, msg.message, { timeout: -1, position: "top-right" } );
+                            Utils.toast( `❌ ${ LX.toTitleCase( msg.type ) }: ${ fragLineNumber }:${ msg.linePos }`, msg.message, -1 );
                             ui.editor.code.childNodes[ fragLineNumber - 1 ]?.classList.add( msg.type === "error" ? "removed" : "debug");
                         }
                     }

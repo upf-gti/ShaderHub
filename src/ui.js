@@ -497,41 +497,48 @@ export const ui = {
                 } )
             }
 
-            const shaderOptions = LX.makeContainer( [`auto`, "auto"], "ml-auto flex flex-row p-1 gap-1 self-start items-center", ``, shaderNameAuthorOptionsContainer );
-
-            if( this.fs.user )
+            if( !mobile )
             {
-                const shaderOptionsButton = new LX.Button( null, "ShaderOptions", async () => {
+                const shaderOptions = LX.makeContainer( [`auto`, "auto"], "ml-auto flex flex-row p-1 gap-1 self-start items-center", ``, shaderNameAuthorOptionsContainer );
 
-                    const dmOptions = [ ]
+                if( this.fs.user )
+                {
+                    const shaderOptionsButton = new LX.Button( null, "ShaderOptions", async () => {
 
-                    if( ownProfile || isNewShader )
-                    {
-                        let result = await shaderExists();
+                        const dmOptions = [ ]
 
-                        dmOptions.push( mobile ? 0 : { name: "Save Shader", icon: "Save", callback: () => ShaderHub.saveShader( result ) } );
+                        let result = await ShaderHub.shaderExists();
 
-                        if( result )
+                        if( ownProfile || isNewShader )
                         {
                             dmOptions.push(
-                                mobile ? 0 : { name: "Update Preview", icon: "ImageUp", callback: () => ShaderHub.updateShaderPreview( shader.uid, true ) },
-                                mobile ? 0 : null,
-                                { name: "Delete Shader", icon: "Trash2", className: "fg-error", callback: () => ShaderHub.deleteShader() },
+                                { name: "Save Shader", icon: "Save", callback: () => ShaderHub.saveShader( result ) },
+                                { name: "Settings", icon: "Settings", callback: () => this.openShaderSettingsDialog( result ) }
                             );
-                        }
-                    }
-                    else
-                    {
-                        dmOptions.push( mobile ? 0 : { name: "Remix Shader", icon: "GitFork", callback: () => ShaderHub.remixShader() } );
-                    }
 
-                    new LX.DropdownMenu( shaderOptionsButton.root, dmOptions.filter( o => o !== 0 ), { side: "bottom", align: "end" });
-                }, { icon: "Menu" } );
-                shaderOptions.appendChild( shaderOptionsButton.root );
-            }
-            else
-            {
-                LX.makeContainer( [`auto`, "auto"], "fg-secondary text-md", "Login to save/remix this shader", shaderOptions );
+                            if( result )
+                            {
+                                dmOptions.push(
+                                    { name: "Update Preview", icon: "ImageUp", callback: () => ShaderHub.updateShaderPreview( shader.uid, true ) },
+                                    null,
+                                    { name: "Delete Shader", icon: "Trash2", className: "fg-error", callback: () => ShaderHub.deleteShader() },
+                                );
+                            }
+                        }
+                        else
+                        {
+                            dmOptions.push( { name: "Remix Shader", icon: "GitFork", disabled: !( result.remixable ?? true ), callback: () => ShaderHub.remixShader() } );
+                        }
+
+                        new LX.DropdownMenu( shaderOptionsButton.root, dmOptions.filter( o => o !== 0 ), { side: "bottom", align: "end" });
+
+                    }, { icon: "Menu" } );
+                    shaderOptions.appendChild( shaderOptionsButton.root );
+                }
+                else
+                {
+                    LX.makeContainer( [`auto`, "auto"], "fg-secondary text-md", "Login to save/remix this shader", shaderOptions );
+                }
             }
 
             // Editable description
@@ -600,28 +607,26 @@ export const ui = {
         const getStartedButton = new LX.Button( null, "Get Started", () => ShaderHub.createNewShader(), { buttonClass: "contrast p-1 px-3" } );
         headerButtons.appendChild( getStartedButton.root );
 
-        const content = LX.makeContainer( [ null, "calc(100% - 200px)" ], "help-content flex flex-col border-top gap-2 px-10 py-8 overflow-scroll", "", this.area );
+        const content = LX.makeContainer( [ null, "calc(100% - 200px)" ], "help-content flex flex-col gap-2 px-10 pt-4 overflow-scroll", "", this.area );
         SET_DOM_TARGET( content );
 
         MAKE_HEADER( "Creating Shaders.", "h1", "creating-shaders" );
 
         MAKE_LINE_BREAK();
 
-        MAKE_PARAGRAPH( `ShaderHub lets you create and run shaders right in your browser using WebGPU. You can write code, plug in textures or uniforms, and instantly see the results on the canvas—no setup, no downloads, just shaders that run on the web.` );
+        MAKE_PARAGRAPH( `ShaderHub lets you create and run shaders right in your browser using WebGPU. You can write code, plug in textures or uniforms, and instantly see the results on the canvas. No setup, no downloads, just shaders that run on the web.` );
         MAKE_PARAGRAPH( `To create a new shader, simply click on the "New" button in the top menu bar. This will open a new shader editor where you can start coding your shader. The editor supports multiple passes, allowing you to create complex effects by layering different shaders together.
-        Once you've written your shader code, you can compile and run it by clicking the "Run" button or using the Ctrl+S or Ctrl+Enter shortcuts. The shader will be executed on the canvas, and you can see the results in real-time.` );
+        Once you've written your shader code, you can compile and run it by clicking the "Run" button or using the ${ LX.makeKbd( ["Ctrl", "Space"], false, "text-lg inline-block bg-tertiary border px-1 rounded" ).innerHTML } or ${ LX.makeKbd( ["Ctrl", "Enter"], false, "text-lg inline-block bg-tertiary border px-1 rounded" ).innerHTML } shortcuts. The shader will be executed on the canvas, and you can see the results in real-time.` );
 
         MAKE_LINE_BREAK();
 
         MAKE_HEADER( "Shader Passes.", "h2", "shader-passes" );
 
         MAKE_PARAGRAPH( `ShaderHub supports multiple shader passes, which are essentially different stages of rendering that can be combined to create complex visual effects. There are two types of passes you can create: Buffer and Common.` );
-
         MAKE_BULLET_LIST( [
             `Buffers: Offscreen render targets that can be used to store intermediate results. You can create up to four buffer passes, which can be referenced in subsequent passes using the iChannel uniforms (iChannel0, iChannel1, etc.). This allows you to build effects step by step, using the output of one pass as the input for another.`,
             `Common: Used for shared code that can be included in other passes. This is useful for defining functions or variables that you want to reuse across multiple shader passes. You can only have one Common pass per shader.`
         ] );
-
         MAKE_PARAGRAPH( `To create a new pass, click on the "+" button in the editor's tab bar and select the type of pass you want to create. You can then write your shader code in the new tab that appears.` );
 
         MAKE_LINE_BREAK();
@@ -629,9 +634,7 @@ export const ui = {
         MAKE_HEADER( "Uniforms and Textures.", "h2", "uniforms-and-textures" );
 
         MAKE_PARAGRAPH( `Uniforms are global variables that can be passed to your shader code. ShaderHub provides a set of default uniforms, such as iTime (elapsed time), iResolution (canvas resolution), and iMouse (mouse position), which you can use to create dynamic effects.` );
-
         MAKE_PARAGRAPH( `In addition to the default uniforms, you can also create custom uniforms to pass additional data to your shaders. To add a custom uniform, first open the Custom Uniforms popover using the button at the status bar (bottom of the editor), then click on the "+" button. You can specify the name and type of the uniform, and it will be available for use in your shader code.` );
-
         MAKE_PARAGRAPH( `Textures can be used in your shaders by assigning them to the iChannel uniforms. You must use existing textures from the ShaderHub library. To assign a texture to an iChannel, click on the corresponding channel in the status bar and select the texture you want to use.` );
 
         MAKE_LINE_BREAK();
@@ -639,12 +642,14 @@ export const ui = {
         MAKE_HEADER( "Saving and Sharing Shaders.", "h2", "saving-and-sharing-shaders" );
 
         MAKE_PARAGRAPH( `Once you've created a shader that you're happy with, you can save it to your ShaderHub account by clicking the "Save" button in the shader options menu. This will store your shader in the server, allowing you to access it from any device.` );
-
         MAKE_PARAGRAPH( `You can also share your shaders with others by providing them with a direct link. Simply copy the URL from your browser's address bar and send it to anyone you want to share your shader with. They will be able to view, edit and run your shader in their own browser (not save it!).` );
-
-        // MAKE_PARAGRAPH( `If you want to allow others to remix your shader, you can enable the remix option in the shader settings. This will let other users create their own versions of your shader while still giving you credit as the original author.` );
+        MAKE_PARAGRAPH( `If you want to allow others to remix your shader, you can enable the remix option in the shader settings. This will let other users create their own versions of your shader while still giving you credit as the original author.` );
 
         MAKE_LINE_BREAK();
+
+        MAKE_HEADER( "Source Code.", "h1", "source-code" );
+
+        MAKE_PARAGRAPH( `ShaderHub is an open-source project, and its source code is available on GitHub. You can find the repository <a href="https://github.com/upf-gti/ShaderHub">here</a>.` );
 
     //     MAKE_CODE( `@[com]// Split main area in 2 sections (2 Areas)@
     // @let@ [ left, right ] = area.@[mtd]split@({
@@ -908,6 +913,11 @@ export const ui = {
 
     openLoginDialog()
     {
+        if( this._lastOpenedDialog )
+        {
+            this._lastOpenedDialog.close();
+        }
+
         const dialog = new LX.Dialog( "Login", ( p ) => {
             const formData = { email: { label: "Email", value: "", icon: "AtSign" }, password: { label: "Password", icon: "Key", value: "", type: "password" } };
             const form = p.addForm( null, formData, async (value, event) => {
@@ -921,17 +931,24 @@ export const ui = {
                     }
                     document.getElementById( "signupContainer" )?.classList.add( "hidden" );
                     document.querySelectorAll( ".lextoast" ).forEach( t => t.close() );
-                    LX.toast( `✅ Logged in`, `User: ${ value.email }`, { position: "top-right" } );
+                    Utils.toast( `✅ Logged in`, `User: ${ value.email }` );
                 }, (err) => {
-                    LX.toast( `❌ Error`, err, { timeout: -1, position: "top-right" } );
+                    Utils.toast( `❌ Error`, err, -1 );
                 } );
             }, { primaryActionName: "Login" });
             form.root.querySelector( "button" ).classList.add( "mt-2" );
         }, { modal: true } );
+
+        this._lastOpenedDialog = dialog;
     },
 
     openSignUpDialog()
     {
+        if( this._lastOpenedDialog )
+        {
+            this._lastOpenedDialog.close();
+        }
+
         const dialog = new LX.Dialog( "Create account", ( p ) => {
 
             const namePattern = LX.buildTextPattern( { minLength: Constants.USERNAME_MIN_LENGTH } );
@@ -977,7 +994,7 @@ export const ui = {
                 await this.fs.createAccount( value.email, value.password, value.name, async ( user ) => {
                     dialog.close();
                     document.querySelectorAll( ".lextoast" ).forEach( t => t.close() );
-                    LX.toast( `✅ Account created!`, `You can now login with your email: ${ value.email }`, { position: "top-right" } );
+                    Utils.toast( `✅ Account created!`, `You can now login with your email: ${ value.email }` );
 
                     // Update DB
                     {
@@ -995,6 +1012,42 @@ export const ui = {
             form.root.querySelector( "button" ).classList.add( "mt-2" );
             const errorMsg = p.addTextArea( null, "", null, { inputClass: "fg-secondary", disabled: true, fitHeight: true } );
         }, { modal: true } );
+
+        this._lastOpenedDialog = dialog;
+    },
+
+    openShaderSettingsDialog( r )
+    {
+        if( this._lastOpenedDialog )
+        {
+            this._lastOpenedDialog.close();
+        }
+
+        let shaderDirty = false;
+
+        const dialog = new LX.Dialog( "Shader Settings", ( p ) => {
+
+            p.addCheckbox( "Allow Remix", r.remixable ?? true, ( v ) => {
+                shaderDirty = true;
+                r.remixable = v;
+            }, { className: "contrast" } );
+
+            p.addSeparator();
+
+            p.sameLine( 2 );
+            p.addButton( null, "Discard Changes", () => dialog.close(), { width: "50%", buttonClass: "bg-error fg-white" } );
+            p.addButton( null, "Save Shader", async () => {
+                if( !shaderDirty ) return;
+                await this.fs.updateDocument( FS.SHADERS_COLLECTION_ID, r[ "$id" ], {
+                    "remixable": r.remixable ?? true
+                } );
+                Utils.toast( `✅ Shader updated`, `Shader: ${ r.name } by ${ this.fs.user.name }` );
+                dialog.close();
+            }, { width: "50%", buttonClass: "contrast" } );
+
+        }, { modal: false } );
+
+        this._lastOpenedDialog = dialog;
     },
 
     openUniformsDialog()
@@ -1005,9 +1058,9 @@ export const ui = {
             return;
         }
 
-        if( this._lastUniformsDialog )
+        if( this._lastOpenedDialog )
         {
-            this._lastUniformsDialog.close();
+            this._lastOpenedDialog.close();
         }
 
         const dialog = new LX.Dialog( `Uniforms [${ pass.uniforms.length }]`, null, {
@@ -1029,16 +1082,16 @@ export const ui = {
         // Re-add listener since it lost it changing the parent
         closerButton.addEventListener( "click", dialog.close );
 
-        this._lastUniformsDialog = dialog;
+        this._lastOpenedDialog = dialog;
     },
 
     openCustomUniforms( target )
     {
         target = target ?? this.openCustomParamsButton.root;
 
-        if( this._lastUniformsDialog )
+        if( this._lastOpenedDialog )
         {
-            this._lastUniformsDialog.close();
+            this._lastOpenedDialog.close();
         }
 
         // Refresh content first
@@ -1049,6 +1102,11 @@ export const ui = {
 
     async openAvailableChannels( channelIndex )
     {
+        if( this._lastOpenedDialog )
+        {
+            this._lastOpenedDialog.close();
+        }
+
         this.currentChannelIndex = channelIndex;
 
         const _createChannelItems = async ( category, container ) => {
@@ -1098,6 +1156,8 @@ export const ui = {
         let dialog = new LX.Dialog( `Channel${ channelIndex } input:`, (p) => {
             p.attach( area );
         }, { modal: false, close: true, minimize: false, size: [`${ Math.min( 1280, window.innerWidth - 64 ) }px`, "512px"], draggable: true });
+
+        this._lastOpenedDialog = dialog;
     },
 
     async updateShaderChannelPreview( channel, url )

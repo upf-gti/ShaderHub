@@ -41,4 +41,8 @@ function code2ascii( c ) {
     return CODE2ASCII[ c ];
 }
 
-export { code2ascii, getDate, toESDate, capitalizeFirstLetter, isMobile };
+function toast( title, text, timeout ) {
+    LX.toast( title, text, { position: "top-right", timeout } );
+}
+
+export { toast, code2ascii, getDate, toESDate, capitalizeFirstLetter, isMobile };
