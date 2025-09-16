@@ -135,6 +135,12 @@
 	}
 }
 
+@media (min-width: 1800px) {
+	.shader-item {
+		aspect-ratio: 1 / 0.725;
+	}
+}
+
 @media screen and (max-width: 992px) {
     .content-area {
 		flex-direction: column;

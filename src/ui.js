@@ -114,8 +114,7 @@ export const ui = {
                         { name: "Profile", icon: "User", callback: () => ShaderHub.openProfile( fs.getUserId() ) },
                         { name: "Logout", icon: "LogOut", className: "fg-error", callback: async () => {
                             await fs.logout();
-                            loginOptionsButton.innerHTML = "Login";
-                            document.getElementById( "signupContainer" )?.classList.remove( "hidden" );
+                            window.location.reload();
                         } },
                     ], { side: "bottom", align: "end" });
                 }
@@ -204,7 +203,8 @@ export const ui = {
                 const shaderInfo = {
                     name,
                     uid: document[ "$id" ],
-                    creationDate: Utils.toESDate( document[ "$createdAt" ] )
+                    creationDate: Utils.toESDate( document[ "$createdAt" ] ),
+                    likeCount: document[ "like_count" ]
                 };
 
                 const authorId = document[ "author_id" ];
@@ -245,12 +245,10 @@ export const ui = {
                         <div class="text-lg font-bold">${ shader.name }</div>
                         <div class="text-sm font-light">by ${ !shader.anonAuthor ? "<a class='dodgerblue cursor-pointer hover:text-underline'>" : "" }<span class="font-bold">${ shader.author }</span>${ !shader.anonAuthor ? "</a>" : "" }</div>
                     </div>
-                    <div class="">
-                        <div class="">
-                            ${ LX.makeIcon( "CircleUserRound", { svgClass: "xxl fg-secondary" } ).innerHTML }
-                        </div>
+                    <div class="flex flex-row gap-1">
+                        ${ LX.makeIcon( "Heart", { svgClass: "fill-current fg-secondary" } ).innerHTML }
+                        <span>${ shader.likeCount ?? 0 }</span>
                     </div>`, shaderItem );
-                    // <img alt="avatar" width="32" height="32" decoding="async" data-nimg="1" class="rounded-full" src="https://imgproxy.compute.toys/insecure/width:64/plain/https://hkisrufjmjfdgyqbbcwa.supabase.co/storage/v1/object/public/avatar/f91bbd73-7734-49a9-99ce-460774d4ccc0/avatar.jpg">
 
                 const hyperlink = shaderDesc.querySelector( "a" );
                 if( hyperlink )
@@ -453,6 +451,7 @@ export const ui = {
         var [ graphicsArea, shaderDataArea ] = leftArea.split({ type: "vertical", sizes: ["auto", "auto"], resize: false });
 
         const ownProfile = this.fs.user && ( shader.authorId === this.fs.getUserId() );
+        const originalShader = shader.originalId ? await ShaderHub.getShaderById( shader.originalId ) : null;
 
         // Add Shader data
         {
@@ -464,8 +463,9 @@ export const ui = {
                         ${ ( ownProfile || isNewShader ) ? LX.makeIcon("Edit", { svgClass: "mr-2 cursor-pointer hover:fg-primary" } ).innerHTML : "" }
                         <div class="fg-primary text-xxl font-semibold">${ shader.name }</div>
                     </div>
-                    <div class="fg-secondary text-md">created by ${ !shader.anonAuthor ? "<a class='dodgerblue cursor-pointer hover:text-underline'>" : "" }${ shader.author }${ !shader.anonAuthor ? "</a>" : "" }
-                    on <span class="font-bold">${ shader.creationDate }</span></div>
+                    <div class="fg-secondary text-md">Created by ${ !shader.anonAuthor ? `<a onclick='ShaderHub.openProfile("${ shader.authorId }")' class='dodgerblue decoration-none cursor-pointer hover:text-underline'>` : `` }${ shader.author }${ !shader.anonAuthor ? "</a>" : "" } on ${ shader.creationDate }
+                    ${ originalShader ? `(remixed from <a onclick='ShaderHub.openShader("${ shader.originalId }")' class='dodgerblue decoration-none cursor-pointer hover:text-underline'>${ originalShader.name }</a> by <a onclick='ShaderHub.openProfile("${ originalShader.authorId }")' class='dodgerblue decoration-none cursor-pointer hover:text-underline'>${ originalShader.author }</a>)` : `` }
+                    </div>
                 </div>
             `, shaderDataContainer );
 
@@ -479,7 +479,7 @@ export const ui = {
                     const input = new LX.TextInput( null, text.textContent, async (v) => {
                         text.innerText = v;
                         input.root.replaceWith( text );
-                        await ShaderHub.updateShaderName( v );
+                        shader.name = v;
                         this._editingName = false;
                     }, { inputClass: "fg-primary text-xxl font-semibold", pattern: LX.buildTextPattern( { minLength: 3 } ) } );
                     text.replaceWith( input.root );
@@ -488,16 +488,7 @@ export const ui = {
                 } )
             }
 
-            const hyperlink = shaderNameAuthorOptionsContainer.querySelector( "a" );
-            if( hyperlink )
-            {
-                hyperlink.addEventListener( "click", (e) => {
-                    e.preventDefault();
-                    ShaderHub.openProfile( shader.authorId )
-                } )
-            }
-
-            const shaderOptions = LX.makeContainer( [`auto`, "auto"], "ml-auto flex flex-row p-1 gap-1 self-start items-center", ``, shaderNameAuthorOptionsContainer );
+            const shaderOptions = LX.makeContainer( [`auto`, "auto"], "ml-auto flex flex-col p-1 gap-1 self-start items-center", ``, shaderNameAuthorOptionsContainer );
 
             if( this.fs.user )
             {
@@ -539,6 +530,28 @@ export const ui = {
                 LX.makeContainer( [`auto`, "auto"], "fg-secondary text-md", "Login to save/remix this shader", shaderOptions );
             }
 
+            const shaderStats = LX.makeContainer( [`auto`, "auto"], "ml-auto flex p-1 gap-1 self-start items-center", `
+                ${ LX.makeIcon( "Heart", { svgClass: "lg fill-current" } ).innerHTML } <span></span>
+            `, shaderOptions );
+
+            const likeSpan = shaderStats.querySelector( "span" );
+
+            LX.addSignal( "@on_like_changed", ( target, likesCount ) => {
+                likeSpan.innerHTML = likesCount;
+            } );
+
+            if( this.fs.user && !ownProfile )
+            {
+                const likeButton = shaderStats.querySelector( "svg" );
+                likeButton.classList.add( "hover:fg-error", "cursor-pointer" );
+                likeButton.title = "Like Shader";
+                LX.asTooltip( likeButton, likeButton.title );
+                likeButton.addEventListener( "click", (e) => {
+                    e.preventDefault();
+                    ShaderHub.onShaderLike();
+                } );
+            }
+
             // Editable description
             {
                 const descContainer = LX.makeContainer( [`auto`, "auto"], "fg-primary mt-2 flex flex-row items-center", `
@@ -562,7 +575,7 @@ export const ui = {
                         text.replaceWith( input.root );
                         LX.doAsync( () => input.root.focus() );
                         this._editingDescription = true;
-                    } )
+                    } );
                 }
             }
         }
@@ -847,8 +860,7 @@ export const ui = {
         */
 
         customTabInfoButtonsPanel.addButton( null, "CompileShaderButton", async () => {
-            await this.compileShader();
-            this.gpuCanvas.focus();
+            await ShaderHub.compileShader( true, null, true );
         }, { icon: "Play", width: "32px", title: "Compile", tooltip: true } );
 
         customTabInfoButtonsPanel.endLine();
@@ -1221,6 +1233,8 @@ export const ui = {
                 channelItem.addEventListener( "click", async ( e ) => {
                     e.preventDefault();
                     pass.channels[ channelIndex ] = fileId ?? document.name;
+                    await this.updateShaderChannelsView( pass, channelIndex );
+                    pass.mustCompile = true;
                     dialog.close();
                 } );
             }
@@ -1244,36 +1258,52 @@ export const ui = {
         this._lastOpenedDialog = dialog;
     },
 
-    async updateShaderChannelsView( pass )
+    async updateShaderChannelsView( pass, channel )
     {
         pass = pass ?? ShaderHub.currentPass;
 
         this.toggleShaderChannelsView( pass.type === "common" );
 
-        this.channelsContainer.innerHTML = "";
+        const iUpdateChannel = async ( channelIndex ) => {
 
-        for( let i = 0; i < Constants.UNIFORM_CHANNELS_COUNT; i++ )
-        {
-            const channelContainer = LX.makeContainer( ["100%", "100%"], "relative text-center content-center rounded-lg bg-secondary hover:bg-tertiary cursor-pointer overflow-hidden", "", this.channelsContainer );
+            const child = this.channelsContainer.children[ channelIndex ];
+            if( child ) this.channelsContainer.removeChild( child );
+
+            const channelContainer = LX.makeContainer( ["100%", "100%"], "relative text-center content-center rounded-lg bg-secondary hover:bg-tertiary cursor-pointer overflow-hidden", "" );
             channelContainer.style.minHeight = "100px";
+            this.channelsContainer.insertChildAtIndex( channelContainer, channelIndex );
+
             const channelImage = LX.makeElement( "img", "rounded-lg bg-secondary hover:bg-tertiary border-none", "", channelContainer );
-            const metadata = await ShaderHub.getChannelMetadata( pass, i );
+            const metadata = await ShaderHub.getChannelMetadata( pass, channelIndex );
             channelImage.src = metadata.url ?? Constants.IMAGE_EMPTY_SRC;
             channelImage.style.width = "95%";
             channelImage.style.height = "95%";
-            const channelTitle = LX.makeContainer( ["100%", "auto"], "p-2 absolute bg-secondary text-md text-center content-center bottom-0 channel-title pointer-events-none",
-                metadata.name ? `${ metadata.name } (iChannel${ i })` : `iChannel${ i }`, channelContainer );
+            const channelTitle = LX.makeContainer( ["100%", "auto"], "p-2 absolute bg-secondary text-sm text-center content-center top-0 channel-title pointer-events-none",
+                metadata.name ? `${ metadata.name } (iChannel${ channelIndex })` : `iChannel${ channelIndex }`, channelContainer );
             channelContainer.addEventListener( "click", async ( e ) => {
                 e.preventDefault();
-                await this.openAvailableChannels( pass, i );
+                await this.openAvailableChannels( pass, channelIndex );
             } );
             channelContainer.addEventListener("contextmenu", ( e ) => {
                 e.preventDefault();
                 new LX.DropdownMenu( e.target, [
-                    { name: "Remove", className: "bg-error fg-white", callback: async () => await ShaderHub.removeUniformChannel( i ) },
+                    { name: "Remove", className: "bg-error fg-white", callback: async () => await ShaderHub.removeUniformChannel( channelIndex ) },
                 ], { side: "top", align: "start" });
             });
         }
+
+        if( channel !== undefined )
+        {
+            iUpdateChannel( channel );
+            return;
+        }
+
+        for( let i = 0; i < Constants.UNIFORM_CHANNELS_COUNT; i++ )
+        {
+            iUpdateChannel( i );
+        }
+
+        console.log( "Channels view updated." );
     },
 
     toggleShaderChannelsView( force )

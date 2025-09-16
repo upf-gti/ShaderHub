@@ -101,7 +101,6 @@ const ShaderHub =
             // Fill buffers and textures for each pass channel
             for( let c = 0; c < pass.channels?.length ?? 0; ++c )
             {
-                const isCurrentPass = ( this.currentPass.name === pass.name );
                 const channelName = pass.channels[ c ];
                 if( !channelName ) continue;
 
@@ -109,16 +108,16 @@ const ShaderHub =
                 {
                     if( channelName === "Keyboard" )
                     {
-                        await this.createKeyboardTexture( c, true );
+                        await this.createKeyboardTexture( c );
                     }
                     else if( channelName.startsWith( "Buffer" ) )
                     {
-                        await this.loadBufferChannel( pass, channelName, c, isCurrentPass )
+                        await this.loadBufferChannel( pass, channelName, c )
                     }
                     else // Texture from file
                     {
                         // Only update preview in case that's the current pass
-                        await this.createTexture( channelName, c, isCurrentPass );
+                        await this.createTexture( channelName, c );
                     }
                 }
 
@@ -264,6 +263,11 @@ const ShaderHub =
             const json = JSON.parse( await fs.requestFile( this.shader.url, "text" ) );
             console.assert( json, "DB: No JSON Shader data available!" );
 
+            this.shader._json = LX.deepCopy( json );
+            this.shader.likes = [ ...( json.likes ?? [] ) ];
+
+            LX.emit( "@on_like_changed", this.shader.likes.length );
+
             for( const pass of json.passes ?? [] )
             {
                 pass.resolutionX = this.resolutionX;
@@ -294,6 +298,26 @@ const ShaderHub =
         this.currentPass = this.shader.passes.at( -1 );
 
         ui.editor.loadTab( this.currentPass.name );
+    },
+
+    async onShaderLike()
+    {
+        const userId = fs.getUserId();
+
+        const likeIndex = this.shader.likes.indexOf( userId );
+        if( likeIndex !== -1 )
+        {
+            this.shader.likes.splice( likeIndex, 1 );
+        }
+        else
+        {
+            this.shader.likes.push( userId );
+        }
+
+        LX.emit( "@on_like_changed", this.shader.likes.length );
+
+        let result = await ShaderHub.shaderExists();
+        await this.saveShader( result, false );
     },
 
     onShaderPassCreated( passType, passName )
@@ -426,7 +450,8 @@ const ShaderHub =
                 uid: id,
                 url: await fs.getFileUrl( result[ "file_id" ] ),
                 description: result.description ?? "",
-                creationDate: Utils.toESDate( result[ "$createdAt" ] )
+                creationDate: Utils.toESDate( result[ "$createdAt" ] ),
+                originalId: result[ "original_id" ]
             };
 
             const authorId = result[ "author_id" ];
@@ -523,37 +548,47 @@ const ShaderHub =
         window.location.href = `${ window.location.origin + window.location.pathname }?profile=${ userID }`;
     },
 
+    openShader( shaderID )
+    {
+        window.location.href = `${ window.location.origin + window.location.pathname }?shader=${ shaderID }`;
+    },
+
     createNewShader()
     {
         // Only crete a new shader view, nothing to save now
         window.location.href = `${ window.location.origin + window.location.pathname }?shader=new`;
     },
 
-    async updateShaderName( shaderName )
-    {
-        const shaderUid = this.shader.uid;
-
-        // update DB
-        // ...
-
-        this.shader.name = shaderName;
-    },
-
     async saveShaderFiles()
     {
+        const ownShader = ( this.shader.authorId === fs.getUserId() );
+        const passes = ownShader ? this.shader.passes : this.shader._json.passes;
+
         // Upload file and get id
-        const filename = `${ LX.toCamelCase( this.shader.name ) }.json`;
-        const text = JSON.stringify( {
-            name: this.shader.name,
-            passes: this.shader.passes
-        } );
+        const json = {
+            name: this.shader.name, // only updated by user
+            likes: this.shader.likes, // can be updated
+            // use json data or updated data depending on who's saving
+            passes: passes.map( p => {
+                return {
+                    "name": p.name,
+                    "type": p.type,
+                    "codeLines": p.codeLines,
+                    "channels": p.channels,
+                    "uniforms": p.uniforms
+                }
+            } )
+        };
+
+        const text = JSON.stringify( json );
         const arraybuffer = new TextEncoder().encode( text );
+        const filename = `${ LX.toCamelCase( this.shader.name ) }.json`;
         const file = new File( [ arraybuffer ], filename, { type: "text/plain" });
         const result = await fs.createFile( file );
         return result[ "$id" ];
     },
 
-    async saveShader( existingShader )
+    async saveShader( existingShader, updateThumbnail = true )
     {
         if( !fs.user )
         {
@@ -563,7 +598,7 @@ const ShaderHub =
 
         if( existingShader )
         {
-            this.overrideShader( existingShader );
+            this.overrideShader( existingShader, updateThumbnail );
             return;
         }
 
@@ -590,6 +625,7 @@ const ShaderHub =
                     "author_id": fs.getUserId(),
                     "author_name": this.shader.author ?? "",
                     "file_id": newFileId,
+                    "like_count": this.shader.likes.length
                 } );
 
                 this.shader.uid = result[ "$id" ];
@@ -605,7 +641,7 @@ const ShaderHub =
         } );
     },
 
-    async overrideShader( shaderMetadata )
+    async overrideShader( shaderMetadata, updateThumbnail = true )
     {
         // Delete old file first
         const fileId = shaderMetadata[ "file_id" ];
@@ -618,10 +654,13 @@ const ShaderHub =
             "name": this.shader.name,
             "description": this.shader.description,
             "file_id": newFileId,
+            "like_count": this.shader.likes.length
         } );
 
-        // Update canvas snapshot
-        await this.updateShaderPreview( this.shader.uid, false );
+        if( updateThumbnail )
+        {
+            await this.updateShaderPreview( this.shader.uid, false );
+        }
 
         Utils.toast( `✅ Shader updated`, `Shader: ${ this.shader.name } by ${ fs.user.name }` );
     },
@@ -675,8 +714,9 @@ const ShaderHub =
         const newFileId = await this.saveShaderFiles();
 
         // Create a new shader in the DB
-        result = await fs.createDocument( FS.SHADERS_COLLECTION_ID, {
+        const result = await fs.createDocument( FS.SHADERS_COLLECTION_ID, {
             "name": shaderName,
+            "author_name": fs.user.name,
             "author_id": fs.getUserId(),
             "original_id": shaderUid,
             "file_id": newFileId,
@@ -807,13 +847,13 @@ const ShaderHub =
 
         if( updatePreview )
         {
-            await ui.updateShaderChannelsView();
+            await ui.updateShaderChannelsView( null, channel );
         }
 
         return imageTexture;
     },
 
-    async createKeyboardTexture( channel, updatePreview )
+    async createKeyboardTexture( channel, updatePreview = false )
     {
         const dimensions = [ 256, 3 ];
         const data = [];
@@ -886,7 +926,7 @@ const ShaderHub =
         LX.doAsync( () => this.setEditorErrorBorder(), 2000 );
     },
 
-    async compileShader( showFeedback = true, pass )
+    async compileShader( showFeedback = true, pass, focusCanvas = false )
     {
         this._lastShaderCompilationWithErrors = false;
 
@@ -903,7 +943,7 @@ const ShaderHub =
             console.assert( pass.codeLines, `No tab with name ${ pass.name }` );
             if( pass.type === "common" ) continue;
 
-            const result = await pass.compile( this.presentationFormat, this.gpuBuffers, this.gpuTextures );
+            const result = await pass.compile( this.presentationFormat, this.gpuBuffers );
             if( result !== WEBGPU_OK ) // error object
             {
                 ui.editor.loadTab( pass.name ); // Open the tab with the error
@@ -936,6 +976,11 @@ const ShaderHub =
         if( showFeedback )
         {
             this.setEditorErrorBorder( ERROR_CODE_SUCCESS );
+        }
+
+        if( focusCanvas )
+        {
+            this.gpuCanvas.focus();
         }
 
         return WEBGPU_OK;

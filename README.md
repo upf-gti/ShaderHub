@@ -1,16 +1,20 @@
 # ShaderHub
 WebGPU Shadertoy-like platform to create fullscreen quad shaders.
 
+- hide custom uniforms button in common passes
+- keyboard doesn't work
+
 Roadmap:
 - [ ] Support creating Compute shaders
 - [ ] Change uniforms type
 - [ ] Shader desc/comments format
 - [ ] Shader Utils
-- [ ] Shader stats
 - [ ] Shader Comments
 - [ ] Submit form for Login (LX)
 - [ ] Give more info on form validation errors (LX)
+- [ ] Give more info on form validation errors (LX)
 
+- [x] Shader likes
 - [x] Share shader iframe
 - [x] Export GIF/pngs (RECORD CANVAS)
 - [x] Allow shader remixable or not

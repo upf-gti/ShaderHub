@@ -49,10 +49,11 @@ class ShaderPass {
         this.name = data.name;
         this.device = device;
         this.type = data.type ?? "image";
-        this.codeLines = data.codeLines ?? this.shader.getDefaultCode( this );
-        this.channels = data.channels ?? [];
+        // Make sure we copy everything to avoid references
+        this.codeLines = [ ...( data.codeLines ?? this.shader.getDefaultCode( this ) ) ];
+        this.channels = [ ...( data.channels ?? [] ) ];
+        this.uniforms = [ ...( data.uniforms ?? [] ) ];
         this.channelTextures = [];
-        this.uniforms = data.uniforms ?? [];
         this.uniformBuffers = [];
 
         this.pipeline = null;
@@ -90,14 +91,10 @@ class ShaderPass {
             return;
         }
 
-        if( !this.pipeline )
+        if( this.mustCompile || !this.pipeline || !this.bindGroup )
         {
-            await this.createPipeline( format );
-        }
-
-        if( !this.bindGroup )
-        {
-            await this.createBindGroup( buffers );
+            const r = await this.compile( format, buffers );
+            console.assert( r === WEBGPU_OK );
         }
 
         if( this.type === "image" )
@@ -319,6 +316,8 @@ class ShaderPass {
             return WEBGPU_ERROR;
         }
         
+        this.mustCompile = false;
+
         return WEBGPU_OK;
     }
 
@@ -519,10 +518,12 @@ class Shader {
 
         this.author = data.author ?? "anonymous";
         this.authorId = data.authorId;
+        this.originalId = data.originalId;
         this.anonAuthor = data.anonAuthor ?? false;
         this.description = data.description ?? "";
         this.creationDate = data.creationDate ?? "";
         this.hasPreview = data.hasPreview ?? false;
+        this.likes = data.likes ?? [];
     }
 
     getDefaultCode( pass )
