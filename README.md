@@ -2,17 +2,17 @@
 WebGPU Shadertoy-like platform to create fullscreen quad shaders.
 
 Roadmap:
-- [ ] Export GIF/pngs (RECORD CANVAS)
 - [ ] Support creating Compute shaders
 - [ ] Change uniforms type
 - [ ] Shader desc/comments format
 - [ ] Shader Utils
-- [ ] Share shader iframe
 - [ ] Shader stats
 - [ ] Shader Comments
 - [ ] Submit form for Login (LX)
 - [ ] Give more info on form validation errors (LX)
 
+- [x] Share shader iframe
+- [x] Export GIF/pngs (RECORD CANVAS)
 - [x] Allow shader remixable or not
 - [x] Help/Docs section
 - [x] Shader buffers

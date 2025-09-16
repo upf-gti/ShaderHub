@@ -497,48 +497,46 @@ export const ui = {
                 } )
             }
 
-            if( !mobile )
+            const shaderOptions = LX.makeContainer( [`auto`, "auto"], "ml-auto flex flex-row p-1 gap-1 self-start items-center", ``, shaderNameAuthorOptionsContainer );
+
+            if( this.fs.user )
             {
-                const shaderOptions = LX.makeContainer( [`auto`, "auto"], "ml-auto flex flex-row p-1 gap-1 self-start items-center", ``, shaderNameAuthorOptionsContainer );
+                const shaderOptionsButton = new LX.Button( null, "ShaderOptions", async () => {
 
-                if( this.fs.user )
-                {
-                    const shaderOptionsButton = new LX.Button( null, "ShaderOptions", async () => {
+                    const dmOptions = [ ]
 
-                        const dmOptions = [ ]
+                    let result = await ShaderHub.shaderExists();
 
-                        let result = await ShaderHub.shaderExists();
+                    if( ownProfile || isNewShader )
+                    {
+                        dmOptions.push(
+                            mobile ? 0 : { name: "Save Shader", icon: "Save", callback: () => ShaderHub.saveShader( result ) },
+                            isNewShader ? 0 : { name: "Share", icon: "Share2", callback: () => this.openShareiFrameDialog( result ) },
+                            (isNewShader || mobile) ? 0 : { name: "Settings", icon: "Settings", callback: () => this.openShaderSettingsDialog( result ) }
+                        );
 
-                        if( ownProfile || isNewShader )
+                        if( result )
                         {
                             dmOptions.push(
-                                { name: "Save Shader", icon: "Save", callback: () => ShaderHub.saveShader( result ) },
-                                isNewShader ? 0 : { name: "Settings", icon: "Settings", callback: () => this.openShaderSettingsDialog( result ) }
+                                mobile ? 0 : { name: "Update Preview", icon: "ImageUp", callback: () => ShaderHub.updateShaderPreview( shader.uid, true ) },
+                                mobile ? 0 : null,
+                                { name: "Delete Shader", icon: "Trash2", className: "fg-error", callback: () => ShaderHub.deleteShader() },
                             );
-
-                            if( result )
-                            {
-                                dmOptions.push(
-                                    { name: "Update Preview", icon: "ImageUp", callback: () => ShaderHub.updateShaderPreview( shader.uid, true ) },
-                                    null,
-                                    { name: "Delete Shader", icon: "Trash2", className: "fg-error", callback: () => ShaderHub.deleteShader() },
-                                );
-                            }
                         }
-                        else
-                        {
-                            dmOptions.push( { name: "Remix Shader", icon: "GitFork", disabled: !( result.remixable ?? true ), callback: () => ShaderHub.remixShader() } );
-                        }
+                    }
+                    else
+                    {
+                        dmOptions.push( mobile ? 0 : { name: "Remix Shader", icon: "GitFork", disabled: !( result.remixable ?? true ), callback: () => ShaderHub.remixShader() } );
+                    }
 
-                        new LX.DropdownMenu( shaderOptionsButton.root, dmOptions.filter( o => o !== 0 ), { side: "bottom", align: "end" });
+                    new LX.DropdownMenu( shaderOptionsButton.root, dmOptions.filter( o => o !== 0 ), { side: "bottom", align: "end" });
 
-                    }, { icon: "Menu" } );
-                    shaderOptions.appendChild( shaderOptionsButton.root );
-                }
-                else
-                {
-                    LX.makeContainer( [`auto`, "auto"], "fg-secondary text-md", "Login to save/remix this shader", shaderOptions );
-                }
+                }, { icon: "Menu" } );
+                shaderOptions.appendChild( shaderOptionsButton.root );
+            }
+            else
+            {
+                LX.makeContainer( [`auto`, "auto"], "fg-secondary text-md", "Login to save/remix this shader", shaderOptions );
             }
 
             // Editable description
@@ -585,40 +583,43 @@ export const ui = {
             panel.addLabel( "0 FPS", { signal: "@fps", inputClass: "size-content" } );
             panel.endLine( "items-center h-full" );
 
-            panel.sameLine();
-            panel.addButton( null, "Record", ( name, event ) => {
-                const button = event.target;
-                button["Format"] = button["Format"] ?? "gif";
-                button["Frames"] = button["Frames"] ?? "120";
+            if( !mobile )
+            {
+                panel.sameLine();
+                panel.addButton( null, "Record", ( name, event ) => {
+                    const button = event.target;
+                    button["Format"] = button["Format"] ?? "gif";
+                    button["Frames"] = button["Frames"] ?? "120";
 
-                LX.addDropdownMenu( button, [
-                    {
-                        name: "Format",
-                        icon: "FileArchive",
-                        closeOnClick: false,
-                        options: [
-                            { name: "gif" },
-                            { name: "png" },
-                            { name: "webm" }
-                        ]
-                    },
-                    {
-                        name: "Frames",
-                        icon: "Film",
-                        closeOnClick: false,
-                        options: [
-                            { name: "60" },
-                            { name: "120" },
-                            { name: "180" },
-                            { name: "240" },
-                            { name: "300" }
-                        ]
-                    },
-                    { name: "Start Capture", icon: "Video", callback: () => ShaderHub.startCapture( button["Format"], parseInt( button["Frames"] ) ) },
-                ], { side: "bottom", align: "end" });
-            }, { icon: "Video", className: "ml-auto", title: "Record", tooltip: true } );
-            panel.addButton( null, "Fullscreen", () => ShaderHub.requestFullscreen(), { icon: "Fullscreen", title: "Fullscreen", tooltip: true } );
-            panel.endLine( "items-center h-full ml-auto" );
+                    LX.addDropdownMenu( button, [
+                        {
+                            name: "Format",
+                            icon: "FileArchive",
+                            closeOnClick: false,
+                            options: [
+                                { name: "gif" },
+                                { name: "png" },
+                                { name: "webm" }
+                            ]
+                        },
+                        {
+                            name: "Frames",
+                            icon: "Film",
+                            closeOnClick: false,
+                            options: [
+                                { name: "60" },
+                                { name: "120" },
+                                { name: "180" },
+                                { name: "240" },
+                                { name: "300" }
+                            ]
+                        },
+                        { name: "Start Capture", icon: "Video", callback: () => ShaderHub.startCapture( button["Format"], parseInt( button["Frames"] ) ) },
+                    ], { side: "bottom", align: "end" });
+                }, { icon: "Video", className: "ml-auto", title: "Record", tooltip: true } );
+                panel.addButton( null, "Fullscreen", () => ShaderHub.requestFullscreen(), { icon: "Fullscreen", title: "Fullscreen", tooltip: true } );
+                panel.endLine( "items-center h-full ml-auto" );
+            }
 
             ShaderHub.onShaderEditorCreated( shader, canvas );
         }
@@ -1070,9 +1071,67 @@ export const ui = {
                     "remixable": r.remixable ?? true
                 } );
                 Utils.toast( `✅ Shader updated`, `Shader: ${ r.name } by ${ this.fs.user.name }` );
+                shaderDirty = false;
                 dialog.close();
             }, { width: "50%", buttonClass: "contrast" } );
 
+        }, { modal: false } );
+
+        this._lastOpenedDialog = dialog;
+    },
+
+    openShareiFrameDialog( r )
+    {
+        if( this._lastOpenedDialog )
+        {
+            this._lastOpenedDialog.close();
+        }
+
+        let showUI = true;
+
+        const dialog = new LX.Dialog( "Share this Shader", ( p ) => {
+
+            // direct link
+            {
+                p.addTextArea( null, `Direct link: Just copy and past the URL below:`, null, { inputClass: "fg-secondary", disabled: true, fitHeight: true } );
+                const directLink = `${ window.location.origin }${ window.location.pathname }?shader=${ r[ "$id" ] }`;
+                p.addTextArea( null, directLink, null, { disabled: true, fitHeight: true } );
+                const copyButtonComponent = p.addButton(null, "Copy Shader URL",  async () => {
+                    navigator.clipboard.writeText( directLink );
+                    copyButtonComponent.root.querySelector( "input[type='checkbox']" ).style.pointerEvents = "none";
+                    LX.doAsync( () => {
+                        copyButtonComponent.swap( true );
+                        copyButtonComponent.root.querySelector( "input[type='checkbox']" ).style.pointerEvents = "auto";
+                    }, 3000 );
+                }, { swap: "Check", icon: "Copy", iconPosition: "start", title: "Copy Shader URL", tooltip: true } );
+                copyButtonComponent.root.querySelector( ".swap-on svg" ).addClass( "fg-success" );
+            }
+
+            p.addSeparator();
+
+            // iframe code
+            {
+                p.addTextArea( null, `Direct link: Copy the code below to embed this shader in your website or blog:`, null, { inputClass: "fg-secondary", disabled: true, fitHeight: true } );
+                p.addCheckbox( "Show UI", showUI, ( v ) => {
+                    showUI = v;
+                    const newUrl = `<iframe src="${ window.location.origin }${ window.location.pathname }embed/?shader=${ r[ "$id" ] }${ showUI ? "" : "&ui=false" }" frameborder="0" width="640" height="360" class="rounded-lg" allowfullscreen></iframe>`;
+                    iframeText.set( newUrl );
+                }, { className: "contrast" } );
+
+                const iframeUrl = `<iframe src="${ window.location.origin }${ window.location.pathname }embed/?shader=${ r[ "$id" ] }${ showUI ? "" : "&ui=false" }" frameborder="0" width="640" height="360" class="rounded-lg" allowfullscreen></iframe>`;
+
+                const iframeText = p.addTextArea( null, iframeUrl, null,
+                    { disabled: true, fitHeight: true } );
+                const copyButtonComponent = p.addButton(null, "Copy iFrame html",  async () => {
+                    navigator.clipboard.writeText( iframeText.value() );
+                    copyButtonComponent.root.querySelector( "input[type='checkbox']" ).style.pointerEvents = "none";
+                    LX.doAsync( () => {
+                        copyButtonComponent.swap( true );
+                        copyButtonComponent.root.querySelector( "input[type='checkbox']" ).style.pointerEvents = "auto";
+                    }, 3000 );
+                }, { swap: "Check", icon: "Copy", iconPosition: "start", title: "Copy iFrame html", tooltip: true } );
+                copyButtonComponent.root.querySelector( ".swap-on svg" ).addClass( "fg-success" );
+            }
         }, { modal: false } );
 
         this._lastOpenedDialog = dialog;

@@ -1,9 +1,8 @@
 import { LX } from 'lexgui';
-import * as Constants from "./constants.js";
-import * as Utils from './utils.js';
-import { FS } from './fs.js';
-import { ui } from './ui.js';
-import { FPSCounter, Shader, ShaderPass } from './graphics.js';
+import * as Constants from "../src/constants.js";
+import * as Utils from '../src/utils.js';
+import { FS } from '../src/fs.js';
+import { FPSCounter, Shader, ShaderPass } from '../src/graphics.js';
 
 const WEBGPU_OK     = 0;
 const WEBGPU_ERROR  = 1;
@@ -32,12 +31,128 @@ const ShaderHub =
     lastTime: 0,
     elapsedTime: 0,
     timePaused: false,
-    capturer: null,
 
     async init()
     {
-        await fs.detectAutoLogin();
-        await ui.init( fs );
+        this.area = await LX.init();
+
+        const params = new URLSearchParams( document.location.search );
+        const shaderUid = params.get( "shader" );
+        const useUI = params.get( "ui" ) ? ( params.get( "ui" ) === "true" ) : true;
+
+        if( !shaderUid ) return;
+        
+        const shader = await this.getShaderById( shaderUid );
+
+        document.title = `${ shader.name } (${ shader.author }) - ShaderHub`;
+
+        // Add shader visualization UI
+        {
+            let finalCanvasArea = this.area;
+            let finalCanvasControlsArea = null;
+
+            if( useUI )
+            {
+                let [ canvasArea, canvasControlsArea ] = this.area.split({ type: "vertical", sizes: ["calc(100% - 48px)", null], resize: false });
+                finalCanvasArea = canvasArea;
+                finalCanvasControlsArea = canvasControlsArea;
+            }
+
+            const canvas = document.createElement("canvas");
+            canvas.className = "webgpu-canvas w-full h-full rounded-t-lg";
+            canvas.tabIndex = "0";
+
+            // Manage canvas resize
+            {
+                let iResize = ( xResolution, yResolution ) => {
+                    canvas.width = xResolution;
+                    canvas.height = yResolution;
+                    ShaderHub.onShaderCanvasResized( xResolution, yResolution );
+                };
+
+                let bestAttemptFallback = () => {
+                    let devicePixelRatio = window.devicePixelRatio || 1;
+                    let xResolution = Math.round( canvas.offsetWidth  * devicePixelRatio ) | 0;
+                    let yResolution = Math.round( canvas.offsetHeight * devicePixelRatio ) | 0;
+                    iResize( xResolution, yResolution );
+                };
+
+                if( !window.ResizeObserver )
+                {
+                    console.warn( "This browser doesn't support ResizeObserver." );
+                    bestAttemptFallback();
+                    window.addEventListener( "resize", bestAttemptFallback );
+                }
+                else
+                {
+                    this.ro = new ResizeObserver( function( entries, observer )
+                    {
+                        var entry = entries[ 0 ];
+                        if( !entry['devicePixelContentBoxSize'] )
+                        {
+                            observer.unobserve( canvas );
+                            console.warn( "This browser doesn't support ResizeObserver + device-pixel-content-box (2)" );
+                            bestAttemptFallback();
+                            window.addEventListener( "resize", bestAttemptFallback );
+                        }
+                        else
+                        {
+                            let box = entry.devicePixelContentBoxSize[ 0 ];
+                            iResize( box.inlineSize, box.blockSize );
+                        }
+                    });
+
+                    try
+                    {
+                        this.ro.observe( canvas, { box: ["device-pixel-content-box"] } );
+                    }
+                    catch( e )
+                    {
+                        console.warn( "This browser doesn't support ResizeObserver + device-pixel-content-box (1)");
+                        bestAttemptFallback();
+                        window.addEventListener( "resize", bestAttemptFallback );
+                    }
+                }
+            }
+
+            canvas.addEventListener('keydown', async (e) => {
+                this.onKeyDown( e );
+                e.preventDefault();
+            }, false);
+
+            canvas.addEventListener('keyup', async (e) => {
+                this.onKeyUp( e );
+                e.preventDefault();
+            }, false);
+
+            canvas.addEventListener("mousedown", (e) => {
+                this.onMouseDown( e );
+            });
+
+            canvas.addEventListener("mouseup", (e) => {
+                this.onMouseUp( e );
+            });
+
+            canvas.addEventListener("mousemove", (e) => {
+                this.onMouseMove( e );
+            });
+
+            finalCanvasArea.attach( canvas );
+        
+            if( finalCanvasControlsArea )
+            {
+                finalCanvasControlsArea.root.className += " px-2 rounded-b-lg bg-secondary";
+                const panel = finalCanvasControlsArea.addPanel( { className: "flex flex-row" } );
+                panel.sameLine();
+                panel.addButton( null, "ResetTime", () => this.onShaderTimeReset(), { icon: "SkipBack", title: "Reset time", tooltip: true } );
+                panel.addButton( null, "PauseTime", () => this.onShaderTimePaused(), { icon: "Pause", title: "Pause/Resume", tooltip: true, swap: "Play" } );
+                panel.addLabel( "0.0", { signal: "@elapsed-time", inputClass: "size-content" } );
+                panel.addLabel( "0 FPS", { signal: "@fps", inputClass: "size-content" } );
+                panel.endLine( "items-center h-full" );
+            }
+
+            this.onShaderEditorCreated( shader, canvas );
+        }
     },
 
     async onFrame()
@@ -155,18 +270,6 @@ const ShaderHub =
 
         this._mousePressed = false;
 
-        if( this.capturer )
-        {
-            this.capturer.capture( this.gpuCanvas );
-
-            this.captureFrameCount++;
-
-            if( this.captureFrameCount == this.exportFramesCount )
-            {
-                this.saveCapture();
-            }
-        }
-
         requestAnimationFrame( this.onFrame.bind( this ) );
     },
 
@@ -215,29 +318,6 @@ const ShaderHub =
         this.resolutionY = yResolution;
     },
 
-    async onShaderChannelSelected( category, name, fileId, index )
-    {
-        if( category === "misc" )
-        {
-            switch( name )
-            {
-                case "Keyboard":
-                    await this.createKeyboardTexture( index, true );
-                    break;
-                case "BufferA":
-                case "BufferB":
-                case "BufferC":
-                case "BufferD":
-                    await this.loadBufferChannel( this.currentPass, name, index, true );
-                    break;
-            }
-        }
-        else if( category === "texture" ) // Use this image as a texture
-        {
-            await this.loadTextureChannelFromFile( fileId, index );
-        }
-    },
-
     async onShaderEditorCreated( shader, canvas )
     {
         this.shader = shader;
@@ -260,6 +340,8 @@ const ShaderHub =
                 }
 
                 this.shader.passes.splice( passIndex, 1 );
+                this.renderPipelines.splice( passIndex, 1 );
+                this.renderBindGroups.splice( passIndex, 1 );
 
                 await this.compileShader();
             }
@@ -278,9 +360,6 @@ const ShaderHub =
 
             const shaderPass = new ShaderPass( shader, this.device, pass );
             this.shader.passes.push( shaderPass );
-
-            // Set code in the editor
-            ui.editor.addTab( pass.name, false, pass.name, { codeLines: pass.codeLines, language: "WGSL" } );
         }
         else
         {
@@ -301,96 +380,16 @@ const ShaderHub =
                 }
                 this.shader.passes.push( shaderPass );
 
-                // Set code in the editor
-                ui.editor.addTab( pass.name, false, pass.name, { codeLines: pass.codeLines, language: "WGSL" } );
-
                 if( pass.name !== "MainImage" )
                 {
                     const closeIcon = LX.makeIcon( "X", { iconClass: "ml-2" } );
                     LX.asTooltip( closeIcon, "Delete file" );
                     closeIcon.addEventListener( "click", closeFn.bind( this, pass.name ) );
-                    ui.editor.tabs.tabDOMs[ pass.name ].appendChild( closeIcon );
                 }
             }
         }
 
         this.currentPass = this.shader.passes.at( -1 );
-
-        ui.editor.loadTab( this.currentPass.name );
-    },
-
-    onShaderPassCreated( passType, passName )
-    {
-        let indexOffset = -1;
-
-        const shaderPass = new ShaderPass( this.shader, this.device, {
-            name: passName,
-            type: passType,
-            resolutionX: this.resolutionX,
-            resolutionY: this.resolutionY
-        } );
-
-        if( passType === "buffer" )
-        {
-            const getNextBufferName = () => {
-                const usedNames = this.shader.passes.filter( p => p.type === "buffer" ).map( p => p.name );
-                const possibleNames = ["BufferA", "BufferB", "BufferC", "BufferD"];
-
-                // Find the first unused name
-                for( const name of possibleNames )
-                {
-                    if( !usedNames.includes( name )) return name;
-                }
-
-                // All used, should not happen due to prev checks
-                return null;
-            }
-
-            indexOffset = -2;
-            passName = shaderPass.name = getNextBufferName();
-            this.shader.passes.splice( this.shader.passes.length - 1, 0, shaderPass ); // Add before MainImage
-
-            console.assert( shaderPass.textures, "Buffer does not have render target textures" );
-            this.gpuTextures[ passName ] = shaderPass.textures;
-        }
-        else if( passType === "common" )
-        {
-            indexOffset = -( this.shader.passes.length + 1 );
-            this.shader.passes.splice( 0, 0, shaderPass ); // Add at the start
-        }
-
-        ui.editor.addTab( passName, true, passName, {
-            indexOffset,
-            language: "WGSL",
-            codeLines: shaderPass.codeLines
-        } );
-
-        // Wait for the tab to be created
-        LX.doAsync( async () => {
-
-            const closeIcon = LX.makeIcon( "X", { iconClass: "ml-2" } );
-            LX.asTooltip( closeIcon, "Delete file" );
-            closeIcon.addEventListener( "click", (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                editor.tabs.delete( passName );
-                document.body.querySelectorAll( ".lextooltip" ).forEach( e => e.remove() );
-            } );
-
-            ui.editor.tabs.tabDOMs[ passName ].appendChild( closeIcon );
-
-            this.onShaderPassSelected( passName );
-
-            await this.compileShader( false );
-
-        }, 10 );
-    },
-
-    onShaderPassSelected( passName )
-    {
-        this.currentPass = this.shader.passes.find( p => p.name === passName );
-        console.assert( this.currentPass, `Cannot find pass ${ passName }` );
-        ui.updateShaderChannelsView( this.currentPass );
     },
 
     onShaderTimePaused()
@@ -480,19 +479,6 @@ const ShaderHub =
         return new Shader( shaderData );
     },
 
-    async getChannelUrl( pass, channel )
-    {
-        if( !pass ) return Constants.IMAGE_EMPTY_SRC;
-        const assetFileId = pass.channels[ channel ];
-        if( !assetFileId ) return Constants.IMAGE_EMPTY_SRC;
-        if( assetFileId === "Keyboard" ) return "images/keyboard.png";
-        if( assetFileId.startsWith( "Buffer" ) ) return "images/buffer.png";
-        const result = await fs.listDocuments( FS.ASSETS_COLLECTION_ID, [ Query.equal( "file_id", assetFileId ) ] );
-        console.assert( result.total == 1, `Inconsistent asset list for file id ${ assetFileId }` );
-        const preview = result.documents[ 0 ][ "preview" ];
-        return preview ? await fs.getFileUrl( preview ) : await fs.getFileUrl( assetFileId );
-    },
-
     resizeBuffers( resolutionX, resolutionY )
     {
         for( const pass of this.shader.passes )
@@ -501,228 +487,6 @@ const ShaderHub =
                 continue;
 
             pass.resizeBuffer( resolutionX, resolutionY );
-        }
-    },
-
-    requestFullscreen( element )
-    {
-        element = element ?? this.gpuCanvas;
-
-        if( element == null ) element = document.documentElement;
-        if( element.requestFullscreen ) element.requestFullscreen();
-        else if( element.msRequestFullscreen ) element.msRequestFullscreen();
-        else if( element.mozRequestFullScreen ) element.mozRequestFullScreen();
-        else if( element.webkitRequestFullscreen ) element.webkitRequestFullscreen( Element.ALLOW_KEYBOARD_INPUT );
-
-        if( element.focus ) element.focus();
-    },
-
-    isFullScreen()
-    {
-        return document.fullscreen || document.mozFullScreen || document.webkitIsFullScreen || document.msFullscreenElement;
-    },
-
-    exitFullscreen()
-    {
-        if( document.exitFullscreen ) document.exitFullscreen();
-        else if( document.msExitFullscreen ) document.msExitFullscreen();
-        else if( document.mozCancelFullScreen ) document.mozCancelFullScreen();
-        else if( document.webkitExitFullscreen ) document.webkitExitFullscreen();
-    },
-
-    openProfile( userID )
-    {
-        window.location.href = `${ window.location.origin + window.location.pathname }?profile=${ userID }`;
-    },
-
-    createNewShader()
-    {
-        // Only crete a new shader view, nothing to save now
-        window.location.href = `${ window.location.origin + window.location.pathname }?shader=new`;
-    },
-
-    async updateShaderName( shaderName )
-    {
-        const shaderUid = this.shader.uid;
-
-        // update DB
-        // ...
-
-        this.shader.name = shaderName;
-    },
-
-    async saveShaderFiles()
-    {
-        // Upload file and get id
-        const filename = `${ LX.toCamelCase( this.shader.name ) }.json`;
-        const text = JSON.stringify( {
-            name: this.shader.name,
-            passes: this.shader.passes
-        } );
-        const arraybuffer = new TextEncoder().encode( text );
-        const file = new File( [ arraybuffer ], filename, { type: "text/plain" });
-        const result = await fs.createFile( file );
-        return result[ "$id" ];
-    },
-
-    async saveShader( existingShader )
-    {
-        if( !fs.user )
-        {
-            console.warn( "Login to save your shader!" );
-            return;
-        }
-
-        if( existingShader )
-        {
-            this.overrideShader( existingShader );
-            return;
-        }
-
-        const dialog = new LX.Dialog( "Confirm Shader name", ( p ) => {
-            let shaderName = this.shader.name;
-            const textInput = p.addText( "Name", shaderName, ( v ) => {
-                shaderName = v;
-            }, { pattern: LX.buildTextPattern( { minLength: 3 } ) } );
-            p.addSeparator();
-            p.sameLine( 2 );
-            p.addButton( null, "Cancel", () => dialog.close(), { width: "50%", buttonClass: "bg-error fg-white" } );
-            p.addButton( null, "Confirm", async () => {
-                if( !shaderName.length || !textInput.valid( shaderName ) )
-                {
-                    return;
-                }
-
-                const newFileId = await this.saveShaderFiles();
-
-                // Create a new shader in the DB
-                const result = await fs.createDocument( FS.SHADERS_COLLECTION_ID, {
-                    "name": shaderName,
-                    "description": this.shader.description,
-                    "author_id": fs.getUserId(),
-                    "author_name": this.shader.author ?? "",
-                    "file_id": newFileId,
-                } );
-
-                this.shader.uid = result[ "$id" ];
-                this.shader.name = shaderName;
-
-                // Upload canvas snapshot
-                await this.updateShaderPreview( this.shader.uid, false );
-
-                // Close dialog on succeed and show toast
-                dialog.close();
-                Utils.toast( `✅ Shader saved`, `Shader: ${ shaderName } by ${ fs.user.name }` );
-            }, { width: "50%", buttonClass: "contrast" } );
-        } );
-    },
-
-    async overrideShader( shaderMetadata )
-    {
-        // Delete old file first
-        const fileId = shaderMetadata[ "file_id" ];
-        await fs.deleteFile( fileId );
-
-        const newFileId = await this.saveShaderFiles();
-
-        // Update files reference in the DB
-        await fs.updateDocument( FS.SHADERS_COLLECTION_ID, this.shader.uid, {
-            "name": this.shader.name,
-            "description": this.shader.description,
-            "file_id": newFileId,
-        } );
-
-        // Update canvas snapshot
-        await this.updateShaderPreview( this.shader.uid, false );
-
-        Utils.toast( `✅ Shader updated`, `Shader: ${ this.shader.name } by ${ fs.user.name }` );
-    },
-
-    async deleteShader()
-    {
-        let result = await this.shaderExists();
-        if( !result )
-        {
-            return;
-        }
-
-        const innerDelete = async () => {
-
-            // DB entry
-            await fs.deleteDocument( FS.SHADERS_COLLECTION_ID, this.shader.uid );
-
-            // Shader files
-            await fs.deleteFile( result[ "file_id" ] );
-
-            // Preview
-            const previewName = `${ this.shader.uid }.png`;
-            result = await fs.listFiles( [ Query.equal( "name", previewName ) ] );
-            if( result.total > 0 )
-            {
-                await fs.deleteFile( result.files[ 0 ][ "$id" ] );
-            }
-
-            Utils.toast( `✅ Shader deleted`, `Shader: ${ this.shader.name } by ${ fs.user.name }` );
-
-        };
-
-        const dialog = new LX.Dialog( "Delete shader", (p) => {
-            p.root.classList.add( "p-2" );
-            p.addTextArea( null, "Are you sure? This action cannot be undone.", null, { disabled: true } );
-            p.addSeparator();
-            p.sameLine( 2 );
-            p.addButton( null, "Cancel", () => dialog.close(), { width: "50%", buttonClass: "bg-error fg-white" } );
-            p.addButton( null, "Continue", innerDelete.bind( this ), { width: "50%", buttonClass: "contrast" } );
-        }, { modal: true } );
-    },
-
-    async remixShader()
-    {
-        // Save the shader with you as the author id
-        // Create a new col to store original_id so it can be shown in the page
-        // Get the new shader id, and reload page in shader view with that id
-
-        const shaderName = this.shader.name;
-        const shaderUid = this.shader.uid;
-        const newFileId = await this.saveShaderFiles();
-
-        // Create a new shader in the DB
-        result = await fs.createDocument( FS.SHADERS_COLLECTION_ID, {
-            "name": shaderName,
-            "author_id": fs.getUserId(),
-            "original_id": shaderUid,
-            "file_id": newFileId,
-            "description": this.shader.description
-        } );
-
-        // Upload canvas snapshot
-        await this.updateShaderPreview( shaderUid, false );
-
-        // Go to shader edit view with the new shader
-        window.location.href = `${ window.location.origin + window.location.pathname }?shader=${ result[ "$id" ] }`;
-    },
-
-    async updateShaderPreview( shaderUid, showFeedback = true )
-    {
-        shaderUid = shaderUid ?? this.shader.uid;
-
-        // Delete old preview first if necessary
-        const previewName = `${ shaderUid }.png`;
-        const result = await fs.listFiles( [ Query.equal( "name", previewName ) ] );
-        if( result.total > 0 )
-        {
-            const fileId = result.files[ 0 ][ "$id" ];
-            await fs.deleteFile( fileId );
-        }
-
-        // Create new one
-        const blob = await this.snapshotCanvas();
-        const file = new File( [ blob ], previewName, { type: "image/png" });
-        await fs.createFile( file );
-
-        if( showFeedback )
-        {
-            Utils.toast( `✅ Shader preview updated`, `Shader: ${ this.shader.name } by ${ fs.user.name }` );
         }
     },
 
@@ -780,7 +544,7 @@ const ShaderHub =
             });
         }
 
-        Shader.globalSampler = this.device.createSampler({
+        this.globalSampler = this.device.createSampler({
             magFilter: 'linear',
             minFilter: 'linear',
         });
@@ -882,20 +646,17 @@ const ShaderHub =
         {
             pass.channels[ channel ] = imageName;
 
+            const passIndex = this.shader.passes.indexOf( pass );
+            this.renderPipelines[ passIndex ] = null;
+            this.renderBindGroups[ passIndex ] = null;
+
+            // await this.compileShader( false, pass );
+
             if( updatePreview )
             {
                 ui.updateShaderChannelPreview( channel, "images/keyboard.png" );
             }
         }
-    },
-
-    setEditorErrorBorder( errorCode = ERROR_CODE_DEFAULT )
-    {
-        ui.editor.area.root.parentElement.classList.toggle( "code-border-default", errorCode === ERROR_CODE_DEFAULT );
-        ui.editor.area.root.parentElement.classList.toggle( "code-border-error", errorCode === ERROR_CODE_ERROR );
-        ui.editor.area.root.parentElement.classList.toggle( "code-border-success", errorCode === ERROR_CODE_SUCCESS );
-
-        LX.doAsync( () => this.setEditorErrorBorder(), 2000 );
     },
 
     async compileShader( showFeedback = true, pass )
@@ -929,13 +690,6 @@ const ShaderHub =
                     for( const msg of result.messages )
                     {
                         const fragLineNumber = msg.lineNum - ( mainImageLineOffset );
-
-                        if( showFeedback )
-                        {
-                            this.setEditorErrorBorder( ERROR_CODE_ERROR );
-                            Utils.toast( `❌ ${ LX.toTitleCase( msg.type ) }: ${ fragLineNumber }:${ msg.linePos }`, msg.message, -1 );
-                            ui.editor.code.childNodes[ fragLineNumber - 1 ]?.classList.add( msg.type === "error" ? "removed" : "debug");
-                        }
                     }
                 }, 10 );
 
@@ -945,21 +699,7 @@ const ShaderHub =
             }
         }
 
-        if( showFeedback )
-        {
-            this.setEditorErrorBorder( ERROR_CODE_SUCCESS );
-        }
-
         return WEBGPU_OK;
-    },
-
-    async shaderExists()
-    {
-        try {
-            return await fs.getDocument( FS.SHADERS_COLLECTION_ID, this.shader.uid );
-        } catch (error) {
-            // Doesn't exist...
-        }
     },
 
     async loadBufferChannel( pass, bufferName, channel, updatePreview = false, forceCompile = false )
@@ -970,107 +710,6 @@ const ShaderHub =
         {
             await this.compileShader( true, pass );
         }
-
-        if( updatePreview )
-        {
-            ui.updateShaderChannelPreview( channel, "images/buffer.png" );
-        }
-    },
-
-    async loadTextureChannelFromFile( file, channel )
-    {
-        const pass = this.currentPass;
-        if( pass.name === "Common" )
-        {
-            return;
-        }
-
-        pass.channels[ channel ] = file;
-        await this.createTexture( file, channel, true );
-
-        await this.compileShader( true, pass );
-    },
-
-    async removeUniformChannel( channel )
-    {
-        const pass = this.currentPass;
-        if( pass.name === "Common" )
-            return;
-
-        pass.channels[ channel ] = undefined;
-
-        // Reset image
-        ui.updateShaderChannelPreview( channel, Constants.IMAGE_EMPTY_SRC );
-
-        // Recreate everything
-        await this.compileShader( true, pass );
-    },
-
-    async addUniform( name, value, min, max )
-    {
-        const pass = this.currentPass;
-        if( pass.name === "Common" )
-            return;
-
-        const uName = name ?? `iUniform${ pass.uniforms.length + 1 }`;
-        pass.uniforms.push( { name: uName, value: value ?? 0, min: min ?? 0, max: max ?? 1 } );
-        const allCode = pass.getShaderCode( false );
-        if( allCode.match( new RegExp( `\\b${ uName }\\b` ) ) )
-        {
-            await this.createRenderPipeline( pass, true );
-        }
-    },
-
-    startCapture( captureFormat = 'gif', exportFramesCount = 120, captureFrameRate = 30 )
-    {
-        this.exportFramesCount = exportFramesCount;
-        this.captureFrameCount = 1;
-        this.capturer = new CCapture( { format: captureFormat, framerate: captureFrameRate, workersPath: './src/extra/' } );
-        this.capturer.start();
-    },
-
-    saveCapture()
-    {
-        if( !this.capturer )
-        {
-            return;
-        }
-
-        this.capturer.stop();
-        this.capturer.save();
-
-        delete this.capturer;
-        delete this.frameCount;
-
-        // custom save, will get a blob in the callback
-        // this.capturer.save( function( blob ) { /* ... */ } );
-    },
-
-    async snapshotCanvas( outWidth, outHeight )
-    {
-        const width = outWidth ?? 640;
-        const height = outHeight ?? 360;
-        const blob = await (() => {return new Promise((resolve) =>
-            this.gpuCanvas.toBlob((blob) => resolve(blob), "image/png")
-        )})();
-        const bitmap = await createImageBitmap( blob );
-
-        const snapCanvas = document.createElement("canvas");
-        snapCanvas.width = width;
-        snapCanvas.height = height;
-        const ctx = snapCanvas.getContext("2d");
-        ctx.drawImage( bitmap, 0, 0, width, height );
-
-        return new Promise((resolve) =>
-            snapCanvas.toBlob((blob) => resolve(blob), "image/png")
-        );
-    },
-
-    async getCanvasSnapshot()
-    {
-        const blob = await this.snapshotCanvas();
-        const url = URL.createObjectURL( blob );
-        window.open(url);
     },
 
     quitIfWebGPUNotAvailable( adapter, device )

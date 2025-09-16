@@ -1,5 +1,4 @@
 import * as Constants from "./constants.js";
-import { ShaderHub } from './app.js';
 
 const WEBGPU_OK     = 0;
 const WEBGPU_ERROR  = 1;
@@ -175,7 +174,7 @@ class ShaderPass {
     {
         if( this.type === "common" ) return;
 
-        const result = await ShaderHub.validateShader( this.getShaderCode() );
+        const result = await this.validate( this.getShaderCode() );
         if( !result.valid )
         {
             return result;
@@ -270,7 +269,7 @@ class ShaderPass {
                 texture = ( texture instanceof Array ) ? texture[ Constants.BUFFER_PASS_TEXTURE_A_INDEX ] : texture;
                 return { binding: bindingIndex++, resource: texture.createView() };
             } ).filter( u => u !== undefined ) );
-            entries.push( { binding: bindingIndex++, resource: ShaderHub.globalSampler } );
+            entries.push( { binding: bindingIndex++, resource: Shader.globalSampler } );
         }
 
         this.bindGroup = await this.device.createBindGroup({
@@ -291,7 +290,7 @@ class ShaderPass {
                     texture = ( texture instanceof Array ) ? texture[ Constants.BUFFER_PASS_TEXTURE_B_INDEX ] : texture;
                     return { binding: baseBindingIndex++, resource: texture.createView() };
                 } ).filter( u => u !== undefined ) );
-                baseEntries.push( { binding: baseBindingIndex++, resource: ShaderHub.globalSampler } );
+                baseEntries.push( { binding: baseBindingIndex++, resource: Shader.globalSampler } );
             }
 
             this.bindGroupB = await this.device.createBindGroup({
@@ -321,6 +320,36 @@ class ShaderPass {
         }
         
         return WEBGPU_OK;
+    }
+
+    async validate( code )
+    {
+        // Close all toasts
+        document.querySelectorAll( ".lextoast" ).forEach( t => t.close() );
+
+        // Validate shader
+        const module = this.device.createShaderModule({ code });
+        const info = await module.getCompilationInfo();
+
+        if( info.messages.length > 0 )
+        {
+            let errorMsgs = [];
+
+            for( const msg of info.messages )
+            {
+                if( msg.type === "error" )
+                {
+                    errorMsgs.push( msg );
+                }
+            }
+
+            if( errorMsgs.length > 0 )
+            {
+                return { valid: false, code, messages: errorMsgs };
+            }
+        }
+
+        return { valid: true, module };
     }
 
     getShaderCode( includeBindings = true )
