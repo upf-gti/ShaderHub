@@ -1,47 +1,35 @@
 import { LX } from 'lexgui';
-// import 'lexgui/extensions/codeeditor.js';
-import './extra/codeeditor.js';
+import * as Constants from "./constants.js";
+import * as Utils from './utils.js';
 import { FS } from './fs.js';
-import { Shader } from './shader.js';
+import { ui } from './ui.js';
+import { FPSCounter, Shader, ShaderPass } from './graphics.js';
 
 const WEBGPU_OK     = 0;
 const WEBGPU_ERROR  = 1;
 
-const SHADER_MODE_VIEW  = 0;
-const SHADER_MODE_EDIT  = 1;
-
-const USERNAME_MIN_LENGTH = 3;
-const PASSWORD_MIN_LENGTH = 8;
-
-const UNIFORM_CHANNELS_COUNT = 4;
-const DEFAULT_UNIFORMS_LIST = [
-    { name: "iTime", type: "f32", info: "Shader playback time (s)" },
-    { name: "iTimeDelta", type: "f32", info: "Render time (s)" },
-    { name: "iFrame", type: "i32", info: "Shader playback frame" },
-    { name: "iResolution", type: "vec2f", info: "Viewport resolution (px)" },
-    { name: "iMouse", type: "vec3f", info: "xy: Mouse coords (px), z: click" },
-    { name: "iChannel0..3", type: "texture_2d<f32>", info: "Texture input channel", skipBindings: true },
-];
-const DEFAULT_UNIFORM_NAMES = DEFAULT_UNIFORMS_LIST.map( u => u.name );
-
-const SRC_IMAGE_EMPTY = "data:image/gif;base64,R0lGODlhAQABAPcAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACH5BAEAAP8ALAAAAAABAAEAAAgEAP8FBAA7";
+const ERROR_CODE_DEFAULT    = 0;
+const ERROR_CODE_SUCCESS    = 1;
+const ERROR_CODE_ERROR      = 2;
 
 const fs = new FS();
+const fps = new FPSCounter();
 const Query = Appwrite.Query;
-const mobile = navigator && /Android|iPhone/i.test( navigator.userAgent );
 
-function capitalizeFirstLetter(val) {
-    return String(val).charAt(0).toUpperCase() + String(val).slice(1);
-}
+const ShaderHub =
+{
+    gpuTextures: {},
+    gpuBuffers: {},
+    renderPipelines: [],
+    renderBindGroups: [],
 
-const ShaderHub = {
-
-    shaderList: [],
-    loadedFiles: {},
-    loadedImages: {},
-    uniformChannels: [],
-
+    keyState: new Map(),
+    keyToggleState: new Map(),
+    keyPressed: new Map(),
     mousePosition: [ 0, 0 ],
+    lastMousePosition: [ 0, 0 ],
+    generateKbTexture: true,
+
     frameCount: 0,
     lastTime: 0,
     elapsedTime: 0,
@@ -75,361 +63,428 @@ const ShaderHub = {
         // this.capturer.save( function( blob ) { /* ... */ } );
     },
 
-    async initUI() {
-
-        this.area = await LX.init();
-
+    async init()
+    {
         await fs.detectAutoLogin();
+        await ui.init( fs );
+    },
 
-        const starterTheme = LX.getTheme();
-        const menubarOptions = [];
-        const menubarButtons = [
-            {
-                title: "Switch Theme",
-                icon: starterTheme == "dark" ? "Moon" : "Sun",
-                swap: starterTheme == "dark" ? "Sun" : "Moon",
-                callback: (value, event) => { LX.switchTheme() }
-            }
-        ];
+    async onFrame()
+    {
+        const now = LX.getTime();
 
-        if( !mobile )
+        this.timeDelta = ( now - this.lastTime ) / 1000;
+
+        fps.count( now );
+
+        if( !this.timePaused )
         {
-            menubarOptions.push(
-                {
-                    name: "New", callback: () => this.createNewShader()
-                },
-                {
-                    name: "Browse", callback: () => window.location.href = `${ window.location.origin + window.location.pathname }`
-                }
+            this.device.queue.writeBuffer(
+                this.gpuBuffers[ "timeDelta" ],
+                0,
+                new Float32Array([ this.timeDelta ])
             );
+
+            this.device.queue.writeBuffer(
+                this.gpuBuffers[ "time" ],
+                0,
+                new Float32Array([ this.elapsedTime ])
+            );
+
+            this.elapsedTime += this.timeDelta;
+
+            this.device.queue.writeBuffer(
+                this.gpuBuffers[ "frameCount" ],
+                0,
+                new Int32Array([ this.frameCount ])
+            );
+
+            this.frameCount++;
+
+            LX.emit( "@elapsed-time", `${ this.elapsedTime.toFixed( 2 ) }s` );
+            LX.emit( "@fps", `${ fps.get() } FPS` );
         }
 
-        const menubar = this.area.addMenubar( menubarOptions );
+        this.device.queue.writeBuffer(
+            this.gpuBuffers[ "resolution" ],
+            0,
+            new Float32Array([ this.resolutionX ?? this.gpuCanvas.offsetWidth, this.resolutionY ?? this.gpuCanvas.offsetHeight ])
+        );
 
-        if( mobile )
+        this.device.queue.writeBuffer(
+            this.gpuBuffers[ "mouse" ],
+            0,
+            new Float32Array([
+                this.mousePosition[ 0 ], this.mousePosition[ 1 ],
+                this.lastMousePosition[ 0 ] * ( this._mouseDown ? 1.0 : -1.0 ), this.lastMousePosition[ 1 ] * ( this._mousePressed ? 1.0 : -1.0 ) ])
+        );
+
+        this.lastTime = now;
+
+        for( let i = 0; i < this.shader.passes.length; ++i )
         {
-            const sidebarOptions = {
-                headerTitle: fs.user ? fs.user.name : "Guest",
-                headerSubtitle: fs.user ? fs.user.email : undefined,
-                headerImage: "images/favicon.png",
-                skipFooter: true,
-                collapsed: false,
-                collapsable: false,
-                displaySelected: true
-            };
+            // Buffers and images draw
+            const pass = this.shader.passes[ i ];
+            if( pass.type === "common" ) continue;
 
-            const sidebarCallback = m => {
-                if( fs.user )
+            // Fill buffers and textures for each pass channel
+            for( let c = 0; c < pass.channels?.length ?? 0; ++c )
+            {
+                const isCurrentPass = ( this.currentPass.name === pass.name );
+                const channelName = pass.channels[ c ];
+                if( !channelName ) continue;
+
+                if( !this.gpuTextures[ channelName ] )
                 {
-                    m.add( "Profile", { icon: "User", callback: this.openProfile.bind( this, fs.getUserId() ) } );
-                    m.add( "Browse", { icon: "Search", callback: () => window.location.href = `${ window.location.origin + window.location.pathname }` } );
-                    m.add( "Logout", { icon: "LogOut", callback: async () => {
-                        await fs.logout();
-                    } } );
-                    m.separator();
-                }
-                else
-                {
-                    m.add( "Login", { icon: "LogIn", callback: this.openLoginDialog.bind( this ) } );
-                    m.add( "Create account", { icon: "UserPlus", callback: this.openSignUpDialog.bind( this ) } );
+                    if( channelName === "Keyboard" )
+                    {
+                        await this.createKeyboardTexture( c, true );
+                    }
+                    else if( channelName.startsWith( "Buffer" ) )
+                    {
+                        await this.loadBufferChannel( pass, channelName, c, isCurrentPass )
+                    }
+                    else // Texture from file
+                    {
+                        // Only update preview in case that's the current pass
+                        await this.createTexture( channelName, c, isCurrentPass );
+                    }
                 }
 
-                m.add( "New Shader", { icon: "UserPlus", callback: this.createNewShader.bind( this ) } );
+                pass.setChannelTexture(  c, this.gpuTextures[ channelName ] );
             }
 
-            const sheetArea = new LX.Area({ skipAppend: true });
-            sheetArea.addSidebar( sidebarCallback, sidebarOptions );
+            if( pass.uniformsDirty )
+            {
+                pass.updateUniforms();
+            }
 
-            menubar.addButtons( menubarButtons );
+            if( !this._lastShaderCompilationWithErrors )
+            {
+                await pass.draw(
+                    this.presentationFormat,
+                    this.webGPUContext,
+                    this.gpuBuffers
+                );
+            }
+        }
 
-            menubar.setButtonIcon( "Menu", "Menu", () => window.__currentSheet = new LX.Sheet("256px", [ sheetArea ], { side: "right" } ) );
+        if( this._anyKeyPressed )
+        {
+            // event consumed, Clean input
+            for( const [ name, value ] of this.keyPressed )
+            {
+                this.keyPressed.set( name, false );
+            }
+
+            await this.createKeyboardTexture();
+
+            this._anyKeyPressed = false;
+        }
+
+        this._mousePressed = false;
+
+        if( this.capturer )
+        {
+            if( this.frameCount == 1 )
+            {
+                this.capturer.start();
+            }
+
+            this.capturer.capture( this.gpuCanvas );
+            this.frameCount++;
+
+            if( this.frameCount == 100 )
+            {
+                this.saveCapture();
+            }
+        }
+
+        requestAnimationFrame( this.onFrame.bind( this ) );
+    },
+
+    async onKeyDown( e )
+    {
+        this.keyState.set( Utils.code2ascii( e.code ), true );
+        if( this.generateKbTexture ) await this.createKeyboardTexture();
+        this.generateKbTexture = false;
+    },
+
+    async onKeyUp( e )
+    {
+        this.keyState.set( Utils.code2ascii( e.code ), false );
+        this.keyToggleState.set( Utils.code2ascii( e.code ), !( this.keyToggleState.get( Utils.code2ascii( e.code ) ) ?? false ) );
+        this.keyPressed.set( Utils.code2ascii( e.code ), true );
+        this._anyKeyPressed = true;
+        await this.createKeyboardTexture();
+        this.generateKbTexture = true;
+    },
+
+    async onMouseDown( e )
+    {
+        this._mouseDown = e;
+        this.mousePosition = [ e.offsetX, e.offsetY ];
+        this.lastMousePosition = [ ...this.mousePosition ];
+        this._mousePressed = true;
+    },
+
+    async onMouseUp( e )
+    {
+        this._mouseDown = undefined;
+    },
+
+    async onMouseMove( e )
+    {
+        if( this._mouseDown )
+        {
+            this.mousePosition = [ e.offsetX, e.offsetY ];
+        }
+    },
+
+    async onShaderCanvasResized( xResolution, yResolution )
+    {
+        this.resizeBuffers( xResolution, yResolution );
+        this.resolutionX = xResolution;
+        this.resolutionY = yResolution;
+    },
+
+    async onShaderChannelSelected( category, name, fileId, index )
+    {
+        if( category === "misc" )
+        {
+            switch( name )
+            {
+                case "Keyboard":
+                    await this.createKeyboardTexture( index, true );
+                    break;
+                case "BufferA":
+                case "BufferB":
+                case "BufferC":
+                case "BufferD":
+                    await this.loadBufferChannel( this.currentPass, name, index, true );
+                    break;
+            }
+        }
+        else if( category === "texture" ) // Use this image as a texture
+        {
+            await this.loadTextureChannelFromFile( fileId, index );
+        }
+    },
+
+    async onShaderEditorCreated( shader, canvas )
+    {
+        this.shader = shader;
+
+        await this.initGraphics( canvas );
+
+        const closeFn = async ( name, e ) => {
+            e.preventDefault();
+            e.stopPropagation();
+            ui.editor.tabs.delete( name );
+            document.body.querySelectorAll( ".lextooltip" ).forEach( e => e.remove() );
+
+            // Destroy pass
+            {
+                const passIndex = this.shader.passes.findIndex( p => p.name === name );
+                const pass = this.shader.passes[ passIndex ];
+                if( pass.type === "buffer" )
+                {
+                    delete this.gpuTextures[ pass.name ];
+                }
+
+                this.shader.passes.splice( passIndex, 1 );
+                this.renderPipelines.splice( passIndex, 1 );
+                this.renderBindGroups.splice( passIndex, 1 );
+
+                await this.compileShader();
+            }
+        };
+
+        // Prob. new shader
+        if( !this.shader.url )
+        {
+            const pass = {
+                name: "MainImage",
+                type: "image",
+                codeLines: Shader.RENDER_MAIN_TEMPLATE,
+                resolutionX: this.resolutionX,
+                resolutionY: this.resolutionY
+            }
+
+            const shaderPass = new ShaderPass( shader, this.device, pass );
+            this.shader.passes.push( shaderPass );
+
+            // Set code in the editor
+            ui.editor.addTab( pass.name, false, pass.name, { codeLines: pass.codeLines, language: "WGSL" } );
         }
         else
         {
-            menubar.addButtons( menubarButtons );
+            const json = JSON.parse( await fs.requestFile( this.shader.url, "text" ) );
+            console.assert( json, "DB: No JSON Shader data available!" );
 
-            if( !fs.user )
+            for( const pass of json.passes ?? [] )
             {
-                const signupContainer = LX.makeContainer( [`auto`, "auto"], "flex flex-row p-1 gap-1 self-center items-center", "", menubar.root );
-                signupContainer.id = "signupContainer";
-                const signupOptionsButton = LX.makeContainer( [`auto`, "auto"], "p-1 rounded-lg fg-primary hover:bg-tertiary text-md self-center items-center cursor-pointer", "Create account", signupContainer );
-                signupOptionsButton.addEventListener( "click", async (e) => {
-                    e.preventDefault();
-                    this.openSignUpDialog();
-                } );
-                LX.makeContainer( [`auto`, "0.75rem"], "mx-2 border-right border-colored fg-quaternary self-center items-center", "", signupContainer );
-            }
+                pass.resolutionX = this.resolutionX;
+                pass.resolutionY = this.resolutionY;
 
-            const loginOptionsButton = LX.makeContainer( [`auto`, "auto"], "flex flex-row gap-1 p-1 mr-2 rounded-lg fg-primary hover:bg-tertiary text-md self-center items-center cursor-pointer", `
-                ${ fs.user ? `<span class="decoration-none fg-secondary">${ fs.user.email }</span>${ LX.makeIcon("ChevronsUpDown", { iconClass: "pl-2" } ).innerHTML }` : "Login" }`, menubar.root );
-            loginOptionsButton.id = "loginOptionsButton";
-            loginOptionsButton.addEventListener( "click", async (e) => {
-                e.preventDefault();
-                if( fs.user )
+                // Push passes to the shader
+                const shaderPass = new ShaderPass( shader, this.device, pass );
+                if( pass.type === "buffer" )
                 {
-                    new LX.DropdownMenu( loginOptionsButton, [
-                        fs.user.name,
-                        null,
-                        { name: "Profile", icon: "User", callback: this.openProfile.bind( this, fs.getUserId() ) },
-                        { name: "Logout", icon: "LogOut", className: "fg-error", callback: async () => {
-                            await fs.logout();
-                            loginOptionsButton.innerHTML = "Login";
-                            document.getElementById( "signupContainer" ).classList.remove( "hidden" );
-                        } },
-                    ], { side: "bottom", align: "end" });
+                    console.assert( shaderPass.textures, "Buffer does not have render target textures" );
+                    this.gpuTextures[ pass.name ] = shaderPass.textures;
                 }
-                else
+                this.shader.passes.push( shaderPass );
+
+                // Set code in the editor
+                ui.editor.addTab( pass.name, false, pass.name, { codeLines: pass.codeLines, language: "WGSL" } );
+
+                if( pass.name !== "MainImage" )
                 {
-                    this.openLoginDialog();
+                    const closeIcon = LX.makeIcon( "X", { iconClass: "ml-2" } );
+                    LX.asTooltip( closeIcon, "Delete file" );
+                    closeIcon.addEventListener( "click", closeFn.bind( this, pass.name ) );
+                    ui.editor.tabs.tabDOMs[ pass.name ].appendChild( closeIcon );
                 }
-            } );
+            }
         }
 
-        menubar.setButtonImage("ShaderHub", `images/icon_${ starterTheme }.png`, null, { float: "left" } );
+        this.currentPass = this.shader.passes.at( -1 );
 
-        LX.addSignal( "@on_new_color_scheme", ( el, value ) => {
-            menubar.setButtonImage("ShaderHub", `images/icon_${ value }.png`, null, { float: "left" } );
+        ui.editor.loadTab( this.currentPass.name );
+    },
+
+    onShaderPassCreated( passType, passName )
+    {
+        let indexOffset = -1;
+
+        const shaderPass = new ShaderPass( this.shader, this.device, {
+            name: passName,
+            type: passType,
+            resolutionX: this.resolutionX,
+            resolutionY: this.resolutionY
         } );
 
-        menubar.siblingArea.root.classList.add( "content-area" );
+        if( passType === "buffer" )
+        {
+            const getNextBufferName = () => {
+                const usedNames = this.shader.passes.filter( p => p.type === "buffer" ).map( p => p.name );
+                const possibleNames = ["BufferA", "BufferB", "BufferC", "BufferD"];
 
-        const onLoad = async () => {
-            const params = new URLSearchParams( document.location.search );
-            const queryShaderView = params.get( "view" );
-            const queryShaderEdit = params.get( "edit" );
-            const queryProfile = params.get( "profile" );
-            if( queryShaderView )
-            {
-                await this.createShaderView( queryShaderView, SHADER_MODE_VIEW );
+                // Find the first unused name
+                for( const name of possibleNames )
+                {
+                    if( !usedNames.includes( name )) return name;
+                }
+
+                // All used, should not happen due to prev checks
+                return null;
             }
-            else if( queryShaderEdit )
-            {
-                await this.createShaderView( queryShaderEdit, SHADER_MODE_EDIT );
-            }
-            else if( queryProfile )
-            {
-                this.createProfileView( queryProfile );
-            }
-            else
-            {
-                this.createBrowseListUI();
-            }
+
+            indexOffset = -2;
+            passName = shaderPass.name = getNextBufferName();
+            this.shader.passes.splice( this.shader.passes.length - 1, 0, shaderPass ); // Add before MainImage
+
+            console.assert( shaderPass.textures, "Buffer does not have render target textures" );
+            this.gpuTextures[ passName ] = shaderPass.textures;
+        }
+        else if( passType === "common" )
+        {
+            indexOffset = -( this.shader.passes.length + 1 );
+            this.shader.passes.splice( 0, 0, shaderPass ); // Add at the start
         }
 
-        // Get all stored shader files (not the code, only the data)
+        ui.editor.addTab( passName, true, passName, {
+            indexOffset,
+            language: "WGSL",
+            codeLines: shaderPass.codeLines
+        } );
 
-        const result = await fs.listDocuments( FS.SHADERS_COLLECTION_ID, [
-            // Query.equal( "author_id", "68b7102e36d6b0bf564a" ),
-            // Query.greaterThan('year', 1999)
-        ] );
+        // Wait for the tab to be created
+        LX.doAsync( async () => {
 
-        if( result.total === 0 )
-        {
-            LX.makeContainer( ["100%", "auto"], "mt-8 text-xxl font-medium justify-center text-center", "No shaders found.", this.area );
-            return;
-        }
-
-        for( const document of result.documents )
-        {
-            const name = document.name;
-
-            const shaderInfo = {
-                name,
-                uid: document[ "$id" ]
-            };
-
-            const authorId = document[ "author_id" ];
-            if( authorId )
-            {
-                const result = await fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_id", authorId ) ] );
-                const author = result.documents[ 0 ][ "user_name" ];
-                shaderInfo.author = author;
-                shaderInfo.authorId = authorId;
-            }
-            else
-            {
-                shaderInfo.author = document[ "author_name" ];
-                shaderInfo.anonAuthor = true;
-            }
-
-            const previewName = `${ name.replaceAll( " ", "_" ) }_preview.png`;
-            const result = await fs.listFiles( [ Query.equal( "name", previewName ) ] );
-            if( result.total > 0 )
-            {
-                shaderInfo.preview = await fs.getFileUrl( result.files[ 0 ][ "$id" ] );
-            }
-
-            this.shaderList.push( shaderInfo );
-        }
-
-        await onLoad();
-    },
-
-    createBrowseListUI() {
-
-        var [ topArea, bottomArea ] = this.area.split({ type: "vertical", sizes: ["calc(100% - 48px)", null], resize: false });
-        topArea.root.className += " overflow-scroll";
-        bottomArea.root.className += " items-center content-center";
-
-        // Shaderhub footer
-        LX.makeContainer( [`auto`, "auto"], "fg-primary text-lg flex flex-row gap-2 self-center align-center ml-auto mr-auto", `
-            ${ LX.makeIcon("Github@solid", {svgClass:"lg"} ).innerHTML }<a class="decoration-none fg-secondary" href="https://github.com/upf-gti/ShaderHub">Code on Github</a>`, bottomArea );
-
-        const listContainer = LX.makeContainer( ["100%", "auto"], "grid shader-list gap-8 p-8 justify-center", "", topArea );
-
-        for( const shader of this.shaderList ?? [] )
-        {
-            const shaderItem = LX.makeElement( "li", "shader-item rounded-lg bg-secondary hover:bg-tertiary overflow-hidden flex flex-col h-auto", "", listContainer );
-            const shaderPreview = LX.makeElement( "img", "rounded-t-lg bg-secondary hover:bg-tertiary w-full border-none cursor-pointer", "", shaderItem );
-            shaderPreview.src = shader.preview ?? "images/shader_preview.png";
-            const shaderDesc = LX.makeContainer( ["100%", "100%"], "flex flex-row rounded-b-lg gap-6 p-4 items-center select-none", `
-                <div class="w-full">
-                    <div class="text-lg font-bold">${ shader.name }</div>
-                    <div class="text-sm font-light">by
-                        ${ !shader.anonAuthor ? "<a class='dodgerblue cursor-pointer hover:text-underline'>" : "" }<span class="font-bold">${ shader.author }</span>${ !shader.anonAuthor ? "</a>" : "" }
-                    </div>
-                </div>
-                <div class="">
-                    <div class="">
-                        ${ LX.makeIcon( "CircleUserRound", { svgClass: "xxl fg-secondary" } ).innerHTML }
-                    </div>
-                </div>`, shaderItem );
-                // <img alt="avatar" width="32" height="32" decoding="async" data-nimg="1" class="rounded-full" src="https://imgproxy.compute.toys/insecure/width:64/plain/https://hkisrufjmjfdgyqbbcwa.supabase.co/storage/v1/object/public/avatar/f91bbd73-7734-49a9-99ce-460774d4ccc0/avatar.jpg">
-
-            const hyperlink = shaderDesc.querySelector( "a" );
-            if( hyperlink )
-            {
-                hyperlink.addEventListener( "click", (e) => {
-                    e.preventDefault();
-                    this.openProfile( shader.authorId )
-                } )
-            }
-
-            shaderPreview.addEventListener( "click", ( e ) => {
-                const mode = ( fs.user && shader.authorId === fs.getUserId() ) ? "edit" : "view";
-                window.location.href = `${ window.location.origin + window.location.pathname }?${ mode }=${ shader.uid }`;
+            const closeIcon = LX.makeIcon( "X", { iconClass: "ml-2" } );
+            LX.asTooltip( closeIcon, "Delete file" );
+            closeIcon.addEventListener( "click", (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                editor.tabs.delete( passName );
+                document.body.querySelectorAll( ".lextooltip" ).forEach( e => e.remove() );
             } );
-        }
 
-        if( listContainer.childElementCount === 0 )
-        {
-            LX.makeContainer( ["100%", "auto"], "text-xxl font-medium justify-center text-center", "No shaders found.", topArea );
-        }
+            ui.editor.tabs.tabDOMs[ passName ].appendChild( closeIcon );
+
+            this.onShaderPassSelected( passName );
+
+            await this.compileShader( false );
+
+        }, 10 );
     },
 
-    async createProfileView( userID ) {
-
-        var [ topArea, bottomArea ] = this.area.split({ type: "vertical", sizes: ["calc(100% - 48px)", null], resize: false });
-        topArea.root.className += " overflow-scroll";
-        bottomArea.root.className += " items-center content-center";
-
-        // Shaderhub footer
-        LX.makeContainer( [`auto`, "auto"], "fg-primary text-lg flex flex-row gap-2 self-center align-center ml-auto mr-auto", `
-            ${ LX.makeIcon("Github@solid", {svgClass:"lg"} ).innerHTML }<a class="decoration-none fg-secondary" href="https://github.com/upf-gti/ShaderHub">Code on Github</a>`, bottomArea );
-
-        const users = await fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_id", userID ) ] );
-        if( users.total === 0 )
-        {
-            LX.makeContainer( ["100%", "auto"], "mt-8 text-xxl font-medium justify-center text-center", "No user found.", topArea );
-            return;
-        }
-
-        const user = users.documents[ 0 ];
-        const userName = user[ "user_name" ];
-        const ownProfile = ( userID === fs.getUserId() );
-
-        document.title = `${ userName } - ShaderHub`;
-
-        const infoContainer = LX.makeContainer( ["100%", "auto"], "gap-8 p-8 justify-center", `
-           <div class="text-xxl font-bold">${ userName }</span>
-        `, topArea );
-        const listContainer = LX.makeContainer( ["100%", "auto"], "grid shader-list gap-8 p-8 justify-center", "", topArea );
-
-        const result = await fs.listDocuments( FS.SHADERS_COLLECTION_ID, [
-            Query.equal( "author_id", userID )
-        ] );
-
-        if( result.total === 0 )
-        {
-            LX.makeContainer( ["100%", "auto"], "mt-8 text-xxl font-medium justify-center text-center", "No shaders found.", topArea );
-            return;
-        }
-
-        for( const document of result.documents )
-        {
-            const name = document.name;
-
-            const shaderInfo = {
-                name,
-                uid: document[ "$id" ]
-            };
-
-            const previewName = `${ name.replaceAll( " ", "_" ) }_preview.png`;
-            const result = await fs.listFiles( [ Query.equal( "name", previewName ) ] );
-            if( result.total > 0 )
-            {
-                shaderInfo.preview = await fs.getFileUrl( result.files[ 0 ][ "$id" ] );
-            }
-
-            const shaderItem = LX.makeElement( "li", "shader-item shader-profile rounded-lg bg-secondary hover:bg-tertiary overflow-hidden flex flex-col h-auto", "", listContainer );
-            const shaderPreview = LX.makeElement( "img", "rounded-t-lg bg-secondary hover:bg-tertiary w-full border-none cursor-pointer", "", shaderItem );
-            shaderPreview.src = shaderInfo.preview ?? "images/shader_preview.png";
-            const shaderDesc = LX.makeContainer( ["100%", "100%"], "flex flex-row rounded-b-lg gap-6 p-4 items-center select-none", `
-                <div class="w-full">
-                    <div class="text-lg font-bold"><span style="font-family:var(--global-code-font);">${ shaderInfo.name }</span></div>
-                </div>
-                <div class="">
-                    <div class="">
-                        ${ LX.makeIcon( "CircleUserRound", { svgClass: "xxl fg-secondary" } ).innerHTML }
-                    </div>
-                </div>`, shaderItem );
-                // <img alt="avatar" width="32" height="32" decoding="async" data-nimg="1" class="rounded-full" src="https://imgproxy.compute.toys/insecure/width:64/plain/https://hkisrufjmjfdgyqbbcwa.supabase.co/storage/v1/object/public/avatar/f91bbd73-7734-49a9-99ce-460774d4ccc0/avatar.jpg">
-
-            shaderPreview.addEventListener( "click", ( e ) => {
-                const mode = ownProfile ? "edit" : "view";
-                window.location.href = `${ window.location.origin + window.location.pathname }?${ mode }=${ shaderInfo.uid }`;
-            } );
-        }
-
-        if( listContainer.childElementCount === 0 )
-        {
-            LX.makeContainer( ["100%", "auto"], "mt-8 text-xxl font-medium justify-center text-center", "No shaders found.", topArea );
-        }
+    onShaderPassSelected( passName )
+    {
+        this.currentPass = this.shader.passes.find( p => p.name === passName );
+        console.assert( this.currentPass, `Cannot find pass ${ passName }` );
+        ui.updateShaderChannelsView( this.currentPass );
     },
 
-    async createShaderView( shaderUid, mode ) {
+    onShaderTimePaused()
+    {
+        this.timePaused = !this.timePaused;
+    },
+
+    onShaderTimeReset()
+    {
+        fps.reset();
+
+        this.frameCount = 0;
+        this.elapsedTime = 0;
+        this.timeDelta = 0;
+
+        this.device.queue.writeBuffer(
+            this.gpuBuffers[ "timeDelta" ],
+            0,
+            new Float32Array([ this.timeDelta ])
+        );
+
+        this.device.queue.writeBuffer(
+            this.gpuBuffers[ "time" ],
+            0,
+            new Float32Array([ this.elapsedTime ])
+        );
+
+        this.device.queue.writeBuffer(
+            this.gpuBuffers[ "frameCount" ],
+            0,
+            new Int32Array([ this.frameCount ])
+        );
+
+        LX.emit( "@elapsed-time", `${ this.elapsedTime.toFixed( 2 ) }s` );
+    },
+
+    async getShaderById( id )
+    {
+        let shaderData = null;
 
         // Create shader instance based on shader uid
         // Get all stored shader files (not the code, only the data)
-        if( shaderUid !== "new" )
+        if( id !== "new" )
         {
             let result;
 
             try {
-                result = await fs.getDocument( FS.SHADERS_COLLECTION_ID, shaderUid );
+                result = await fs.getDocument( FS.SHADERS_COLLECTION_ID, id );
             } catch (error) {
                 LX.makeContainer( ["100%", "auto"], "mt-8 text-xxl font-medium justify-center text-center", "No shader found.", this.area );
                 return;
             }
 
-            const fileIdString = result[ "file_id" ];
-            const fileIds = fileIdString.split( "," );
-            const files = [];
-
-            for( const fileId of fileIds )
-            {
-                const metadata = await fs.getFile( fileId );
-                const url = await fs.getFileUrl( fileId );
-                files.push( [ url, metadata.name ] );
-            }
-
-            const shaderData = {
+            shaderData = {
                 name: result.name,
-                uid: shaderUid,
-                files,
-                channels: JSON.parse( result[ "channels" ] ),
-                uniforms: JSON.parse( result[ "uniforms" ] ),
-                description: result.description ?? ""
+                uid: id,
+                url: await fs.getFileUrl( result[ "file_id" ] ),
+                description: result.description ?? "",
+                creationDate: Utils.toESDate( result[ "$createdAt" ] )
             };
 
             const authorId = result[ "author_id" ];
@@ -445,616 +500,108 @@ const ShaderHub = {
                 shaderData.author = result[ "author_name" ];
                 shaderData.anonAuthor = true;
             }
-
-            this.shader = new Shader( shaderData );
         }
         else
         {
-            const name = "New Shader";
-            const mainShaderUrl = "shaders/main.template.wgsl";
-
-            if( !this.loadedFiles[ mainShaderUrl ] )
-            {
-                const arraybuffer = await fs.requestFile( mainShaderUrl );
-                const code = new TextDecoder().decode( arraybuffer );
-                this.loadedFiles[ mainShaderUrl ] = code;
-            }
-
-            const shaderData = {
-                name: name,
+            shaderData = {
+                name: "New Shader",
                 uid: "EMPTY_ID",
-                files: [ [ "shaders/main.template.wgsl", "main.wgsl" ] ],
                 author: fs.user?.name ?? "Anonymous",
-                anonAuthor: true
+                anonAuthor: true,
+                creationDate: Utils.getDate()
             };
-
-            this.shader = new Shader( shaderData );
         }
 
-        window.onbeforeunload = ( event ) => {
-            event.preventDefault();
-            event.returnValue = "";
-        };
+        return new Shader( shaderData );
+    },
 
-        var [ leftArea, rightArea ] = this.area.split({ sizes: ["50%", "50%"] });
-        rightArea.root.className += " p-2 shader-edit-content";
-        leftArea.root.className += " p-2";
-        leftArea.onresize = function (bounding) {};
+    async getChannelUrl( pass, channel )
+    {
+        if( !pass ) return Constants.IMAGE_EMPTY_SRC;
+        const assetFileId = pass.channels[ channel ];
+        if( !assetFileId ) return Constants.IMAGE_EMPTY_SRC;
+        if( assetFileId === "Keyboard" ) return "images/keyboard.png";
+        if( assetFileId.startsWith( "Buffer" ) ) return "images/buffer.png";
+        const result = await fs.listDocuments( FS.ASSETS_COLLECTION_ID, [ Query.equal( "file_id", assetFileId ) ] );
+        console.assert( result.total == 1, `Inconsistent asset list for file id ${ assetFileId }` );
+        const preview = result.documents[ 0 ][ "preview" ];
+        return preview ? await fs.getFileUrl( preview ) : await fs.getFileUrl( assetFileId );
+    },
 
-        var [ codeArea, shaderSettingsArea ] = rightArea.split({ type: "vertical", sizes: ["80%", null], resize: false });
-        codeArea.root.className += " rounded-lg overflow-hidden";
-
-        // Add input channels UI
+    resizeBuffers( resolutionX, resolutionY )
+    {
+        for( const pass of this.shader.passes )
         {
-            this.channelsContainer = LX.makeContainer( ["100%", "100%"], "channel-list grid gap-2 pt-2 items-center justify-center bg-primary", "", shaderSettingsArea );
-            for( let i = 0; i < UNIFORM_CHANNELS_COUNT; i++ )
-            {
-                const channelContainer = LX.makeContainer( ["100%", "100%"], "relative rounded-lg bg-secondary hover:bg-tertiary cursor-pointer overflow-hidden", "", this.channelsContainer );
-                channelContainer.style.minHeight = "100px";
-                const channelImage = LX.makeElement( "img", "rounded-lg bg-secondary hover:bg-tertiary w-full h-full border-none", "", channelContainer );
-                channelImage.src = SRC_IMAGE_EMPTY;
-                const channelTitle = LX.makeContainer( ["100%", "auto"], "p-2 absolute text-md bottom-0 channel-title pointer-events-none", `iChannel${ i }`, channelContainer );
-                channelContainer.addEventListener( "click", ( e ) => {
-                    e.preventDefault();
-                    this.openAvailableChannels( i );
-                } );
-                channelContainer.addEventListener("contextmenu", ( e ) => {
-                    e.preventDefault();
-                    new LX.DropdownMenu( e.target, [
-                        { name: "Remove", className: "fg-error", callback: async () => await this.removeUniformChannel( i ) },
-                    ], { side: "top", align: "start" });
-                });
-            }
-        }
+            if( pass.type !== "buffer" )
+                continue;
 
-        document.title = `${ this.shader.name } - ShaderHub`;
-
-        this.editor = await new LX.CodeEditor( codeArea, {
-            allowClosingTabs: false,
-            allowLoadingFiles: false,
-            fileExplorer: false,
-            filesAsync: this.shader.files,
-            statusShowEditorIndentation: false,
-            statusShowEditorLanguage: false,
-            statusShowEditorFilename: false,
-            onCreateStatusPanel: ( p ) => {
-                const customTabInfoButtonsPanel = new LX.Panel( { className: "flex flex-row items-center", height: "auto" } );
-                customTabInfoButtonsPanel.addButton( null, "CompileShaderButton", this.compileShader.bind( this ), { icon: "Play", width: "32px", title: "Compile", tooltip: true } );
-                p.root.prepend( customTabInfoButtonsPanel.root );
-            },
-            onCtrlSpace: this.compileShader.bind( this ),
-            onSave: this.compileShader.bind( this ),
-            onRun: this.compileShader.bind( this ),
-            onFilesLoaded: async ( editor, loadedTabs ) => {
-
-                for( const f of this.shader.files )
-                {
-                    const name = f[ 1 ];
-                    this.loadedFiles[ name ] = loadedTabs[ name ].lines.join( "\n" );
-                    // Delete lang icon and add close icon
-                    if( name !== "main.wgsl" )
-                    {
-                        const closeIcon = LX.makeIcon( "X", { iconClass: "ml-2" } );
-                        LX.asTooltip( closeIcon, "Delete file" );
-                        closeIcon.addEventListener( "click", (e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            this.shader.files.splice( this.shader.files.indexOf( f ), 1 );
-                            editor.tabs.delete( name );
-                            document.body.querySelectorAll( ".lextooltip" ).forEach( e => e.remove() );
-                            delete this.loadedFiles[ name ];
-                        } );
-                        editor.tabs.tabDOMs[ name ].appendChild( closeIcon );
-                    }
-                }
-
-                editor.processLines();
-
-                const templateShaderUrl = "shaders/fullscreenTexturedQuad.template.wgsl";
-                LX.requestText( templateShaderUrl, async (code) => {
-
-                    this.loadedFiles[ templateShaderUrl ] = code;
-
-                    await this.initGraphics( canvas );
-                });
-            },
-            onCreateFile: ( editor ) => {
-                const commonIdx = this.shader.files.length - 1;
-                const name = `common${ commonIdx }.wgsl`;
-                const file = [ "", name ];
-
-                this.loadedFiles[ name ] = "";
-                this.shader.files.splice( -1, 0, file );
-
-                // Wait for the tab to be created
-                LX.doAsync( () => {
-                    const closeIcon = LX.makeIcon( "X", { iconClass: "ml-2" } );
-                    LX.asTooltip( closeIcon, "Delete file" );
-                    closeIcon.addEventListener( "click", (e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        this.shader.files.splice( this.shader.files.indexOf( file ), 1 );
-                        editor.tabs.delete( name );
-                        document.body.querySelectorAll( ".lextooltip" ).forEach( e => e.remove() );
-                        delete this.loadedFiles[ name ];
-                    } );
-                    editor.tabs.tabDOMs[ name ].appendChild( closeIcon );
-                }, 10 );
-
-                return { name, language: "WGSL", indexOffset: -2 };
-            }
-        });
-
-        var [ graphicsArea, shaderDataArea ] = leftArea.split({ type: "vertical", sizes: ["70%", null], resize: false });
-
-        // Add Shader data
-        {
-            shaderDataArea.root.className += " pt-2 items-center justify-center bg-primary";
-            const shaderDataContainer = LX.makeContainer( [`100%`, "100%"], "p-6 flex flex-col gap-2 rounded-lg bg-secondary overflow-scroll overflow-x-hidden", "", shaderDataArea );
-            const shaderNameAuthorOptionsContainer = LX.makeContainer( [`100%`, "auto"], "flex flex-row", `
-                <div class="flex flex-col">
-                    <div class="fg-primary text-xxl font-semibold">${ this.shader.name }</div>
-                    <div class="fg-primary text-md">by ${ !this.shader.anonAuthor ? "<a class='dodgerblue cursor-pointer hover:text-underline'>" : "" }${ this.shader.author }${ !this.shader.anonAuthor ? "</a>" : "" }</div>
-                </div>
-            `, shaderDataContainer );
-
-            const hyperlink = shaderNameAuthorOptionsContainer.querySelector( "a" );
-            if( hyperlink )
-            {
-                hyperlink.addEventListener( "click", (e) => {
-                    e.preventDefault();
-                    this.openProfile( this.shader.authorId )
-                } )
-            }
-
-            const shaderOptions = LX.makeContainer( [`auto`, "auto"], "ml-auto flex flex-row p-1 gap-1 self-center items-center", ``, shaderNameAuthorOptionsContainer );
-            if( fs.user )
-            {
-                const shaderOptionsButton = new LX.Button( null, "ShaderOptions", async () => {
-
-                    const dmOptions = [ ]
-
-                    if( mode === SHADER_MODE_EDIT )
-                    {
-                        let result = await this.shaderExists();
-
-                        dmOptions.push( mobile ? 0 : { name: "Save Shader", icon: "Save", callback: this.saveShader.bind( this, result ) } );
-
-                        if( result )
-                        {
-                            dmOptions.push(
-                                mobile ? 0 : { name: "Update Preview", icon: "ImageUp", callback: this.updateShaderPreview.bind( this, this.shader.name, true ) },
-                                mobile ? 0 : null,
-                                { name: "Delete Shader", icon: "Trash2", className: "fg-error", callback: async () => {} },
-                            );
-                        }
-                    }
-                    else
-                    {
-                        dmOptions.push( mobile ? 0 : { name: "Remix Shader", icon: "GitFork", callback: this.remixShader.bind( this ) } );
-                    }
-
-                    new LX.DropdownMenu( shaderOptionsButton.root, dmOptions.filter( o => o !== 0 ), { side: "bottom", align: "end" });
-                }, { icon: "Menu" } );
-                shaderOptions.appendChild( shaderOptionsButton.root );
-            }
-            else
-            {
-                LX.makeContainer( [`auto`, "auto"], "fg-secondary text-md", "Login to save your shader", shaderOptions );
-            }
-            // const shaderDate = LX.makeContainer( [`auto`, "auto"], "fg-primary text-lg", this.shader.lastUpdatedDate, shaderDataContainer );
-
-            const ownProfile = fs.user && ( this.shader.authorId === fs.getUserId() );
-            if( ownProfile || ( shaderUid === "new" ) )
-            {
-                const textArea = new LX.TextArea( null, this.shader.description, (v) => this.shader.description = v, { resize: false, className: "h-full", inputClass: "bg-tertiary h-full" } );
-                shaderDataContainer.appendChild( textArea.root );
-            }
-            else
-            {
-                // Non editable description
-                LX.makeContainer( [`auto`, "auto"], "fg-primary mt-4 text-lg break-words", this.shader.description, shaderDataContainer );
-            }
-        }
-
-        var [ canvasArea, canvasControlsArea ] = graphicsArea.split({ type: "vertical", sizes: ["calc(100% - 48px)", null], resize: false });
-
-        const canvas = document.createElement("canvas");
-        canvas.className = "w-full h-full rounded-t-lg";
-        canvasArea.attach( canvas );
-
-        canvas.addEventListener("dragover", (e) => {
-            e.preventDefault();
-            e.dataTransfer.dropEffect = "copy"; // shows a copy cursor
-        });
-
-        canvas.addEventListener("drop", async (e) => {
-            e.preventDefault();
-
-            const file = e.dataTransfer.files[0];
-            if (!file) return;
-            if (file.type.startsWith("image/")) {
-                await this.createTexture( file, 0 );
-                await this.createRenderBindGroup();
-            } else {
-                console.warn("Dropped file is not an image:", file.type);
-            }
-        });
-
-        canvas.addEventListener("mousedown", (e) => {
-            e.preventDefault();
-            this._mouseDown = e;
-            this.mousePosition = [ e.offsetX, e.offsetY ];
-        });
-
-        canvas.addEventListener("mouseup", (e) => {
-            e.preventDefault();
-            this._mouseDown = undefined;
-        });
-
-        canvas.addEventListener("mousemove", (e) => {
-            if( this._mouseDown )
-            {
-                e.preventDefault();
-                this.mousePosition = [ e.offsetX, e.offsetY ];
-            }
-        });
-
-        // Add shader controls data
-        {
-            canvasControlsArea.root.className += " px-2 rounded-b-lg bg-secondary";
-            const panel = canvasControlsArea.addPanel( { className: "flex flex-row" } );
-            panel.sameLine();
-            panel.addButton( null, "ResetTime", this.resetShaderElapsedTime.bind( this ), { icon: "SkipBack", title: "Reset time", tooltip: true } );
-            panel.addButton( null, "PauseTime", () => { this.timePaused = !this.timePaused }, { icon: "Pause", title: "Pause/Resume", tooltip: true, swap: "Play" } );
-            panel.addLabel( "0.0", { signal: "@elapsed-time", xclassName: "ml-auto", xinputClass: "text-end" } );
-            panel.endLine( "items-center h-full" );
-
-            // Mobile version cannot open uniforms box
-            if( mobile )
-            {
-                return;
-            }
-
-            panel.sameLine();
-
-            // Default Uniforms list info
-            {
-                const defaultParametersContainer = LX.makeContainer(
-                    [ `${ Math.min( 600, window.innerWidth - 64 ) }px`, "auto" ],
-                    "overflow-scroll",
-                    "",
-                    null,
-                    { maxHeight: "256px", maxWidth: `${ window.innerWidth - 64 }px` }
-                );
-
-                LX.makeContainer( ["auto", "auto"], "flex flex-row p-2 items-center", "Default Uniforms", defaultParametersContainer );
-
-                // Create the content for the uniforms panel
-                {
-                    this.defaultParametersPanel = new LX.Panel({ className: "custom-parameters-panel w-full" });
-                    defaultParametersContainer.appendChild( this.defaultParametersPanel.root );
-
-                    this.defaultParametersPanel.refresh = () => {
-
-                        this.defaultParametersPanel.clear();
-
-                        for( let u of DEFAULT_UNIFORMS_LIST )
-                        {
-                            this.defaultParametersPanel.sameLine( 2, "justify-between" );
-                            this.defaultParametersPanel.addLabel( `${ u.name } : ${ u.type }`, { className: "w-full p-0" } );
-                            this.defaultParametersPanel.addLabel( u.info, { className: "w-full p-0", inputClass: "text-end" } );
-                        }
-                    }
-
-                    this.defaultParametersPanel.refresh();
-                }
-
-                panel.addButton( null, "OpenDefaultParams", ( name, event ) => {
-                    new LX.Popover( event.target, [ defaultParametersContainer ], { align: "end" } );
-                }, { icon: "BookOpen", title: "Default Parameters", tooltip: true } );
-            }
-
-            // Custom Uniforms info
-            {
-                const customParametersContainer = LX.makeContainer(
-                    [`${ Math.min( 600, window.innerWidth - 64 ) }px`, "auto"],
-                    "overflow-scroll",
-                    "",
-                    null,
-                    { maxHeight: "256px", maxWidth: `${ window.innerWidth - 64 }px` }
-                );
-
-                const uniformsHeader = LX.makeContainer( ["auto", "auto"], "flex flex-row p-2 items-center", "", customParametersContainer );
-                const uniformsCountTitle = LX.makeContainer( ["auto", "auto"], "", `Uniforms [${ this.shader.uniforms.length }]`, uniformsHeader );
-                const addUniformButton = new LX.Button( null, "AddNewCustomUniform", () => {
-                    this.addUniform();
-                    this.customParametersPanel.refresh();
-                }, { icon: "Plus", className: "ml-auto self-center", buttonClass: "bg-none", title: "Add New Uniform", tooltip: true, width: "38px" } );
-                uniformsHeader.appendChild( addUniformButton.root );
-
-                // Popover to dialog button
-                {
-                    const dialogizePopoverButton = new LX.Button( null,
-                        "DialogizePopoverButton",
-                        this.openUniformsDialog.bind( this ),
-                        { icon: "AppWindowMac", className: "self-center", buttonClass: "bg-none", title: "Expand Window", tooltip: true, width: "38px" } );
-                    uniformsHeader.appendChild( dialogizePopoverButton.root );
-                }
-
-                // Create the content for the uniforms panel
-                {
-                    this.customParametersPanel = new LX.Panel({ className: "custom-parameters-panel w-full" });
-                    customParametersContainer.appendChild( this.customParametersPanel.root );
-
-                    this.customParametersPanel.refresh = ( overridePanel, onRefresh ) => {
-
-                        overridePanel = overridePanel ?? this.customParametersPanel;
-
-                        overridePanel.clear();
-
-                        overridePanel.addLabel( "Uniform names must start with i + Capital letter (e.g. iTime)." );
-
-                        for( let u of this.shader.uniforms )
-                        {
-                            overridePanel.sameLine( 5 );
-                            overridePanel.addText( null, u.name, ( v ) => {
-                                u.name = v;
-                                this.createRenderPipeline( true, true );
-                            }, { width: "25%", skipReset: true, pattern: "\\b(?!(" + DEFAULT_UNIFORM_NAMES.join("|") + ")\\b)(i[A-Z]\\w*)\\b" } );
-                            overridePanel.addNumber( "Min", u.min, ( v ) => {
-                                u.min = v;
-                                uRangeComponent.setLimits( u.min, u.max );
-                                this._parametersDirty = true;
-                            }, { nameWidth: "40%", width: "17%", skipReset: true, step: 0.1 } );
-                            const uRangeComponent = overridePanel.addRange( null, u.value, ( v ) => {
-                                u.value = v;
-                                this._parametersDirty = true;
-                            }, { className: "contrast", width: "35%", skipReset: true, min: u.min, max: u.max, step: 0.1 } );
-                            overridePanel.addNumber( "Max", u.max, ( v ) => {
-                                u.max = v;
-                                uRangeComponent.setLimits( u.min, u.max );
-                                this._parametersDirty = true;
-                            }, { nameWidth: "40%", width: "17%", skipReset: true, step: 0.1 } );
-                            overridePanel.addButton( null, "RemoveUniformButton", ( v ) => {
-                                // Check if the uniforms is used to recompile shaders or not
-                                const allCode = this.getShaderCode( false );
-                                const idx = this.shader.uniforms.indexOf( u );
-                                this.shader.uniforms.splice( idx, 1 );
-                                this.customParametersPanel.refresh( overridePanel );
-                                if( allCode.match( new RegExp( `\\b${ u.name }\\b` ) ) )
-                                {
-                                    this.createRenderPipeline( true, true );
-                                }
-                            }, { width: "6%", icon: "X", buttonClass: "bg-none", title: "Remove Uniform", tooltip: true } );
-                        }
-
-                        // Updates probably to the panel at the dialog
-                        if( onRefresh )
-                        {
-                            onRefresh();
-                        }
-                        else
-                        {
-                            // Updates to the popover
-                            uniformsCountTitle.innerHTML = `Uniforms [${ this.shader.uniforms.length }]`;
-
-                            if( LX.Popover.activeElement )
-                            {
-                                LX.Popover.activeElement._adjustPosition();
-                            }
-                        }
-                    }
-
-                    this.customParametersPanel.refresh();
-                }
-
-                panel.sameLine();
-
-                panel.addButton( null, "OpenCustomParams", ( name, event ) => {
-
-                    if( this._lastUniformsDialog )
-                    {
-                        this._lastUniformsDialog.close();
-                    }
-
-                    // Refresh content first
-                    this.customParametersPanel.refresh();
-
-                    new LX.Popover( event.target, [ customParametersContainer ], { align: "end" } );
-
-                }, { icon: "Settings2", title: "Custom Parameters", tooltip: true } );
-
-                panel.endLine( "items-center h-full ml-auto" );
-            }
+            pass.resizeBuffer( resolutionX, resolutionY );
         }
     },
 
-    async openAvailableChannels( channelIndex ) {
+    requestFullscreen( element )
+    {
+        element = element ?? this.gpuCanvas;
 
-        this.currentChannelIndex = channelIndex;
+        if( element == null ) element = document.documentElement;
+        if( element.requestFullscreen ) element.requestFullscreen();
+        else if( element.msRequestFullscreen ) element.msRequestFullscreen();
+        else if( element.mozRequestFullScreen ) element.mozRequestFullScreen();
+        else if( element.webkitRequestFullscreen ) element.webkitRequestFullscreen( Element.ALLOW_KEYBOARD_INPUT );
 
-        const _createChannelItems = async ( category, container ) => {
-
-            const result = await fs.listDocuments( FS.ASSETS_COLLECTION_ID, [
-                Query.equal( "category", category )
-            ] );
-
-            if( result.total === 0 )
-            {
-                LX.makeContainer( ["100%", "auto"], "mt-8 text-xxl font-medium justify-center text-center", "No channels found.", container );
-                return;
-            }
-
-            for( const document of result.documents )
-            {
-                const channelItem = LX.makeElement( "li", "relative flex rounded-lg bg-secondary hover:bg-tertiary overflow-hidden", "", container );
-                channelItem.style.maxHeight = "200px";
-                const channelPreview = LX.makeElement( "img", "rounded-t-lg bg-secondary hover:bg-tertiary w-full border-none cursor-pointer", "", channelItem );
-                const fileId = document[ "file_id" ];
-                const preview = document[ "preview" ];
-                channelPreview.src = preview ? await fs.getFileUrl( preview ) : ( fileId ? await fs.getFileUrl( fileId ) : "images/shader_preview.png" );
-                const shaderDesc = LX.makeContainer( ["100%", "auto"], "absolute top-0 p-2 w-full bg-blur items-center select-none text-sm font-bold", `
-                    ${ document.name } (uint8)
-                `, channelItem );
-                channelItem.addEventListener( "click", ( e ) => {
-                    e.preventDefault();
-                    this.loadChannelFromFile( fileId, this.currentChannelIndex );
-                    this.currentChannelIndex = undefined;
-                    dialog.close();
-                } );
-            }
-        }
-
-        const area = new LX.Area( { skipAppend: true } );
-        const tabs = area.addTabs( { parentClass: "bg-secondary p-4", sizes: [ "auto", "auto" ], contentClass: "bg-secondary p-4 pt-0" } );
-
-        const texturesContainer = LX.makeContainer( [ "100%", "100%" ], "grid channel-server-list gap-4 p-4 border rounded-lg justify-center overflow-scroll" );
-        await _createChannelItems( "texture", texturesContainer );
-        tabs.add( "Textures", texturesContainer, { selected: true } );
-
-        const miscContainer = LX.makeContainer( [ "100%", "100%" ], "grid channel-server-list gap-4 p-4 border rounded-lg justify-center overflow-scroll" );
-        await _createChannelItems( "misc", miscContainer );
-        tabs.add( "Misc", miscContainer, { xselected: true } );
-
-        let dialog = new LX.Dialog( `Channel${ channelIndex } input:`, (p) => {
-            p.attach( area );
-        }, { modal: false, close: true, minimize: false, size: [`${ Math.min( 1280, window.innerWidth - 64 ) }px`, "512px"], draggable: true });
+        if( element.focus ) element.focus();
     },
 
-    openProfile( userID ) {
+    isFullScreen()
+    {
+        return document.fullscreen || document.mozFullScreen || document.webkitIsFullScreen || document.msFullscreenElement;
+    },
+
+    exitFullscreen()
+    {
+        if( document.exitFullscreen ) document.exitFullscreen();
+        else if( document.msExitFullscreen ) document.msExitFullscreen();
+        else if( document.mozCancelFullScreen ) document.mozCancelFullScreen();
+        else if( document.webkitExitFullscreen ) document.webkitExitFullscreen();
+    },
+
+    openProfile( userID )
+    {
         window.location.href = `${ window.location.origin + window.location.pathname }?profile=${ userID }`;
     },
 
-    openLoginDialog() {
-
-        const dialog = new LX.Dialog( "Login", ( p ) => {
-            const formData = { email: { label: "Email", value: "", icon: "AtSign" }, password: { label: "Password", icon: "Key", value: "", type: "password" } };
-            const form = p.addForm( null, formData, async (value, event) => {
-                await fs.login( value.email, value.password, ( user, session ) => {
-                    dialog.close();
-                    const loginButton = document.getElementById( "loginOptionsButton" );
-                    if( loginButton )
-                    {
-                        loginButton.innerHTML = `<span class="decoration-none fg-secondary">${ fs.user.email }</span>
-                                                    ${ LX.makeIcon("ChevronsUpDown", { iconClass: "pl-2" } ).innerHTML }`;
-                    }
-                    const signupContainer = document.getElementById( "signupContainer" );
-                    if( signupContainer )
-                    {
-                        signupContainer.classList.add( "hidden" );
-                    }
-                    document.querySelectorAll( ".lextoast" ).forEach( t => t.close() );
-                    LX.toast( `✅ Logged in`, `User: ${ value.email }`, { position: "top-right" } );
-                }, (err) => {
-                    LX.toast( `❌ Error`, err, { timeout: -1, position: "top-right" } );
-                } );
-            }, { primaryActionName: "Login" });
-            form.root.querySelector( "button" ).classList.add( "mt-2" );
-        }, { modal: true } );
-    },
-
-    openSignUpDialog() {
-
-        const dialog = new LX.Dialog( "Create account", ( p ) => {
-
-            const namePattern = LX.buildTextPattern( { minLength: USERNAME_MIN_LENGTH } );
-            const passwordPattern = LX.buildTextPattern( { minLength: PASSWORD_MIN_LENGTH, digit: true } );
-            const formData = {
-                name: { label: "Name", value: "", icon: "User", xpattern: namePattern },
-                email: { label: "Email", value: "", icon: "AtSign" },
-                password: { label: "Password", value: "", type: "password", icon: "Key", xpattern: passwordPattern },
-                confirmPassword: { label: "Confirm password", value: "", type: "password", icon: "Key" }
-            };
-            const form = p.addForm( null, formData, async (value, event) => {
-
-                errorMsg.set( "" );
-
-                if( !( value.name.match( new RegExp( namePattern ) ) ) )
-                {
-                    errorMsg.set( `❌ Name is too short. Please use at least ${ USERNAME_MIN_LENGTH } characters.` );
-                    return;
-                }
-                else if( !( value.email.match( /^[^\s@]+@[^\s@]+\.[^\s@]+$/ ) ) )
-                {
-                    errorMsg.set( "❌ Please enter a valid email address." );
-                    return;
-                }
-                else if( value.password.length < PASSWORD_MIN_LENGTH )
-                {
-                    errorMsg.set( `❌ Password is too short. Please use at least ${ PASSWORD_MIN_LENGTH } characters.` );
-                    return;
-                }
-                else if( !( value.password.match( new RegExp( passwordPattern ) ) ) )
-                {
-                    errorMsg.set( `❌ Password must contain at least 1 digit.` );
-                    return;
-                }
-                else if( value.password !== value.confirmPassword )
-                {
-                    errorMsg.set( "❌ The password and confirmation fields must match." );
-                    return;
-                }
-
-                await fs.createAccount( value.email, value.password, value.name, async ( user ) => {
-                    dialog.close();
-                    document.querySelectorAll( ".lextoast" ).forEach( t => t.close() );
-                    LX.toast( `✅ Account created!`, `You can now login with your email: ${ value.email }`, { position: "top-right" } );
-
-                    // Update DB
-                    {
-                        const result = await fs.createDocument( FS.USERS_COLLECTION_ID, {
-                            "user_id": user[ "$id" ],
-                            "user_name": value.name
-                        } );
-                    }
-
-                    this.openLoginDialog();
-                }, (err) => {
-                    errorMsg.set( `❌ ${ err }` );
-                } );
-            }, { primaryActionName: "SignUp" });
-            form.root.querySelector( "button" ).classList.add( "mt-2" );
-            const errorMsg = p.addTextArea( null, "", null, { inputClass: "fg-secondary", disabled: true, fitHeight: true } );
-        }, { modal: true } );
-    },
-
-    openUniformsDialog() {
-
-        if( this._lastUniformsDialog )
-        {
-            this._lastUniformsDialog.close();
-        }
-
-        const dialog = new LX.Dialog( `Uniforms [${ this.shader.uniforms.length }]`, null, {
-            modal: false, draggable: true, size: [ Math.min( 600, window.innerWidth - 64 ), "auto" ]
-        } );
-
-        // Put all the stuff in the dialog panel
-        this.customParametersPanel.refresh( dialog.panel );
-
-        const uniformsHeader = LX.makeContainer( ["auto", "auto"], "flex flex-row items-center", "", dialog.title );
-        const addUniformButton = new LX.Button( null, "AddNewCustomUniform", () => {
-            this.addUniform();
-            this.customParametersPanel.refresh( dialog.panel, () => dialog.title.childNodes[ 0 ].textContent = `Uniforms [${ this.shader.uniforms.length }]` );
-        }, { icon: "Plus", className: "ml-auto self-center", buttonClass: "bg-none", title: "Add New Uniform", width: "38px" } );
-        uniformsHeader.appendChild( addUniformButton.root );
-        LX.makeContainer( [`auto`, "0.75rem"], "ml-2 mr-4 border-right border-colored fg-quaternary self-center items-center", "", uniformsHeader );
-        const closerButton = dialog.title.querySelector( "a" );
-        uniformsHeader.appendChild( closerButton );
-        // Re-add listener since it lost it changing the parent
-        closerButton.addEventListener( "click", dialog.close );
-
-        this._lastUniformsDialog = dialog;
-    },
-
-    createNewShader() {
+    createNewShader()
+    {
         // Only crete a new shader view, nothing to save now
-        window.location.href = `${ window.location.origin + window.location.pathname }?edit=new`;
+        window.location.href = `${ window.location.origin + window.location.pathname }?shader=new`;
     },
 
-    async saveShader( existingShader ) {
+    async updateShaderName( shaderName )
+    {
+        const shaderUid = this.shader.uid;
 
+        // update DB
+        // ...
+
+        this.shader.name = shaderName;
+    },
+
+    async saveShaderFiles()
+    {
+        // Upload file and get id
+        const filename = `${ LX.toCamelCase( this.shader.name ) }.json`;
+        const text = JSON.stringify( {
+            name: this.shader.name,
+            passes: this.shader.passes
+        } );
+        const arraybuffer = new TextEncoder().encode( text );
+        const file = new File( [ arraybuffer ], filename, { type: "text/plain" });
+        const result = await fs.createFile( file );
+        return result[ "$id" ];
+    },
+
+    async saveShader( existingShader )
+    {
         if( !fs.user )
         {
             console.warn( "Login to save your shader!" );
@@ -1067,101 +614,135 @@ const ShaderHub = {
             return;
         }
 
-        const dialog = new LX.Dialog( "New Shader", ( p ) => {
-            let shaderName = "";
+        const dialog = new LX.Dialog( "Confirm Shader name", ( p ) => {
+            let shaderName = this.shader.name;
             const textInput = p.addText( "Name", shaderName, ( v ) => {
                 shaderName = v;
             }, { pattern: LX.buildTextPattern( { minLength: 3 } ) } );
             p.addSeparator();
-            p.addButton( null, "ConfirmSaveButton", async () => {
+            p.sameLine( 2 );
+            p.addButton( null, "Cancel", () => dialog.close(), { width: "50%", buttonClass: "bg-error fg-white" } );
+            p.addButton( null, "Confirm", async () => {
                 if( !shaderName.length || !textInput.valid( shaderName ) )
                 {
                     return;
                 }
 
-                // Upload document and get id
-                const filename = "main.wgsl";
-                const code = this.loadedFiles[ filename ].replaceAll( '\r', '' );
-                const arraybuffer = new TextEncoder().encode( code );
-                const file = new File( [ arraybuffer ], filename, { type: "text/plain" });
-                let result = await fs.createFile( file );
-                const fileId = result[ "$id" ];
+                const newFileId = await this.saveShaderFiles();
 
                 // Create a new shader in the DB
-                result = await fs.createDocument( FS.SHADERS_COLLECTION_ID, {
+                const result = await fs.createDocument( FS.SHADERS_COLLECTION_ID, {
                     "name": shaderName,
-                    "author_id": fs.getUserId(),
-                    "file_id": fileId,
                     "description": this.shader.description,
-                    "channels": JSON.stringify( this.shader.channels ),
-                    "uniforms": JSON.stringify( this.shader.uniforms ),
+                    "author_id": fs.getUserId(),
+                    "author_name": this.shader.author ?? "",
+                    "file_id": newFileId,
                 } );
-
-                // Upload canvas snapshot
-                this.updateShaderPreview( shaderName, false );
 
                 this.shader.uid = result[ "$id" ];
                 this.shader.name = shaderName;
 
+                // Upload canvas snapshot
+                await this.updateShaderPreview( this.shader.uid, false );
+
                 // Close dialog on succeed and show toast
                 dialog.close();
-                LX.toast( `✅ Shader saved`, `Shader: ${ shaderName } by ${ fs.user.name }`, { position: "top-right" } );
-            }, {  } );
+                Utils.toast( `✅ Shader saved`, `Shader: ${ shaderName } by ${ fs.user.name }` );
+            }, { width: "50%", buttonClass: "contrast" } );
         } );
     },
 
-    async overrideShader( shaderMetadata ) {
+    async overrideShader( shaderMetadata )
+    {
+        // Delete old file first
+        const fileId = shaderMetadata[ "file_id" ];
+        await fs.deleteFile( fileId );
 
-        // Delete old files first
-        const fileIdString = shaderMetadata[ "file_id" ];
-        const fileIds = fileIdString.split( "," );
-        for( const fid of fileIds )
-        {
-            await fs.deleteFile( fid );
-        }
-
-        let newFileId = "";
-
-        // Create new COMMON files with the current code
-        for( let i = 0; i < this.shader.files.length - 1; ++i )
-        {
-            const filename = `common${ i }.wgsl`;
-            const code = this.loadedFiles[ filename ].replaceAll( '\r', '' );
-            const arraybuffer = new TextEncoder().encode( code );
-            const file = new File( [ arraybuffer ], filename, { type: "text/plain" });
-            let result = await fs.createFile( file );
-            newFileId += `${ result[ "$id" ] },`;
-        }
-
-        // Create new MAIN files with the current code
-        {
-            const filename = "main.wgsl";
-            const code = this.loadedFiles[ filename ].replaceAll( '\r', '' );
-            const arraybuffer = new TextEncoder().encode( code );
-            const file = new File( [ arraybuffer ], filename, { type: "text/plain" });
-            let result = await fs.createFile( file );
-            newFileId += result[ "$id" ];
-        }
+        const newFileId = await this.saveShaderFiles();
 
         // Update files reference in the DB
-        {
-            await fs.updateDocument( FS.SHADERS_COLLECTION_ID, this.shader.uid, {
-                "file_id": newFileId,
-                "description": this.shader.description,
-                "channels": JSON.stringify( this.shader.channels ),
-                "uniforms": JSON.stringify( this.shader.uniforms )
-            } );
-        }
+        await fs.updateDocument( FS.SHADERS_COLLECTION_ID, this.shader.uid, {
+            "name": this.shader.name,
+            "description": this.shader.description,
+            "file_id": newFileId,
+        } );
 
         // Update canvas snapshot
-        this.updateShaderPreview( this.shader.name, false );
+        await this.updateShaderPreview( this.shader.uid, false );
 
-        LX.toast( `✅ Shader updated`, `Shader: ${ this.shader.name } by ${ fs.user.name }`, { position: "top-right" } );
+        Utils.toast( `✅ Shader updated`, `Shader: ${ this.shader.name } by ${ fs.user.name }` );
     },
 
-    async updateShaderPreview( shaderName, showFeedback = true ) {
+    async deleteShader()
+    {
+        let result = await this.shaderExists();
+        if( !result )
+        {
+            return;
+        }
+
+        const innerDelete = async () => {
+
+            // DB entry
+            await fs.deleteDocument( FS.SHADERS_COLLECTION_ID, this.shader.uid );
+
+            // Shader files
+            await fs.deleteFile( result[ "file_id" ] );
+
+            // Preview
+            const previewName = `${ this.shader.uid }.png`;
+            result = await fs.listFiles( [ Query.equal( "name", previewName ) ] );
+            if( result.total > 0 )
+            {
+                await fs.deleteFile( result.files[ 0 ][ "$id" ] );
+            }
+
+            Utils.toast( `✅ Shader deleted`, `Shader: ${ this.shader.name } by ${ fs.user.name }` );
+
+        };
+
+        const dialog = new LX.Dialog( "Delete shader", (p) => {
+            p.root.classList.add( "p-2" );
+            p.addTextArea( null, "Are you sure? This action cannot be undone.", null, { disabled: true } );
+            p.addSeparator();
+            p.sameLine( 2 );
+            p.addButton( null, "Cancel", () => dialog.close(), { width: "50%", buttonClass: "bg-error fg-white" } );
+            p.addButton( null, "Continue", innerDelete.bind( this ), { width: "50%", buttonClass: "contrast" } );
+        }, { modal: true } );
+    },
+
+    async remixShader()
+    {
+        // Save the shader with you as the author id
+        // Create a new col to store original_id so it can be shown in the page
+        // Get the new shader id, and reload page in shader view with that id
+
+        const shaderName = this.shader.name;
+        const shaderUid = this.shader.uid;
+        const newFileId = await this.saveShaderFiles();
+
+        // Create a new shader in the DB
+        result = await fs.createDocument( FS.SHADERS_COLLECTION_ID, {
+            "name": shaderName,
+            "author_id": fs.getUserId(),
+            "original_id": shaderUid,
+            "file_id": newFileId,
+            "description": this.shader.description
+        } );
+
+        // Upload canvas snapshot
+        await this.updateShaderPreview( shaderUid, false );
+
+        // Go to shader edit view with the new shader
+        window.location.href = `${ window.location.origin + window.location.pathname }?shader=${ result[ "$id" ] }`;
+    },
+
+    async updateShaderPreview( shaderUid, showFeedback = true )
+    {
+        shaderUid = shaderUid ?? this.shader.uid;
+
         // Delete old preview first if necessary
-        const previewName = `${ shaderName.replaceAll( " ", "_" ) }_preview.png`;
+        const previewName = `${ shaderUid }.png`;
         const result = await fs.listFiles( [ Query.equal( "name", previewName ) ] );
         if( result.total > 0 )
         {
@@ -1176,16 +757,12 @@ const ShaderHub = {
 
         if( showFeedback )
         {
-            LX.toast( `✅ Shader preview updated`, `Shader: ${ shaderName } by ${ fs.user.name }`, { position: "top-right" } );
+            Utils.toast( `✅ Shader preview updated`, `Shader: ${ this.shader.name } by ${ fs.user.name }` );
         }
     },
 
-    async remixShader() {
-
-    },
-
-    async initGraphics( canvas ) {
-
+    async initGraphics( canvas )
+    {
         this.gpuCanvas = canvas;
         this.adapter = await navigator.gpu?.requestAdapter({
             featureLevel: 'compatibility',
@@ -1197,7 +774,7 @@ const ShaderHub = {
             return;
         }
 
-        this.webGPUContext = canvas.getContext('webgpu');
+        this.webGPUContext = canvas.getContext( 'webgpu' );
 
         const devicePixelRatio = window.devicePixelRatio;
         canvas.width = canvas.clientWidth * devicePixelRatio;
@@ -1212,393 +789,42 @@ const ShaderHub = {
 
         // Input Parameters
         {
-            this.timeBuffer = this.device.createBuffer({
+            this.gpuBuffers[ "time" ] = this.device.createBuffer({
                 size: 4,
                 usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
             });
 
-            this.timeDeltaBuffer = this.device.createBuffer({
+            this.gpuBuffers[ "timeDelta" ] = this.device.createBuffer({
                 size: 4,
                 usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
             });
 
-            this.frameCountBuffer = this.device.createBuffer({
+            this.gpuBuffers[ "frameCount" ] = this.device.createBuffer({
                 size: 4,
                 usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
             });
 
-            this.resolutionBuffer = this.device.createBuffer({
+            this.gpuBuffers[ "resolution" ] = this.device.createBuffer({
                 size: 8,
                 usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
             });
 
-            this.mouseBuffer = this.device.createBuffer({
-                size: 12,
+            this.gpuBuffers[ "mouse" ] = this.device.createBuffer({
+                size: 16,
                 usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
             });
         }
 
-        // Load any necessary texture channels for the current shader
-        for( let i = 0; i < this.shader.channels?.length ?? 0; ++i )
-        {
-            await this.createTexture( this.shader.channels[ i ], i );
-        }
-
-        // Create render pipeline based on editor shaders
-        {
-            await this.createRenderPipeline( false, true );
-        }
-
-        // Create bind group
-        {
-            this.sampler = this.device.createSampler({
-                magFilter: 'linear',
-                minFilter: 'linear',
-            });
-
-            await this.createRenderBindGroup();
-        }
-
-        const frame = () => {
-
-            const now = LX.getTime();
-
-            this.timeDelta = ( now - this.lastTime ) / 1000;
-
-            if( !this.timePaused )
-            {
-                this.device.queue.writeBuffer(
-                    this.timeDeltaBuffer,
-                    0,
-                    new Float32Array([ this.timeDelta ])
-                );
-
-                this.device.queue.writeBuffer(
-                    this.timeBuffer,
-                    0,
-                    new Float32Array([ this.elapsedTime ])
-                );
-
-                this.elapsedTime += this.timeDelta;
-
-                this.device.queue.writeBuffer(
-                    this.frameCountBuffer,
-                    0,
-                    new Int32Array([ this.frameCount ])
-                );
-
-                this.frameCount++;
-
-                LX.emit( "@elapsed-time", `${ this.elapsedTime.toFixed( 2 ) }s` );
-            }
-
-            if( this._parametersDirty && this.shader.uniforms.length )
-            {
-                this.shader.uniforms.map( ( u, index ) => {
-                    this.device.queue.writeBuffer(
-                        this.shader.uniformBuffers[ index ],
-                        0,
-                        new Float32Array([ u.value ])
-                    );
-                } );
-
-                this._parametersDirty = false;
-            }
-
-            this.device.queue.writeBuffer(
-                this.resolutionBuffer,
-                0,
-                new Float32Array([ this.gpuCanvas.offsetWidth, this.gpuCanvas.offsetHeight ])
-            );
-
-            this.device.queue.writeBuffer(
-                this.mouseBuffer,
-                0,
-                new Float32Array([ this.mousePosition[ 0 ], this.mousePosition[ 1 ], this._mouseDown ? 1.0 : 0.0 ])
-            );
-
-            this.lastTime = now;
-
-            if( this.fullscreenQuadPipeline )
-            {
-                const commandEncoder = this.device.createCommandEncoder();
-                const textureView = this.webGPUContext.getCurrentTexture().createView();
-
-                const renderPassDescriptor = {
-                    colorAttachments: [
-                        {
-                            view: textureView,
-                            clearValue: [0, 0, 0, 1],
-                            loadOp: 'clear',
-                            storeOp: 'store',
-                        },
-                    ],
-                };
-
-                const passEncoder = commandEncoder.beginRenderPass( renderPassDescriptor );
-                passEncoder.setPipeline( this.fullscreenQuadPipeline );
-
-                if( this.renderBindGroup )
-                {
-                    passEncoder.setBindGroup( 0, this.renderBindGroup );
-                }
-
-                passEncoder.draw( 6 );
-                passEncoder.end();
-
-                this.device.queue.submit( [ commandEncoder.finish() ] );
-            }
-
-            if( this.capturer )
-            {
-                if( this.frameCount == 1 )
-                {
-                    this.capturer.start();
-                }
-
-                this.capturer.capture( this.gpuCanvas );
-                this.frameCount++;
-
-                if( this.frameCount == 100 )
-                {
-                    this.saveCapture();
-                }
-            }
-
-            requestAnimationFrame(frame);
-        }
-
-        requestAnimationFrame(frame);
-    },
-
-    getShaderCode( includeBindings = true ) {
-
-        const templateCodeLines = this.loadedFiles[ "shaders/fullscreenTexturedQuad.template.wgsl" ].replaceAll( '\r', '' ).split( "\n" );
-
-        if( includeBindings )
-        {
-            let bindingIndex = 0;
-
-            // Default Uniform bindings
-            {
-                const defaultBindingsIndex = templateCodeLines.indexOf( "$default_bindings" );
-                console.assert( defaultBindingsIndex > -1 );
-                templateCodeLines.splice( defaultBindingsIndex, 1, ...DEFAULT_UNIFORMS_LIST.map( ( u, index ) => {
-                    if( u.skipBindings ?? false ) return;
-                    return `@group(0) @binding(${ bindingIndex++ }) var<uniform> ${ u.name } : ${ u.type };`;
-                } ).filter( u => u !== undefined ) );
-            }
-
-            // Custom Uniform bindings
-            {
-                if( this.shader.uniforms.length !== this.shader.uniformBuffers.length )
-                {
-                    this.shader.uniformBuffers.length = this.shader.uniforms.length; // Set new length
-
-                    for( let i = 0; i < this.shader.uniformBuffers.length; ++i )
-                    {
-                        const buffer = this.shader.uniformBuffers[ i ];
-                        if( !buffer )
-                        {
-                            this.shader.uniformBuffers[ i ] = this.device.createBuffer({
-                                size: 4,
-                                usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
-                            });
-                        }
-                    }
-                }
-
-                const customBindingsIndex = templateCodeLines.indexOf( "$custom_bindings" );
-                console.assert( customBindingsIndex > -1 );
-                templateCodeLines.splice( customBindingsIndex, 1, ...this.shader.uniforms.map( ( u, index ) => {
-                    if( !u ) return;
-                    return `@group(0) @binding(${ bindingIndex++ }) var<uniform> ${ u.name } : f32;`;
-                } ).filter( u => u !== undefined ) );
-            }
-
-            // Process texture bindings
-            {
-                const textureBindingsIndex = templateCodeLines.indexOf( "$texture_bindings" );
-                console.assert( textureBindingsIndex > -1 );
-                const bindings = this.uniformChannels.map( ( u, index ) => {
-                    if( !u ) return;
-                    return `@group(0) @binding(${ bindingIndex++ }) var iChannel${ index } : texture_2d<f32>;`;
-                } );
-                templateCodeLines.splice( textureBindingsIndex, 1, ...(bindings.length ? [ ...bindings.filter( u => u !== undefined ), `@group(0) @binding(${ bindingIndex++ }) var texSampler : sampler;` ] : []) );
-            }
-
-            // Process dummies so using them isn't mandatory
-            {
-                const defaultDummiesIndex = templateCodeLines.indexOf( "$default_dummies" );
-                console.assert( defaultDummiesIndex > -1 );
-                templateCodeLines.splice( defaultDummiesIndex, 1, ...DEFAULT_UNIFORMS_LIST.map( ( u, index ) => {
-                    if( u.skipBindings ?? false ) return;
-                    return `    let u${ u.name }Dummy: ${ u.type } = ${ u.name };`;
-                } ).filter( u => u !== undefined ) );
-
-                const customDummiesIndex = templateCodeLines.indexOf( "$custom_dummies" );
-                console.assert( customDummiesIndex > -1 );
-                templateCodeLines.splice( customDummiesIndex, 1, ...this.shader.uniforms.map( ( u, index ) => {
-                    if( !u ) return;
-                    return `    let u${ u.name }Dummy: f32 = ${ u.name };`;
-                } ).filter( u => u !== undefined ) );
-
-                const textureDummiesIndex = templateCodeLines.indexOf( "$texture_dummies" );
-                console.assert( textureDummiesIndex > -1 );
-                templateCodeLines.splice( textureDummiesIndex, 1, ...this.uniformChannels.map( ( u, index ) => {
-                    if( !u ) return;
-                    return `    let channel${ index }Dummy: vec4f = textureSample(iChannel${ index }, texSampler, fragUV);`;
-                } ).filter( u => u !== undefined ) );
-            }
-        }
-
-        // Add common blocks
-        {
-            let allCommon = [];
-
-            for( let i = 0; i < this.shader.files.length - 1; ++i )
-            {
-                const name = `common${ i }.wgsl`;
-                const code = this.loadedFiles[ name ];
-                if( code )
-                {
-                    allCommon = allCommon.concat( code.replaceAll( '\r', '' ).split( "\n" ) );
-                }
-            }
-
-            const commonIndex = templateCodeLines.indexOf( "$common" );
-            console.assert( commonIndex > -1 );
-            templateCodeLines.splice( commonIndex, 1, ...allCommon );
-        }
-
-        // Add main image
-        {
-            const mainImageIndex = templateCodeLines.indexOf( "$main_image" );
-            console.assert( mainImageIndex > -1 );
-            const mainName = this.shader.files.at( -1 )[ 1 ]; // First Name of the last file
-            const mainImageLines = this.loadedFiles[ mainName ].replaceAll( '\r', '' ).split( "\n" );
-            templateCodeLines.splice( mainImageIndex, 1, ...mainImageLines );
-        }
-
-        return templateCodeLines.join( "\n" );
-    },
-
-    async createRenderPipeline( updateBindGroup = true, showFeedback ) {
-
-        const result = await this.validateShader( this.getShaderCode(), showFeedback );
-        if( !result.valid )
-        {
-            return;
-        }
-
-        this.fullscreenQuadPipeline = this.device.createRenderPipeline({
-            layout: 'auto',
-            vertex: {
-                module: result.module,
-            },
-            fragment: {
-                module: result.module,
-                targets: [
-                    {
-                        format: this.presentationFormat,
-                    },
-                ],
-            },
-            primitive: {
-                topology: 'triangle-list',
-            },
+        this.globalSampler = this.device.createSampler({
+            magFilter: 'linear',
+            minFilter: 'linear',
         });
 
-        console.warn( "Info: Render Pipeline created!" );
-
-        if( updateBindGroup )
-        {
-            this.createRenderBindGroup();
-        }
+        requestAnimationFrame( this.onFrame.bind( this) );
     },
 
-    async createRenderBindGroup() {
-
-        if( !this.fullscreenQuadPipeline )
-        {
-            return;
-        }
-
-        let bindingIndex = 0;
-
-        const entries = [
-            {
-                binding: bindingIndex++,
-                resource: {
-                    buffer: this.timeBuffer,
-                }
-            },
-            {
-                binding: bindingIndex++,
-                resource: {
-                    buffer: this.timeDeltaBuffer,
-                }
-            },
-            {
-                binding: bindingIndex++,
-                resource: {
-                    buffer: this.frameCountBuffer,
-                }
-            },
-            {
-                binding: bindingIndex++,
-                resource: {
-                    buffer: this.resolutionBuffer,
-                }
-            },
-            {
-                binding: bindingIndex++,
-                resource: {
-                    buffer: this.mouseBuffer,
-                }
-            }
-        ]
-
-        const customUniformCount = this.shader.uniforms.length;
-        if( customUniformCount )
-        {
-            this.shader.uniforms.map( ( u, index ) => {
-                const buffer = this.shader.uniformBuffers[ index ];
-                this.device.queue.writeBuffer(
-                    buffer,
-                    0,
-                    new Float32Array([ u.value ])
-                );
-                entries.push( {
-                    binding: bindingIndex++,
-                    resource: {
-                        buffer,
-                    }
-                } );
-            } );
-        }
-
-        const bindings = this.uniformChannels.filter( u => u !== undefined );
-
-        if( bindings.length )
-        {
-            entries.push( ...this.uniformChannels.map( ( u, index ) => {
-                if( !u ) return;
-                return { binding: bindingIndex++, resource: u.createView() };
-            } ).filter( u => u !== undefined ) );
-            entries.push( { binding: bindingIndex++, resource: this.sampler } );
-        }
-
-        this.renderBindGroup = this.device.createBindGroup({
-            layout: this.fullscreenQuadPipeline.getBindGroupLayout( 0 ),
-            entries
-        });
-
-        console.warn( "Info: Render Bind Group created!" );
-    },
-
-    async createTexture( fileId, channel ) {
-
+    async createTexture( fileId, channel, updatePreview = false, options = { } )
+    {
         if( !fileId )
         {
             return;
@@ -1609,7 +835,8 @@ const ShaderHub = {
         const imageBitmap = await createImageBitmap( await new Blob([data]) );
         const dimensions = [ imageBitmap.width, imageBitmap.height ];
         const imageTexture = this.device.createTexture({
-            size: [  imageBitmap.width, imageBitmap.height, 1],
+            label: fileId,
+            size: [ imageBitmap.width, imageBitmap.height, 1 ],
             format: 'rgba8unorm',
             usage:
                 GPUTextureUsage.TEXTURE_BINDING |
@@ -1618,25 +845,93 @@ const ShaderHub = {
         });
 
         this.device.queue.copyExternalImageToTexture(
-            { source: imageBitmap, flipY: true },
+            { source: imageBitmap, ...options },
             { texture: imageTexture },
             dimensions
         );
 
-        const metadata = await fs.getFile( fileId );
-        this.loadedImages[ metadata.name ] = imageTexture;
+        this.gpuTextures[ fileId ] = imageTexture;
 
-        if( channel !== undefined )
+        if( updatePreview )
         {
-            this.uniformChannels[ channel ] = imageTexture;
-            this.channelsContainer.childNodes[ channel ].querySelector( "img" ).src = url;
+            ui.updateShaderChannelPreview( channel, url );
         }
 
         return imageTexture;
     },
 
-    async validateShader( code, showFeedback ) {
+    async createKeyboardTexture( channel, updatePreview )
+    {
+        const dimensions = [ 256, 3 ];
+        const data = [];
 
+        // Key state
+        for( let w = 0; w < dimensions[ 0 ]; w++ )
+        {
+            data.push( 255 * ( this.keyState.get( w ) === true ? 1 : 0 ), 0, 0, 255 );
+        }
+
+        // Key toggle state
+        for( let w = 0; w < dimensions[ 0 ]; w++ )
+        {
+            data.push( 255 * ( this.keyToggleState.get( w ) === true ? 1 : 0 ), 0, 0, 255 );
+        }
+
+        // Key pressed
+        for( let w = 0; w < dimensions[ 0 ]; w++ )
+        {
+            data.push( 255 * ( this.keyPressed.get( w ) === true ? 1 : 0 ), 0, 0, 255 );
+        }
+
+        const imageData = new ImageData( new Uint8ClampedArray( data ), dimensions[ 0 ], dimensions[ 1 ] );
+        const imageBitmap = await createImageBitmap( imageData );
+        const imageTexture = this.device.createTexture({
+            label: "KeyboardTexture",
+            size: [ imageBitmap.width, imageBitmap.height, 1 ],
+            format: 'rgba8unorm',
+            usage:
+                GPUTextureUsage.TEXTURE_BINDING |
+                GPUTextureUsage.COPY_DST |
+                GPUTextureUsage.RENDER_ATTACHMENT,
+        });
+
+        this.device.queue.copyExternalImageToTexture(
+            { source: imageBitmap },
+            { texture: imageTexture },
+            dimensions
+        );
+
+        // Recreate stuff if we update the texture and
+        // a shader pass is using it
+        const imageName = "Keyboard";
+        this.gpuTextures[ imageName ] = imageTexture;
+
+        const pass = this.currentPass;
+        const usedChannel = pass.channels.indexOf( imageName );
+        if( ( channel === undefined ) && usedChannel > -1 )
+        {
+            channel = usedChannel;
+        }
+
+        if( channel !== undefined )
+        {
+            pass.channels[ channel ] = imageName;
+
+            const passIndex = this.shader.passes.indexOf( pass );
+            this.renderPipelines[ passIndex ] = null;
+            this.renderBindGroups[ passIndex ] = null;
+
+            // await this.compileShader( false, pass );
+
+            if( updatePreview )
+            {
+                ui.updateShaderChannelPreview( channel, "images/keyboard.png" );
+            }
+        }
+    },
+
+    async validateShader( code )
+    {
         // Close all toasts
         document.querySelectorAll( ".lextoast" ).forEach( t => t.close() );
 
@@ -1646,58 +941,91 @@ const ShaderHub = {
 
         if( info.messages.length > 0 )
         {
-            let hasError = false;
-
-            const codeLines = code.split( '\n' );
-            const currentTab = this.editor.getSelectedTabName();
-            const mainImageLines = this.loadedFiles[ currentTab ].replaceAll( '\r', '' ).split( "\n" );
-            const mainImageLineOffset = codeLines.indexOf( mainImageLines[ 0 ] );
-            console.assert( mainImageLineOffset > 0 );
+            let errorMsgs = [];
 
             for( const msg of info.messages )
             {
-                const fragLineNumber = msg.lineNum - ( mainImageLineOffset );
-
-                if( showFeedback )
-                {
-                    LX.toast( `❌ ${ LX.toTitleCase( msg.type ) }: ${ fragLineNumber }:${ msg.linePos }`, msg.message, { timeout: -1, position: "top-right" } );
-                    this.editor.code.childNodes[ fragLineNumber - 1 ]?.classList.add( msg.type === "error" ? "removed" : "debug");
-                }
-
                 if( msg.type === "error" )
                 {
-                    hasError = true;
+                    errorMsgs.push( msg );
                 }
             }
 
-            if( hasError )
+            if( errorMsgs.length > 0 )
             {
-                return { valid: false, messages: info.messages };
+                return { valid: false, code, messages: errorMsgs };
             }
-        }
-
-        if( showFeedback )
-        {
-            LX.toast( `✅ No errors`, "Shader compiled successfully!", { position: "top-right" } );
         }
 
         return { valid: true, module };
     },
 
-    async compileShader() {
+    setEditorErrorBorder( errorCode = ERROR_CODE_DEFAULT )
+    {
+        ui.editor.area.root.parentElement.classList.toggle( "code-border-default", errorCode === ERROR_CODE_DEFAULT );
+        ui.editor.area.root.parentElement.classList.toggle( "code-border-error", errorCode === ERROR_CODE_ERROR );
+        ui.editor.area.root.parentElement.classList.toggle( "code-border-success", errorCode === ERROR_CODE_SUCCESS );
 
-        this.editor.processLines();
-
-        for( const tabName of Object.keys( this.editor.tabs.tabs ) )
-        {
-            const code = this.editor.tabs.tabs[ tabName ].lines.join( '\n' );
-            this.loadedFiles[ tabName ] = code;
-        }
-
-        await this.createRenderPipeline( true, true );
+        LX.doAsync( () => this.setEditorErrorBorder(), 2000 );
     },
 
-    async shaderExists() {
+    async compileShader( showFeedback = true, pass )
+    {
+        this._lastShaderCompilationWithErrors = false;
+
+        ui.editor.processLines();
+
+        const tabs = ui.editor.tabs.tabs;
+        const compilePasses = pass ? [ pass ] : this.shader.passes;
+
+        for( let i = 0; i < compilePasses.length; ++i )
+        {
+            // Buffers and images draw
+            const pass = compilePasses[ i ];
+            pass.codeLines = tabs[ pass.name ].lines;
+            console.assert( pass.codeLines, `No tab with name ${ pass.name }` );
+            if( pass.type === "common" ) continue;
+
+            const result = await pass.compile( this.presentationFormat, this.gpuBuffers, this.gpuTextures );
+            if( result !== WEBGPU_OK ) // error object
+            {
+                ui.editor.loadTab( pass.name ); // Open the tab with the error
+
+                // Make async so the tab is opened before adding the error feedback
+                LX.doAsync( () => {
+
+                    const mainImageLineOffset = result.code.split( "\n" ).indexOf( pass.codeLines[ 0 ] );
+                    console.assert( mainImageLineOffset > 0 );
+
+                    for( const msg of result.messages )
+                    {
+                        const fragLineNumber = msg.lineNum - ( mainImageLineOffset );
+
+                        if( showFeedback )
+                        {
+                            this.setEditorErrorBorder( ERROR_CODE_ERROR );
+                            Utils.toast( `❌ ${ LX.toTitleCase( msg.type ) }: ${ fragLineNumber }:${ msg.linePos }`, msg.message, -1 );
+                            ui.editor.code.childNodes[ fragLineNumber - 1 ]?.classList.add( msg.type === "error" ? "removed" : "debug");
+                        }
+                    }
+                }, 10 );
+
+                this._lastShaderCompilationWithErrors = true;
+
+                return WEBGPU_ERROR; // Stop at first error
+            }
+        }
+
+        if( showFeedback )
+        {
+            this.setEditorErrorBorder( ERROR_CODE_SUCCESS );
+        }
+
+        return WEBGPU_OK;
+    },
+
+    async shaderExists()
+    {
         try {
             return await fs.getDocument( FS.SHADERS_COLLECTION_ID, this.shader.uid );
         } catch (error) {
@@ -1705,38 +1033,67 @@ const ShaderHub = {
         }
     },
 
-    async loadChannelFromFile( file, channel ) {
+    async loadBufferChannel( pass, bufferName, channel, updatePreview = false, forceCompile = false )
+    {
+        pass.channels[ channel ] = bufferName;
 
-        const mustUpdateRenderPipeline = ( this.uniformChannels[ channel ] === undefined );
-
-        await this.createTexture( file, channel );
-
-        this.shader.channels[ channel ] = file;
-
-        if( mustUpdateRenderPipeline )
+        if( forceCompile )
         {
-            // This already recreates bind group
-            await this.createRenderPipeline();
+            await this.compileShader( true, pass );
         }
-        else
+
+        if( updatePreview )
         {
-            await this.createRenderBindGroup();
+            ui.updateShaderChannelPreview( channel, "images/buffer.png" );
         }
     },
 
-    async removeUniformChannel( channel ) {
+    async loadTextureChannelFromFile( file, channel )
+    {
+        const pass = this.currentPass;
+        if( pass.name === "Common" )
+        {
+            return;
+        }
 
-        this.uniformChannels[ channel ] = undefined;
+        pass.channels[ channel ] = file;
+        await this.createTexture( file, channel, true );
+
+        await this.compileShader( true, pass );
+    },
+
+    async removeUniformChannel( channel )
+    {
+        const pass = this.currentPass;
+        if( pass.name === "Common" )
+            return;
+
+        pass.channels[ channel ] = undefined;
 
         // Reset image
-        this.channelsContainer.childNodes[ channel ].querySelector( "img" ).src = "data:image/gif;base64,R0lGODlhAQABAPcAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACH5BAEAAP8ALAAAAAABAAEAAAgEAP8FBAA7";
+        ui.updateShaderChannelPreview( channel, Constants.IMAGE_EMPTY_SRC );
 
         // Recreate everything
-        await this.createRenderPipeline( true, true );
+        await this.compileShader( true, pass );
     },
 
-    async snapshotCanvas( outWidth, outHeight ) {
+    async addUniform( name, value, min, max )
+    {
+        const pass = this.currentPass;
+        if( pass.name === "Common" )
+            return;
 
+        const uName = name ?? `iUniform${ pass.uniforms.length + 1 }`;
+        pass.uniforms.push( { name: uName, value: value ?? 0, min: min ?? 0, max: max ?? 1 } );
+        const allCode = pass.getShaderCode( false );
+        if( allCode.match( new RegExp( `\\b${ uName }\\b` ) ) )
+        {
+            await this.createRenderPipeline( pass, true );
+        }
+    },
+
+    async snapshotCanvas( outWidth, outHeight )
+    {
         const width = outWidth ?? 640;
         const height = outHeight ?? 360;
         const blob = await (() => {return new Promise((resolve) =>
@@ -1755,53 +1112,15 @@ const ShaderHub = {
         );
     },
 
-    async getCanvasSnapshot() {
-
+    async getCanvasSnapshot()
+    {
         const blob = await this.snapshotCanvas();
         const url = URL.createObjectURL( blob );
         window.open(url);
     },
 
-    addUniform( name, value, min, max ) {
-
-        const uName = name ?? `iUniform${ this.shader.uniforms.length + 1 }`;
-        this.shader.uniforms.push( { name: uName, value: value ?? 0, min: min ?? 0, max: max ?? 1 } );
-        const allCode = this.getShaderCode( false );
-        if( allCode.match( new RegExp( `\\b${ uName }\\b` ) ) )
-        {
-            this.createRenderPipeline( true, true );
-        }
-    },
-
-    resetShaderElapsedTime() {
-
-        this.frameCount = 0;
-        this.elapsedTime = 0;
-        this.timeDelta = 0;
-
-        this.device.queue.writeBuffer(
-            this.timeDeltaBuffer,
-            0,
-            new Float32Array([ this.timeDelta ])
-        );
-
-        this.device.queue.writeBuffer(
-            this.timeBuffer,
-            0,
-            new Float32Array([ this.elapsedTime ])
-        );
-
-        this.device.queue.writeBuffer(
-            this.frameCountBuffer,
-            0,
-            new Int32Array([ this.frameCount ])
-        );
-
-        LX.emit( "@elapsed-time", `${ this.elapsedTime.toFixed( 2 ) }s` );
-    },
-
-    quitIfWebGPUNotAvailable( adapter, device ) {
-
+    quitIfWebGPUNotAvailable( adapter, device )
+    {
         if( !device )
         {
             return this.quitIfAdapterNotAvailable( adapter );
@@ -1818,8 +1137,8 @@ const ShaderHub = {
         return WEBGPU_OK;
     },
 
-    quitIfAdapterNotAvailable( adapter ) {
-
+    quitIfAdapterNotAvailable( adapter )
+    {
         if( !("gpu" in navigator) )
         {
             this.fail("'navigator.gpu' is not defined - WebGPU not available in this browser");
@@ -1836,8 +1155,8 @@ const ShaderHub = {
         return WEBGPU_ERROR;
     },
 
-    fail( msg, msgTitle ) {
-
+    fail( msg, msgTitle )
+    {
         new LX.Dialog( msgTitle ?? "❌ WebGPU Error", (p) => {
             p.root.classList.add( "p-4" );
             p.root.innerHTML = msg;
@@ -1845,8 +1164,9 @@ const ShaderHub = {
     }
 }
 
-await ShaderHub.initUI();
+await ShaderHub.init();
 
 window.LX = LX;
 window.ShaderHub = ShaderHub;
-window.fs = fs;
+
+export { ShaderHub };

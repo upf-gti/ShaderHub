@@ -108,6 +108,14 @@ class FS {
         );
     }
 
+    async deleteDocument( collectionId, documentId ) {
+        return await this.databases.deleteDocument(
+            FS.DATABASE_ID,
+            collectionId,
+            documentId
+        );
+    }
+
     async listFiles( queries = [] ) {
         return await this.storage.listFiles({
             bucketId: FS.BUCKET_ID,
@@ -143,6 +151,14 @@ class FS {
         return await this.storage.deleteFile( {
             bucketId: FS.BUCKET_ID,
             fileId
+        });
+    }
+
+    async getImagePreview( fileId, options ) {
+        return await this.storage.getFilePreview( {
+            bucketId: FS.BUCKET_ID,
+            fileId,
+            ...options
         });
     }
 
