@@ -540,7 +540,7 @@ export const ui = {
                 likeSpan.innerHTML = likesCount;
             } );
 
-            if( this.fs.user && !ownProfile )
+            if( this.fs.user && !ownProfile && !isNewShader )
             {
                 const likeButton = shaderStats.querySelector( "svg" );
                 likeButton.classList.add( "hover:fg-error", "cursor-pointer" );

@@ -254,6 +254,7 @@ const ShaderHub =
 
             const shaderPass = new ShaderPass( shader, this.device, pass );
             this.shader.passes.push( shaderPass );
+            this.shader.likes = [];
 
             // Set code in the editor
             ui.editor.addTab( pass.name, false, pass.name, { codeLines: pass.codeLines, language: "WGSL" } );
@@ -265,8 +266,6 @@ const ShaderHub =
 
             this.shader._json = LX.deepCopy( json );
             this.shader.likes = [ ...( json.likes ?? [] ) ];
-
-            LX.emit( "@on_like_changed", this.shader.likes.length );
 
             for( const pass of json.passes ?? [] )
             {
@@ -294,6 +293,8 @@ const ShaderHub =
                 }
             }
         }
+
+        LX.emit( "@on_like_changed", this.shader.likes.length );
 
         this.currentPass = this.shader.passes.at( -1 );
 
@@ -562,7 +563,7 @@ const ShaderHub =
     async saveShaderFiles()
     {
         const ownShader = ( this.shader.authorId === fs.getUserId() );
-        const passes = ownShader ? this.shader.passes : this.shader._json.passes;
+        const passes = ownShader ? this.shader.passes : ( this.shader._json?.passes ?? this.shader.passes );
 
         // Upload file and get id
         const json = {
@@ -1051,7 +1052,7 @@ const ShaderHub =
         const allCode = pass.getShaderCode( false );
         if( allCode.match( new RegExp( `\\b${ uName }\\b` ) ) )
         {
-            await this.createRenderPipeline( pass, true );
+            await this.compileShader( true, pass );
         }
     },
 
