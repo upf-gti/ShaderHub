@@ -18,6 +18,10 @@ export const ui = {
         this.area = await LX.init();
 
         const starterTheme = LX.getTheme();
+
+        const r = document.querySelector( ':root' );
+        r.style.setProperty( "--hub-background-image", `url("images/background${ starterTheme === "dark" ? "" : "_inverted" }.png")` );
+
         const menubarOptions = [];
         const menubarButtons = [
             {
@@ -134,6 +138,7 @@ export const ui = {
 
         LX.addSignal( "@on_new_color_scheme", ( el, value ) => {
             menubar.setButtonImage("ShaderHub", `images/icon_${ value }.png`, null, { float: "left" } );
+            r.style.setProperty( "--hub-background-image", `url("images/background${ value === "dark" ? "" : "_inverted" }.png")` );
         } );
 
         menubar.siblingArea.root.classList.add( "content-area" );
@@ -179,7 +184,7 @@ export const ui = {
         LX.makeContainer( [`auto`, "auto"], "fg-primary text-lg flex flex-row gap-2 self-center align-center ml-auto mr-auto", `
             ${ LX.makeIcon("Github@solid", {svgClass:"lg"} ).innerHTML }<a class="decoration-none fg-secondary" href="https://github.com/upf-gti/ShaderHub">Code on Github</a>`, bottomArea );
 
-        var [ leftArea, rightArea ] = topArea.split({ sizes: ["60%", "40%"], resize: false });
+        var [ leftArea, rightArea ] = topArea.split({ sizes: ["50%", "50%"], resize: false });
 
         if( mobile )
         {
@@ -189,11 +194,11 @@ export const ui = {
         }
 
         leftArea.root.className += " bg-none";
-        rightArea.root.className += " p-8 bg-none";
+        rightArea.root.className += " p-8 bg-none items-center";
 
         // Create title/login area
         {
-            const container = LX.makeContainer( ["100%", "100%"], "bg-blur flex flex-col gap-8 rounded-lg place-content-center", "", rightArea );
+            const container = LX.makeContainer( ["100%", "100%"], "bg-blur flex flex-col gap-8 rounded-lg place-content-center items-center", "", rightArea );
             const header = LX.makeContainer( [ null, "300px" ], "flex flex-col p-6 gap-4 text-center items-center place-content-center", `
                 <h2 class="fg-secondary">ShaderHub beta</h2>
                 <h1>Create and Share Shaders using latest WebGPU!</h1>
@@ -205,7 +210,7 @@ export const ui = {
 
             if( !this.fs.user )
             {
-                const loginContainer = LX.makeContainer( ["100%", "auto"], "flex flex-col gap-2 p-6 text-center fg-secondary", "Sign in to save your shaders:", container );
+                const loginContainer = LX.makeContainer( ["50%", "auto"], "flex flex-col gap-2 p-6 text-center fg-secondary", "Sign in to save your shaders:", container );
                 const formData = { email: { label: "Email", value: "", icon: "AtSign" }, password: { label: "Password", icon: "Key", value: "", type: "password" } };
                 const form = new LX.Form( null, formData, async (value, event) => {
                     await this.fs.login( value.email, value.password, async ( user, session ) => {
@@ -243,7 +248,7 @@ export const ui = {
 
         LX.doAsync( async () => {
 
-            const listContainer = LX.makeContainer( ["100%", "100%"], "grid shader-list-initial gap-4 p-8 justify-center", "", leftArea );
+            const listContainer = LX.makeContainer( ["100%", "auto"], "grid shader-list-initial gap-4 p-8 justify-center", "", leftArea );
 
             // Get all stored shader files (not the code, only the data)
             const result = await this.fs.listDocuments( FS.SHADERS_COLLECTION_ID );
@@ -286,6 +291,9 @@ export const ui = {
             }
 
             shaderList = shaderList.sort( (a, b) => b.likeCount - a.likeCount ).slice( 0, 3 );
+
+            leftArea.root.className += " content-center items-center";
+            leftArea.root.style.width = "auto";
 
             skeleton.destroy();
 
@@ -761,11 +769,12 @@ export const ui = {
         // Add shader visualization UI
         {
             let [ canvasArea, canvasControlsArea ] = graphicsArea.split({ type: "vertical", sizes: ["calc(100% - 48px)", null], resize: false });
+            canvasArea.root.className += " bg-none";
+            canvasControlsArea.root.className += " px-2 rounded-b-lg bg-secondary";
 
             const canvas = this.makeGPUCanvas();
             canvasArea.attach( canvas );
         
-            canvasControlsArea.root.className += " px-2 rounded-b-lg bg-secondary";
             const panel = canvasControlsArea.addPanel( { className: "flex flex-row" } );
             panel.sameLine();
             panel.addButton( null, "ResetTime", () => ShaderHub.onShaderTimeReset(), { icon: "SkipBack", title: "Reset time", tooltip: true } );

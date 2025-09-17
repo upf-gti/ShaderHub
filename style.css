@@ -1,3 +1,7 @@
+:root {
+	--hub-background-image: url("images/background.png");
+}
+
 * {
 	font-family: var(--global-code-font) !important;
 }
@@ -69,11 +73,16 @@
 
 .shader-list-initial {
 	grid-template-columns:repeat(2, 1fr);
+	max-width: 1200px;
 }
 
 .shader-item {
     grid-column-end: span 1;
     grid-row-end: span 1;
+}
+
+.shader-list-initial .shader-item {
+	aspect-ratio: 16 / 10;
 }
 
 .shader-item.featured {
@@ -121,7 +130,7 @@
 }
 
 .hub-background {
-	background-image: url("images/background.png");
+	background-image: var(--hub-background-image);
 	background-size: cover;
 }
 
