@@ -318,7 +318,7 @@ const ShaderHub =
         LX.emit( "@on_like_changed", this.shader.likes.length );
 
         let result = await ShaderHub.shaderExists();
-        await this.saveShader( result, false );
+        await this.saveShader( result, false, false );
     },
 
     onShaderPassCreated( passType, passName )
@@ -544,20 +544,33 @@ const ShaderHub =
         else if( document.webkitExitFullscreen ) document.webkitExitFullscreen();
     },
 
+    getFullPath()
+    {
+        return window.location.origin + window.location.pathname;
+    },
+
+    openBrowseList()
+    {
+        const needsReload = window.location.search === "";
+        window.location.href = `${ this.getFullPath() }#browse`;
+        if( needsReload ) window.location.reload();
+    },
+
     openProfile( userID )
     {
-        window.location.href = `${ window.location.origin + window.location.pathname }?profile=${ userID }`;
+        window.location.href = `${ this.getFullPath() }?profile=${ userID }`;
     },
 
     openShader( shaderID )
     {
-        window.location.href = `${ window.location.origin + window.location.pathname }?shader=${ shaderID }`;
+        window.location.href = `${ this.getFullPath() }?shader=${ shaderID }`;
     },
 
-    createNewShader()
+    openHelp()
     {
-        // Only crete a new shader view, nothing to save now
-        window.location.href = `${ window.location.origin + window.location.pathname }?shader=new`;
+        const needsReload = window.location.search === "";
+        window.location.href = `${ this.getFullPath() }#help`;
+        if( needsReload ) window.location.reload();
     },
 
     async saveShaderFiles()
@@ -589,7 +602,7 @@ const ShaderHub =
         return result[ "$id" ];
     },
 
-    async saveShader( existingShader, updateThumbnail = true )
+    async saveShader( existingShader, updateThumbnail = true, showFeedback = true )
     {
         if( !fs.user )
         {
@@ -599,7 +612,7 @@ const ShaderHub =
 
         if( existingShader )
         {
-            this.overrideShader( existingShader, updateThumbnail );
+            this.overrideShader( existingShader, updateThumbnail, showFeedback );
             return;
         }
 
@@ -642,7 +655,7 @@ const ShaderHub =
         } );
     },
 
-    async overrideShader( shaderMetadata, updateThumbnail = true )
+    async overrideShader( shaderMetadata, updateThumbnail = true, showFeedback = true )
     {
         // Delete old file first
         const fileId = shaderMetadata[ "file_id" ];
@@ -663,7 +676,10 @@ const ShaderHub =
             await this.updateShaderPreview( this.shader.uid, false );
         }
 
-        Utils.toast( `✅ Shader updated`, `Shader: ${ this.shader.name } by ${ fs.user.name }` );
+        if( showFeedback )
+        {
+            Utils.toast( `✅ Shader updated`, `Shader: ${ this.shader.name } by ${ fs.user.name }` );
+        }
     },
 
     async deleteShader()
@@ -728,7 +744,7 @@ const ShaderHub =
         await this.updateShaderPreview( shaderUid, false );
 
         // Go to shader edit view with the new shader
-        window.location.href = `${ window.location.origin + window.location.pathname }?shader=${ result[ "$id" ] }`;
+        this.openShader( result[ "$id" ] );
     },
 
     async updateShaderPreview( shaderUid, showFeedback = true )
@@ -1156,6 +1172,7 @@ const ShaderHub =
 await ShaderHub.init();
 
 window.LX = LX;
+window.fs = fs;
 window.ShaderHub = ShaderHub;
 
 export { ShaderHub };
