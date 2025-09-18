@@ -86,7 +86,7 @@
 }
 
 .shader-list-initial .shader-item {
-	aspect-ratio: 16 / 9;
+	/* aspect-ratio: 16 / 10; */
 }
 
 .shader-item.featured {
@@ -94,7 +94,7 @@
 }
 
 .lexskeleton .shader-item {
-	aspect-ratio: 16 / 10;
+	/* aspect-ratio: 16 / 10; */
 }
 
 .channel-server-list {
@@ -114,7 +114,6 @@
 	margin-left: auto;
     margin-right: auto;
     max-width: 1400px;
-
 	/* https://pqina.nl/blog/fade-out-overflow-using-css-mask-image/ */
     --scrollbar-width: 8px;
     --mask-height: 64px;

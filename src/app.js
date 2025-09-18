@@ -573,9 +573,8 @@ const ShaderHub =
         if( needsReload ) window.location.reload();
     },
 
-    async saveShaderFiles()
+    async saveShaderFiles( ownShader )
     {
-        const ownShader = ( this.shader.authorId === fs.getUserId() );
         const passes = ownShader ? this.shader.passes : ( this.shader._json?.passes ?? this.shader.passes );
 
         // Upload file and get id
@@ -630,7 +629,8 @@ const ShaderHub =
                     return;
                 }
 
-                const newFileId = await this.saveShaderFiles();
+                const ownShader = ( this.shader.authorId === fs.getUserId() );
+                const newFileId = await this.saveShaderFiles( ownShader );
 
                 // Create a new shader in the DB
                 const result = await fs.createDocument( FS.SHADERS_COLLECTION_ID, {
@@ -639,7 +639,8 @@ const ShaderHub =
                     "author_id": fs.getUserId(),
                     "author_name": this.shader.author ?? "",
                     "file_id": newFileId,
-                    "like_count": this.shader.likes.length
+                    "like_count": this.shader.likes.length,
+                    "features": this.getShaderFeatures()
                 } );
 
                 this.shader.uid = result[ "$id" ];
@@ -661,22 +662,31 @@ const ShaderHub =
         const fileId = shaderMetadata[ "file_id" ];
         await fs.deleteFile( fileId );
 
-        const newFileId = await this.saveShaderFiles();
+        const ownShader = ( this.shader.authorId === fs.getUserId() );
+        const newFileId = await this.saveShaderFiles( ownShader );
 
         // Update files reference in the DB
-        await fs.updateDocument( FS.SHADERS_COLLECTION_ID, this.shader.uid, {
-            "name": this.shader.name,
-            "description": this.shader.description,
+        const row = {
             "file_id": newFileId,
             "like_count": this.shader.likes.length
-        } );
+        };
 
-        if( updateThumbnail )
+        // Update specific stuff only if shader owner
+        if( ownShader )
         {
-            await this.updateShaderPreview( this.shader.uid, false );
+            row[ "name" ] = this.shader.name,
+            row[ "description" ] = this.shader.description,
+            row[ "features" ] = this.getShaderFeatures();
+
+            if( updateThumbnail )
+            {
+                await this.updateShaderPreview( this.shader.uid, false );
+            }
         }
 
-        if( showFeedback )
+        await fs.updateDocument( FS.SHADERS_COLLECTION_ID, this.shader.uid, row );
+
+        if( ownShader && showFeedback )
         {
             Utils.toast( `✅ Shader updated`, `Shader: ${ this.shader.name } by ${ fs.user.name }` );
         }
@@ -745,6 +755,25 @@ const ShaderHub =
 
         // Go to shader edit view with the new shader
         this.openShader( result[ "$id" ] );
+    },
+
+    getShaderFeatures()
+    {
+        const features = [];
+
+        const buffers = this.shader.passes.filter( p => p.type === "buffer" );
+        if( buffers.length ) features.push( "multipass" );
+
+        this.shader.passes.some( p => {
+            const keyboardPasses = p.channels.filter( u => u === "Keyboard" );
+            if( keyboardPasses.length )
+            {
+                features.push( "keyboard" );
+                return true;
+            }
+        } )
+
+        return features.join( "," );
     },
 
     async updateShaderPreview( shaderUid, showFeedback = true )
@@ -937,10 +966,18 @@ const ShaderHub =
     setEditorErrorBorder( errorCode = ERROR_CODE_DEFAULT )
     {
         ui.editor.area.root.parentElement.classList.toggle( "code-border-default", errorCode === ERROR_CODE_DEFAULT );
-        ui.editor.area.root.parentElement.classList.toggle( "code-border-error", errorCode === ERROR_CODE_ERROR );
         ui.editor.area.root.parentElement.classList.toggle( "code-border-success", errorCode === ERROR_CODE_SUCCESS );
+        ui.editor.area.root.parentElement.classList.toggle( "code-border-error", errorCode === ERROR_CODE_ERROR );
 
-        LX.doAsync( () => this.setEditorErrorBorder(), 2000 );
+        if( !this._mustResetBorder )
+        {
+            LX.doAsync( () => {
+                this.setEditorErrorBorder();
+                this._mustResetBorder = false;
+            }, 2000 );
+        }
+
+        this._mustResetBorder = true;
     },
 
     async compileShader( showFeedback = true, pass, focusCanvas = false )
