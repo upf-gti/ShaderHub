@@ -16,6 +16,8 @@
 .code-border-default { border: 1px solid transparent }
 .code-border-error { border: 1px solid var(--global-color-error) }
 
+.box-shadow { box-shadow: 0 0 8px 4px rgba(0, 0, 0, 0.15) }
+
 .notifications ol .lextoast .lextoastcontent .desc {
 	transition: all 0.5s cubic-bezier(.42, .97, .52, 1.19);
 }
@@ -31,6 +33,8 @@
 
 .lexmenubar {
 	background-color: var(--global-blur-background);
+	--webkit-backdrop-filter: blur(128px);
+    backdrop-filter: blur(128px);
 }
 
 .lexcomponent input.lextext, .lexcomponent div.lextext {
@@ -73,7 +77,7 @@
 
 .shader-list-initial {
 	grid-template-columns:repeat(2, 1fr);
-	max-width: 1200px;
+	/* grid-auto-rows: 1fr; */
 }
 
 .shader-item {
@@ -82,7 +86,7 @@
 }
 
 .shader-list-initial .shader-item {
-	aspect-ratio: 16 / 10;
+	aspect-ratio: 16 / 9;
 }
 
 .shader-item.featured {
@@ -136,8 +140,14 @@
 
 .hub-background-blur {
 	background: transparent;
-	--webkit-backdrop-filter: blur(128px) grayscale(0.5);
-    backdrop-filter: blur(128px) grayscale(0.5);
+	--webkit-backdrop-filter: blur(96px) grayscale(0.75);
+    backdrop-filter: blur(96px) grayscale(0.75);
+}
+
+.hub-background-blur-md {
+	background-color: var(--global-blur-background);
+	--webkit-backdrop-filter: blur(96px) grayscale(0.75);
+    backdrop-filter: blur(96px) grayscale(0.75);
 }
 
 @media (min-width: 0px) {
@@ -175,7 +185,7 @@
 	}
 
     .content-area {
-		flex-direction: column;
+		flex-direction: column-reverse;
 	}
 
 	.content-area > * {
