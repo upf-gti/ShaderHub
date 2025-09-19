@@ -5,13 +5,13 @@ Roadmap:
 - [ ] Support creating Compute shaders
 - [ ] Support sound channel
 - [ ] Shader desc/comments format
-- [ ] Shader Utils
 - [ ] Shader Comments
 - [ ] Add shader tags to DB
 - [ ] Submit form for Login (LX)
 - [ ] Give more info on form validation errors (LX)
 - [ ] Give more info on form validation errors (LX)
 
+- [x] Add some Texture/Keyboard Shader Utils
 - [x] Change uniforms type
 - [x] Add shader info (multipass, sound, etc) to filter based on shader
 - [x] Initial page

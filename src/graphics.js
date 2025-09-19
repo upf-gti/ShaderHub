@@ -442,11 +442,13 @@ class ShaderPass {
 
         // Add shader utils depending on bind group
         {
+            const features = this.shader.getFeatures();
             const bindings = this.channels.filter( channelName => channelName !== undefined && channelName !== "" );
             const wgslUtilsIndex = templateCodeLines.indexOf( "$wgsl_utils" );
             console.assert( wgslUtilsIndex > -1 );
             const utils = [
                 ...( bindings.length ? Shader.WGSL_TEXTURE_UTILS : [] ),
+                ...( features.includes( "keyboard" ) ? Shader.WGSL_KEYBOARD_UTILS : [] ),
             ]
             templateCodeLines.splice( wgslUtilsIndex, 1, ...utils );
         }
@@ -577,11 +579,34 @@ class Shader {
             return "";
         }
     }
+
+    getFeatures()
+    {
+        const features = [];
+
+        const buffers = this.passes.filter( p => p.type === "buffer" );
+        if( buffers.length ) features.push( "multipass" );
+
+        this.passes.some( p => {
+            const keyboardPasses = p.channels.filter( u => u === "Keyboard" );
+            if( keyboardPasses.length )
+            {
+                features.push( "keyboard" );
+                return true;
+            }
+        } )
+
+        return features.join( "," );
+    }
 }
 
 Shader.WGSL_TEXTURE_UTILS = `fn texture( texture: texture_2d<f32>, uv: vec2f ) -> vec4f {
     return textureSample( texture, texSampler, uv );
 }`.split( "\n" );
+
+Shader.WGSL_KEYBOARD_UTILS = `fn keyDown( texture: texture_2d<f32>, code : i32 ) -> f32 { return textureLoad( texture, vec2i(code, 0), 0 ).x; }
+fn keyPressed( texture: texture_2d<f32>, code : i32 ) -> f32 { return textureLoad( texture, vec2i(code, 1), 0 ).x; }
+fn keyState( texture: texture_2d<f32>, code : i32 ) -> f32 { return textureLoad( texture, vec2i(code, 2), 0 ).x; }`.split( "\n" );
 
 Shader.RENDER_SHADER_TEMPLATE =
 `$default_bindings

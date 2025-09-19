@@ -643,7 +643,7 @@ const ShaderHub =
                     "author_name": this.shader.author ?? "",
                     "file_id": newFileId,
                     "like_count": this.shader.likes.length,
-                    "features": this.getShaderFeatures()
+                    "features": this.shader.getFeatures()
                 } );
 
                 this.shader.uid = result[ "$id" ];
@@ -679,7 +679,7 @@ const ShaderHub =
         {
             row[ "name" ] = this.shader.name,
             row[ "description" ] = this.shader.description,
-            row[ "features" ] = this.getShaderFeatures();
+            row[ "features" ] = this.shader.getFeatures();
 
             if( updateThumbnail )
             {
@@ -758,25 +758,6 @@ const ShaderHub =
 
         // Go to shader edit view with the new shader
         this.openShader( result[ "$id" ] );
-    },
-
-    getShaderFeatures()
-    {
-        const features = [];
-
-        const buffers = this.shader.passes.filter( p => p.type === "buffer" );
-        if( buffers.length ) features.push( "multipass" );
-
-        this.shader.passes.some( p => {
-            const keyboardPasses = p.channels.filter( u => u === "Keyboard" );
-            if( keyboardPasses.length )
-            {
-                features.push( "keyboard" );
-                return true;
-            }
-        } )
-
-        return features.join( "," );
     },
 
     async updateShaderPreview( shaderUid, showFeedback = true )
