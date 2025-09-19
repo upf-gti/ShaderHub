@@ -82,6 +82,25 @@ class ShaderPass {
                 })
             ];
         }
+        else if( this.type === "compute" )
+        {
+            this.resolution = [ data.resolutionX ?? 0, data.resolutionY ?? 0 ];
+
+            this.textures = [
+                device.createTexture({
+                    label: "Compute Pass Texture A",
+                    size: [ this.resolution[ 0 ], this.resolution[ 1 ], 1 ],
+                    format: "rgba16float",
+                    usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC
+                }),
+                    device.createTexture({
+                    label: "Compute Pass Texture B",
+                    size: [ this.resolution[ 0 ], this.resolution[ 1 ], 1 ],
+                    format: "rgba16float",
+                    usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC
+                })
+            ];
+        }
     }
 
     async draw( format, ctx, buffers )
@@ -165,6 +184,35 @@ class ShaderPass {
 
             this.frameCount++;
         }
+        else if( this.type === "compute" )
+        {
+            if( !this.textures[ 0 ] || !this.textures[ 1 ] )
+            {
+                return;
+            }
+
+            const commandEncoder = this.device.createCommandEncoder();
+            const computePass = commandEncoder.beginComputePass();
+
+            computePass.setPipeline( this.pipeline );
+
+            const bindGroup = ( this.frameCount % 2 === 0 ) ? this.bindGroup : this.bindGroupB;
+            if( bindGroup )
+            {
+                computePass.setBindGroup( 0, bindGroup );
+            }
+
+            // const dispatchX = 4
+            // const dispatchY = 4
+
+            computePass.dispatchWorkgroups( 4, 4, 1 );
+
+            computePass.end();
+
+            this.device.queue.submit([commandEncoder.finish()]);
+
+            this.frameCount++;
+        }
     }
 
     async createPipeline( format )
@@ -177,25 +225,42 @@ class ShaderPass {
             return result;
         }
 
-        this.pipeline = await this.device.createRenderPipeline({
-            layout: 'auto',
-            vertex: {
-                module: result.module,
-            },
-            fragment: {
-                module: result.module,
-                targets: [
-                    {
-                        format
-                    },
-                ],
-            },
-            primitive: {
-                topology: 'triangle-list',
-            },
-        });
+        if( this.type === "image" || this.type === "buffer" )
+        {
+            this.pipeline = await this.device.createRenderPipeline({
+                label: `Render Pipeline: ${ this.name }`,
+                layout: 'auto',
+                vertex: {
+                    module: result.module,
+                },
+                fragment: {
+                    module: result.module,
+                    targets: [
+                        {
+                            format
+                        },
+                    ],
+                },
+                primitive: {
+                    topology: 'triangle-list',
+                }
+            });
 
-        console.warn( "Info: Render Pipeline created!" );
+            console.warn( "Info: Render Pipeline created!" );
+        }
+        else
+        {
+            this.pipeline = await this.device.createComputePipeline({
+                label: `Compute Pipeline: ${ this.name }`,
+                layout: 'auto',
+                compute: {
+                    module: result.module,
+                    entryPoint: "main",
+                }
+            });
+
+            console.warn( "Info: Compute Pipeline created!" );
+        }
 
         return this.pipeline;
     }
@@ -269,6 +334,11 @@ class ShaderPass {
             entries.push( { binding: bindingIndex++, resource: Shader.globalSampler } );
         }
 
+        if( this.type === "compute" )
+        {
+            entries.push( { binding: bindingIndex++, resource: this.textures[ Constants.BUFFER_PASS_TEXTURE_A_INDEX ].createView() } );
+        }
+
         this.bindGroup = await this.device.createBindGroup({
             label: "Bind Group A",
             layout: this.pipeline.getBindGroupLayout( 0 ),
@@ -276,7 +346,7 @@ class ShaderPass {
         });
 
         // Create 2nd bind group for buffer passes to swap textures
-        if( this.type === "buffer" )
+        if( this.type === "buffer" || this.type === "compute" )
         {
             if( bindings.length )
             {
@@ -290,6 +360,11 @@ class ShaderPass {
                 baseEntries.push( { binding: baseBindingIndex++, resource: Shader.globalSampler } );
             }
 
+            if( this.type === "compute" )
+            {
+                baseEntries.push( { binding: baseBindingIndex++, resource: this.textures[ Constants.BUFFER_PASS_TEXTURE_B_INDEX ].createView() } );
+            }
+
             this.bindGroupB = await this.device.createBindGroup({
                 label: "Bind Group B",
                 layout: this.pipeline.getBindGroupLayout( 0 ),
@@ -297,7 +372,7 @@ class ShaderPass {
             });
         }
 
-        console.warn( "Info: Render Bind Group created!" );
+        console.warn( "Info: Bind Group created!" );
 
         return this.bindGroup;
     }
@@ -305,7 +380,7 @@ class ShaderPass {
     async compile( format, buffers )
     {
         const p = await this.createPipeline( format );
-        if( p?.constructor !== GPURenderPipeline )
+        if( p?.constructor !== GPURenderPipeline && p?.constructor !== GPUComputePipeline )
         {
             return p;
         }
@@ -353,12 +428,12 @@ class ShaderPass {
 
     getShaderCode( includeBindings = true )
     {
-        const templateCodeLines = [ ...( this.shader.type === "render" ) ? Shader.RENDER_SHADER_TEMPLATE : Shader.COMPUTER_SHADER_TEMPLATE ];
+        const templateCodeLines = [ ...( this.type === "compute" ) ? Shader.COMPUTER_SHADER_TEMPLATE : Shader.RENDER_SHADER_TEMPLATE ];
 
         // Invert uv y if buffer render target
+        const invertUvsIndex = templateCodeLines.indexOf( "$invert_uv_y" );
+        if( invertUvsIndex > -1 )
         {
-            const invertUvsIndex = templateCodeLines.indexOf( "$invert_uv_y" );
-            console.assert( invertUvsIndex > -1 );
             templateCodeLines.splice( invertUvsIndex, 1, this.type === "buffer" ? "    output.fragUV.y = 1.0 - output.fragUV.y;" : undefined );
         }
 
@@ -415,6 +490,13 @@ class ShaderPass {
                 templateCodeLines.splice( textureBindingsIndex, 1, ...(bindings.length ? [ ...bindings, `@group(0) @binding(${ bindingIndex++ }) var texSampler : sampler;` ] : []) );
             }
 
+            if( this.type === "compute" )
+            {
+                const outputBindingIndex = templateCodeLines.indexOf( "$output_binding" );
+                console.assert( outputBindingIndex > -1 );
+                templateCodeLines.splice( outputBindingIndex, 1, `@group(0) @binding(${ bindingIndex++ }) var screen: texture_storage_2d<rgba16float,write>;` );
+            }
+
             // Process dummies so using them isn't mandatory
             {
                 const defaultDummiesIndex = templateCodeLines.indexOf( "$default_dummies" );
@@ -445,12 +527,14 @@ class ShaderPass {
             const features = this.shader.getFeatures();
             const bindings = this.channels.filter( channelName => channelName !== undefined && channelName !== "" );
             const wgslUtilsIndex = templateCodeLines.indexOf( "$wgsl_utils" );
-            console.assert( wgslUtilsIndex > -1 );
-            const utils = [
-                ...( bindings.length ? Shader.WGSL_TEXTURE_UTILS : [] ),
-                ...( features.includes( "keyboard" ) ? Shader.WGSL_KEYBOARD_UTILS : [] ),
-            ]
-            templateCodeLines.splice( wgslUtilsIndex, 1, ...utils );
+            if( wgslUtilsIndex > -1 )
+            {
+                const utils = [
+                    ...( bindings.length ? Shader.WGSL_TEXTURE_UTILS : [] ),
+                    ...( features.includes( "keyboard" ) ? Shader.WGSL_KEYBOARD_UTILS : [] ),
+                ]
+                templateCodeLines.splice( wgslUtilsIndex, 1, ...utils );
+            }
         }
 
         // Add common block
@@ -464,7 +548,7 @@ class ShaderPass {
 
         // Add main image
         {
-            const mainImageIndex = templateCodeLines.indexOf( "$main_image" );
+            const mainImageIndex = templateCodeLines.indexOf( "$main_entry" );
             console.assert( mainImageIndex > -1 );
             templateCodeLines.splice( mainImageIndex, 1, ...this.codeLines );
         }
@@ -508,20 +592,45 @@ class ShaderPass {
         if( ( oldResolution[ 0 ] === resolutionX ) || ( oldResolution[ 1 ] === resolutionY ) )
             return;
 
-        this.textures = [
-            this.device.createTexture({
-                label: "Buffer Pass Texture A",
-                size: [ resolutionX, resolutionY, 1 ],
-                format: navigator.gpu.getPreferredCanvasFormat(),
-                usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING
-            }),
-            this.device.createTexture({
-                label: "Buffer Pass Texture B",
-                size: [ resolutionX, resolutionY, 1 ],
-                format: navigator.gpu.getPreferredCanvasFormat(),
-                usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING
-            })
-        ];
+        this.resolution = [ resolutionX, resolutionY ];
+
+        if( this.type === "buffer" )
+        {
+
+            this.textures = [
+                device.createTexture({
+                    label: "Buffer Pass Texture A",
+                    size: [ resolutionX, resolutionY, 1 ],
+                    format: navigator.gpu.getPreferredCanvasFormat(),
+                    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING
+                }),
+                device.createTexture({
+                    label: "Buffer Pass Texture B",
+                    size: [ resolutionX, resolutionY, 1 ],
+                    format: navigator.gpu.getPreferredCanvasFormat(),
+                    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING
+                })
+            ];
+        }
+        else if( this.type === "compute" )
+        {
+            this.resolution = [ data.resolutionX ?? 0, data.resolutionY ?? 0 ];
+
+            this.textures = [
+                device.createTexture({
+                    label: "Compute Pass Texture A",
+                    size: [ resolutionX, resolutionY, 1 ],
+                    format: "rgba16float",
+                    usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC
+                }),
+                    device.createTexture({
+                    label: "Compute Pass Texture B",
+                    size: [ resolutionX, resolutionY, 1 ],
+                    format: "rgba16float",
+                    usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC
+                })
+            ];
+        }
     }
 }
 
@@ -572,12 +681,12 @@ class Shader {
     {
         if( this.type === "render" )
         {
-            return ( pass.type === "buffer" ? Shader.RENDER_BUFFER_TEMPLATE : Shader.RENDER_COMMON_TEMPLATE )
+            return ( pass.type === "buffer" ? Shader.RENDER_BUFFER_TEMPLATE : ( pass.type === "compute" ? Shader.COMPUTE_MAIN_TEMPLATE : Shader.RENDER_COMMON_TEMPLATE ) )
         }
-        else if( this.type === "compute" )
-        {
-            return "";
-        }
+        // else if( this.type === "compute" )
+        // {
+        //     return "";
+        // }
     }
 
     getFeatures()
@@ -608,8 +717,7 @@ Shader.WGSL_KEYBOARD_UTILS = `fn keyDown( texture: texture_2d<f32>, code : i32 )
 fn keyPressed( texture: texture_2d<f32>, code : i32 ) -> f32 { return textureLoad( texture, vec2i(code, 1), 0 ).x; }
 fn keyState( texture: texture_2d<f32>, code : i32 ) -> f32 { return textureLoad( texture, vec2i(code, 2), 0 ).x; }`.split( "\n" );
 
-Shader.RENDER_SHADER_TEMPLATE =
-`$default_bindings
+Shader.RENDER_SHADER_TEMPLATE = `$default_bindings
 $custom_bindings
 $texture_bindings
 
@@ -621,7 +729,6 @@ struct VertexOutput {
 
 @vertex
 fn vert_main(@builtin(vertex_index) VertexIndex : u32) -> VertexOutput {
-
     const pos = array(
         vec2(-1.0, -1.0),
         vec2( 1.0, -1.0),
@@ -630,15 +737,12 @@ fn vert_main(@builtin(vertex_index) VertexIndex : u32) -> VertexOutput {
         vec2( 1.0, -1.0),
         vec2( 1.0,  1.0),
     );
-
     var output : VertexOutput;
     output.Position = vec4(pos[VertexIndex], 0.0, 1.0);
     output.fragUV = (output.Position.xy * 0.5) + vec2(0.5, 0.5);
 $invert_uv_y
     output.fragCoord = output.fragUV * iResolution;
-
     var time_dummy : f32 = iTime;
-
     return output;
 }
 
@@ -647,15 +751,13 @@ const PI : f32 = 3.14159265359;
 
 $wgsl_utils
 $common
-$main_image
+$main_entry
 
 @fragment
 fn frag_main(@location(0) fragUV : vec2f, @location(1) fragCoord : vec2f) -> @location(0) vec4f {
-
 $default_dummies
 $custom_dummies
 $texture_dummies
-
     return mainImage(fragUV, fragCoord);
 }`.split( "\n" );
 
@@ -683,6 +785,60 @@ Shader.RENDER_BUFFER_TEMPLATE = `fn mainImage(fragUV : vec2f, fragCoord : vec2f)
     Compute Shaders
 */
 
-Shader.COMPUTER_SHADER_TEMPLATE = [];
+Shader.COMPUTER_SHADER_TEMPLATE = `// struct DispatchInfo {
+//     id: u32
+// }
+
+$default_bindings
+$custom_bindings
+$texture_bindings
+$output_binding
+
+// fn passStore(pass_index: int, coord: int2, value: float4) {
+//     textureStore(pass_out, coord, pass_index, value);
+// }
+
+// fn passLoad(pass_index: int, coord: int2, lod: int) -> float4 {
+//     return textureLoad(pass_in, coord, pass_index, lod);
+// }
+
+// fn passSampleLevelBilinearRepeat(pass_index: int, uv: float2, lod: float) -> float4 {
+//     return textureSampleLevel(pass_in, bilinear, fract(uv), pass_index, lod);
+// }
+
+$common
+$main_entry
+
+@compute @workgroup_size(16, 16, 1)
+fn main(@builtin(global_invocation_id) id: vec3u) {
+$default_dummies
+$custom_dummies
+$texture_dummies
+    let col : vec4f = mainCompute(id);
+    textureStore(screen, id.xy, col);
+}`.split( "\n" );
+
+Shader.COMPUTE_MAIN_TEMPLATE = `fn mainCompute(id: vec3u) -> vec4f {
+    // Viewport resolution (in pixels)
+    let screen_size = textureDimensions(screen);
+
+    // Prevent overdraw for workgroups on the edge of the viewport
+    if (id.x >= screen_size.x || id.y >= screen_size.y) { return vec4f(0.0); }
+
+    // Pixel coordinates (centre of pixel, origin at bottom left)
+    let fragCoord = vec2f(f32(id.x) + 0.5, f32(screen_size.y - id.y) - 0.5);
+
+    // Normalised pixel coordinates (from 0 to 1)
+    let uv = fragCoord / vec2f(screen_size);
+
+    // Time varying pixel colour
+    var col = 0.5 + 0.5 * cos(iTime + uv.xyx + vec3f(0.,2.,4.));
+
+    // Convert from gamma-encoded to linear colour space
+    col = pow(col, vec3f(2.2));
+
+    // Output to screen (linear colour space)
+    return vec4f(col, 1.0);
+}`.split( "\n" );
 
 export { Shader, ShaderPass, FPSCounter };

@@ -673,13 +673,12 @@ export const ui = {
             },
             onNewTab: ( e ) => {
                 const canCreateCommon = ( shader.passes.filter( p => p.type === "common" ).length === 0 );
-                const canCreateBuffer = ( shader.passes.filter( p => p.type === "buffer" ).length < 4 );
-
+                const canCreateBufferOrCompute = ( shader.passes.filter( p => p.type === "buffer" || p.type === "compute" ).length < 4 );
                 const dmOptions = [
-                    { name: "Buffer", icon: "FilePlus", disabled: !canCreateBuffer, callback: ( v ) => ShaderHub.onShaderPassCreated( "buffer", v ) },
-                    { name: "Common", icon: "FileUp", disabled: !canCreateCommon, callback: ( v ) => ShaderHub.onShaderPassCreated( "common", v ) },
+                    { name: "Common", icon: "FileText", disabled: !canCreateCommon, callback: ( v ) => ShaderHub.onShaderPassCreated( "common", v ) },
+                    { name: "Buffer", icon: "Image", disabled: !canCreateBufferOrCompute, callback: ( v ) => ShaderHub.onShaderPassCreated( "buffer", v ) },
+                    { name: "Compute", icon: "Binary", disabled: !canCreateBufferOrCompute, callback: ( v ) => ShaderHub.onShaderPassCreated( "compute", v ) },
                 ];
-
                 new LX.DropdownMenu( e.target, dmOptions, { side: "bottom", align: "start" });
             },
             onSelectTab: async ( name, editor ) => {

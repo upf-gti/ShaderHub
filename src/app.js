@@ -274,7 +274,7 @@ const ShaderHub =
 
                 // Push passes to the shader
                 const shaderPass = new ShaderPass( shader, this.device, pass );
-                if( pass.type === "buffer" )
+                if( pass.type === "buffer" || pass.type === "compute" )
                 {
                     console.assert( shaderPass.textures, "Buffer does not have render target textures" );
                     this.gpuTextures[ pass.name ] = shaderPass.textures;
@@ -353,6 +353,29 @@ const ShaderHub =
             this.shader.passes.splice( this.shader.passes.length - 1, 0, shaderPass ); // Add before MainImage
 
             console.assert( shaderPass.textures, "Buffer does not have render target textures" );
+            this.gpuTextures[ passName ] = shaderPass.textures;
+        }
+        else if( passType === "compute" )
+        {
+            const getNextComputeName = () => {
+                const usedNames = this.shader.passes.filter( p => p.type === "compute" ).map( p => p.name );
+                const possibleNames = ["ComputeA", "ComputeB", "ComputeC", "ComputeD"];
+
+                // Find the first unused name
+                for( const name of possibleNames )
+                {
+                    if( !usedNames.includes( name )) return name;
+                }
+
+                // All used, should not happen due to prev checks
+                return null;
+            }
+
+            indexOffset = -2;
+            passName = shaderPass.name = getNextComputeName();
+            this.shader.passes.splice( this.shader.passes.length - 1, 0, shaderPass ); // Add before MainImage
+
+            console.assert( shaderPass.textures, "Compute does not have render target textures" );
             this.gpuTextures[ passName ] = shaderPass.textures;
         }
         else if( passType === "common" )
@@ -497,6 +520,7 @@ const ShaderHub =
             if( !assetFileId ) url = Constants.IMAGE_EMPTY_SRC;
             else if( assetFileId === "Keyboard" ) url = "images/keyboard.png";
             else if( assetFileId.startsWith( "Buffer" ) ) url = "images/buffer.png";
+            else if( assetFileId.startsWith( "Compute" ) ) url = "images/buffer.png"; // TODO: Change preview image for computes
             else
             {
                 const result = await fs.listDocuments( FS.ASSETS_COLLECTION_ID, [ Query.equal( "file_id", assetFileId ) ] );
@@ -514,7 +538,7 @@ const ShaderHub =
     {
         for( const pass of this.shader.passes )
         {
-            if( pass.type !== "buffer" )
+            if( pass.type !== "buffer" && pass.type !== "compute" )
                 continue;
 
             pass.resizeBuffer( resolutionX, resolutionY );
