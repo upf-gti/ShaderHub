@@ -12,6 +12,8 @@ const mobile = Utils.isMobile();
 
 export const ui = {
 
+    imageCache: {},
+
     async init( fs )
     {
         this.fs = fs;
@@ -1557,14 +1559,14 @@ export const ui = {
                 const fileId = document[ "file_id" ];
                 const preview = document[ "preview" ];
                 const localUrl = document[ "local_url" ];
-                channelPreview.src = preview ? await this.fs.getFileUrl( preview ) : ( fileId ? await this.fs.getFileUrl( fileId ) : ( localUrl ?? "images/shader_preview.png" ) );
+                channelPreview.src = preview ? await this.fs.getFileUrl( preview ) : ( fileId ? await this.fs.getFileUrl( fileId ) : ( localUrl ?? "images/shader_preview.png" ) );;
                 const shaderDesc = LX.makeContainer( ["100%", "auto"], "absolute top-0 p-2 w-full bg-blur items-center select-none text-sm font-bold", `
                     ${ document.name } (uint8)
                 `, channelItem );
                 channelItem.addEventListener( "click", async ( e ) => {
                     e.preventDefault();
-                    pass.channels[ channelIndex ] = fileId ?? document.name;
-                    await this.updateShaderChannelsView( pass, channelIndex );
+                    pass.channels[ this._currentChannelIndex ] = fileId ?? document.name;
+                    await this.updateShaderChannelsView( pass, this._currentChannelIndex );
                     pass.mustCompile = true;
                     dialog.close();
                 } );
@@ -1574,13 +1576,23 @@ export const ui = {
         const area = new LX.Area( { skipAppend: true } );
         const tabs = area.addTabs( { parentClass: "bg-secondary p-4", sizes: [ "auto", "auto" ], contentClass: "bg-secondary p-4 pt-0" } );
 
-        const texturesContainer = LX.makeContainer( [ "100%", "100%" ], "grid channel-server-list gap-4 p-4 border rounded-lg justify-center overflow-scroll" );
-        await _createChannelItems( "texture", texturesContainer );
-        tabs.add( "Textures", texturesContainer, { selected: true } );
+        if( !this.texturesContainer )
+        {
+            this.texturesContainer = LX.makeContainer( [ "100%", "100%" ], "grid channel-server-list gap-4 p-4 border rounded-lg justify-center overflow-scroll" );
+            await _createChannelItems( "texture", this.texturesContainer );
+        }
+        this.texturesContainer.style.display = "grid";
+        tabs.add( "Textures", this.texturesContainer, { selected: true } );
 
-        const miscContainer = LX.makeContainer( [ "100%", "100%" ], "grid channel-server-list gap-4 p-4 border rounded-lg justify-center overflow-scroll" );
-        await _createChannelItems( "misc", miscContainer );
-        tabs.add( "Misc", miscContainer, { xselected: true } );
+        if( !this.miscContainer )
+        {
+            this.miscContainer = LX.makeContainer( [ "100%", "100%" ], "grid channel-server-list gap-4 p-4 border rounded-lg justify-center overflow-scroll" );
+            await _createChannelItems( "misc", this.miscContainer );
+        }
+        this.miscContainer.style.display = "grid";
+        tabs.add( "Misc", this.miscContainer, { xselected: true } );
+
+        this._currentChannelIndex = channelIndex;
 
         let dialog = new LX.Dialog( `Channel${ channelIndex } input:`, (p) => {
             p.attach( area );
@@ -1606,7 +1618,17 @@ export const ui = {
 
             const channelImage = LX.makeElement( "img", "rounded-lg bg-secondary hover:bg-tertiary border-none", "", channelContainer );
             const metadata = await ShaderHub.getChannelMetadata( pass, channelIndex );
-            channelImage.src = metadata.url ?? Constants.IMAGE_EMPTY_SRC;
+            let imageSrc = Constants.IMAGE_EMPTY_SRC;
+            if( metadata.url )
+            {
+                if( !this.imageCache[ metadata.url ] )
+                {
+                    this.imageCache[ metadata.url ] = await Utils.imageToDataURL( fs, metadata.url )
+                }
+
+                imageSrc = this.imageCache[ metadata.url ];
+            }
+            channelImage.src = imageSrc;
             channelImage.style.width = "95%";
             channelImage.style.height = "95%";
             const channelTitle = LX.makeContainer( ["100%", "auto"], "p-2 absolute bg-secondary text-sm text-center content-center top-0 channel-title pointer-events-none",

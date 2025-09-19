@@ -17,6 +17,17 @@ function toESDate( date ) {
     return [ ts[ 2 ], ts[ 1 ], ts[ 0 ] ].join("-");
 }
 
+async function imageToDataURL( fs, url ) {
+    const r = await fs.requestFile( url );
+    const blob = new Blob( [ r ], { type: "image/png" } );
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onloadend = () => resolve(reader.result)
+        reader.onerror = reject
+        reader.readAsDataURL(blob)
+    });
+}
+
 function getDate() {
     const date = new Date();
     const day = `${ date.getDate() }`;
@@ -45,4 +56,4 @@ function toast( title, text, timeout ) {
     LX.toast( title, text, { position: "top-right", timeout } );
 }
 
-export { toast, code2ascii, getDate, toESDate, capitalizeFirstLetter, isMobile };
+export { toast, code2ascii, getDate, toESDate, capitalizeFirstLetter, imageToDataURL, isMobile };
