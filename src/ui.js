@@ -352,8 +352,13 @@ export const ui = {
             LX.makeContainer( ["100%", "auto"], "font-medium fg-secondary", ``, topArea, { fontSize: "2rem" } );
             const filtersPanel = new LX.Panel( { className: "p-4 bg-none", height: "auto" } );
             filtersPanel.sameLine();
-            filtersPanel.addButton( null, "Multipass", (v) => iBrowseFeature( v.toLowerCase() ), { buttonClass: queryFeature === "multipass" ? "contrast" : "tertiary" } );
-            filtersPanel.addButton( null, "Keyboard", (v) => iBrowseFeature( v.toLowerCase() ), { buttonClass: queryFeature === "keyboard" ? "contrast" : "tertiary"} );
+
+            for( let f of Constants.FEATURES )
+            {
+                const fLower = f.toLowerCase();
+                filtersPanel.addButton( null, f, (v) => iBrowseFeature( v.toLowerCase() ), { buttonClass: queryFeature === fLower ? "contrast" : "tertiary" } );
+            }
+
             filtersPanel.endLine();
             topArea.attach( filtersPanel );
         }
@@ -408,6 +413,11 @@ export const ui = {
                     features: ( document[ "features" ] ?? "" ).split( "," ),
                 };
 
+                if( queryFeature && !shaderInfo.features.includes( queryFeature ) )
+                {
+                    continue;
+                }
+
                 const authorId = document[ "author_id" ];
                 if( authorId )
                 {
@@ -440,11 +450,6 @@ export const ui = {
             for( let i = 0; i < shaderList.length; ++i )
             {
                 const shader = shaderList[ i ];
-                if( queryFeature && !shader.features.includes( queryFeature ) )
-                {
-                    continue;
-                }
-
                 const shaderItem = skeleton.root.children[ i ];
                 const shaderPreview = shaderItem.querySelector( "img" );
                 shaderPreview.style.width = "calc(100% - 0.5rem)";
@@ -659,7 +664,7 @@ export const ui = {
                 options.push( { path: "Create Uniform", disabled: !regex.test( word ), callback: async () => {
                     await ShaderHub.addUniform( word );
                     await ShaderHub.compileShader( true, pass );
-                    this.openCustomUniforms();
+                    this.openUniformsDialog();
                 } } );
 
                 return options;
@@ -809,7 +814,7 @@ export const ui = {
                             input.root.replaceWith( text );
                             shader.description = v;
                             this._editingDescription = false;
-                        }, { width: "100%", resize: false, className: "h-full", inputClass: "bg-tertiary h-full" , fitHeight: true } );
+                        }, { xwidth: "100%", resize: false, placeholder: "Enter your shader description here", className: "h-full", inputClass: "bg-tertiary h-full" , fitHeight: true } );
                         text.replaceWith( input.root );
                         LX.doAsync( () => input.root.focus() );
                         this._editingDescription = true;
@@ -979,7 +984,7 @@ export const ui = {
                 for( let u of Constants.DEFAULT_UNIFORMS_LIST )
                 {
                     this.defaultParametersPanel.sameLine( 2, "justify-between" );
-                    this.defaultParametersPanel.addLabel( `${ u.name } : ${ u.type }`, { className: "w-full p-0" } );
+                    this.defaultParametersPanel.addLabel( `${ u.name } : ${ u.type ?? "f32" }`, { className: "w-full p-0" } );
                     this.defaultParametersPanel.addLabel( u.info, { className: "w-full p-0", inputClass: "text-end" } );
                 }
             }
@@ -1011,15 +1016,6 @@ export const ui = {
         }, { icon: "Plus", className: "ml-auto self-center", buttonClass: "bg-none", title: "Add New Uniform", tooltip: true, width: "38px" } );
         uniformsHeader.appendChild( addUniformButton.root );
 
-        // Popover to dialog button
-        {
-            const dialogizePopoverButton = new LX.Button( null,
-                "DialogizePopoverButton",
-                () => this.openUniformsDialog(),
-                { icon: "AppWindowMac", className: "self-center", buttonClass: "bg-none", title: "Expand Window", tooltip: true, width: "38px" } );
-            uniformsHeader.appendChild( dialogizePopoverButton.root );
-        }
-
         // Create the content for the uniforms panel
         {
             this.customParametersPanel = new LX.Panel({ className: "custom-parameters-panel w-full" });
@@ -1036,38 +1032,101 @@ export const ui = {
 
                 overridePanel.addLabel( "Uniform names must start with i + Capital letter (e.g. iTime)." );
 
-                for( let u of pass.uniforms )
+                for( let i = 0; i < pass.uniforms.length; ++i )
                 {
-                    overridePanel.sameLine( 5 );
+                    const u = pass.uniforms[ i ];
+
+                    overridePanel.sameLine();
                     overridePanel.addText( null, u.name, ( v ) => {
                         u.name = v;
                         ShaderHub.compileShader( true, pass );
                     }, { width: "25%", skipReset: true, pattern: "\\b(?!(" + Constants.DEFAULT_UNIFORM_NAMES.join("|") + ")\\b)(i[A-Z]\\w*)\\b" } );
-                    overridePanel.addNumber( "Min", u.min, ( v ) => {
-                        u.min = v;
-                        uRangeComponent.setLimits( u.min, u.max );
-                        pass.uniformsDirty = true;
-                    }, { nameWidth: "40%", width: "17%", skipReset: true, step: 0.1 } );
-                    const uRangeComponent = overridePanel.addRange( null, u.value, ( v ) => {
-                        u.value = v;
-                        pass.uniformsDirty = true;
-                    }, { className: "contrast", width: "35%", skipReset: true, min: u.min, max: u.max, step: 0.1 } );
-                    overridePanel.addNumber( "Max", u.max, ( v ) => {
-                        u.max = v;
-                        uRangeComponent.setLimits( u.min, u.max );
-                        pass.uniformsDirty = true;
-                    }, { nameWidth: "40%", width: "17%", skipReset: true, step: 0.1 } );
-                    overridePanel.addButton( null, "RemoveUniformButton", ( v ) => {
-                        // Check if the uniforms is used to recompile shaders or not
-                        const allCode = pass.getShaderCode( false );
-                        const idx = pass.uniforms.indexOf( u );
-                        pass.uniforms.splice( idx, 1 );
-                        this.customParametersPanel.refresh( overridePanel );
-                        if( allCode.match( new RegExp( `\\b${ u.name }\\b` ) ) )
+
+                    const step = ( u.type.includes( "f" ) ) ? 0.01 : 1;
+
+                    if( [ "f32", "i32", "u32" ].includes( u.type ) )
+                    {
+                        overridePanel.addNumber( "Min", u.min, ( v ) => {
+                            u.min = v;
+                            uRangeComponent.setLimits( u.min, u.max );
+                            pass.uniformsDirty = true;
+                        }, { nameWidth: "40%", width: "17%", skipReset: true, step } );
+                        const uRangeComponent = overridePanel.addRange( null, u.value, ( v ) => {
+                            u.value = v;
+                            pass.uniformsDirty = true;
+                        }, { className: "contrast", width: "35%", skipReset: true, min: u.min, max: u.max, step } );
+                        overridePanel.addNumber( "Max", u.max, ( v ) => {
+                            u.max = v;
+                            uRangeComponent.setLimits( u.min, u.max );
+                            pass.uniformsDirty = true;
+                        }, { nameWidth: "40%", width: "17%", skipReset: true, step } );
+                    }
+                    else if( u.isColor )
+                    {
+                        const hasAlpha = ( u.type === "vec4f" );
+                        const color = { r: u.value[ 0 ], g: u.value[ 1 ], b: u.value[ 2 ] };
+                        if( hasAlpha )
                         {
-                            ShaderHub.compileShader( true, pass );
+                            color.a = u.value[ 3 ];
                         }
-                    }, { width: "6%", icon: "X", buttonClass: "bg-none", title: "Remove Uniform", tooltip: true } );
+                        overridePanel.addColor( null, LX.rgbToHex( color ), ( v ) => {
+                            u.value = [ v.r, v.g, v.b ];
+                            if( hasAlpha ) u.value[ 3 ] = v.a;
+                            pass.uniformsDirty = true;
+                        }, { width: "69%", skipReset: true, useRGB: true } );
+                    }
+                    else
+                    {
+                        const vecFuncName = `addVector${ u.value.length }`;
+                        overridePanel[ vecFuncName ]( null, u.value, ( v ) => {
+                            u.value = v;
+                            pass.uniformsDirty = true;
+                        }, { width: "69%", skipReset: true, step } );
+                    }
+
+                    const optionsButton = overridePanel.addButton( null, "UniformOptionsButton", ( v ) =>
+                    {
+                        const iUpdateUniformType = ( v ) => {
+                            ShaderHub.updateUniformType( pass, i, v );
+                            this.customParametersPanel.refresh( overridePanel );
+                        };
+
+                        const menu = LX.addDropdownMenu( optionsButton.root, [
+                            { name: "Number", submenu: [
+                                { name: "f32", icon: "Cuboid", callback: iUpdateUniformType.bind( this ) },
+                                { name: "i32", icon: "Cuboid", callback: iUpdateUniformType.bind( this ) },
+                                { name: "u32", icon: "Cuboid", callback: iUpdateUniformType.bind( this ) },
+                            ] },
+                            { name: "Vec2", submenu: [
+                                { name: "vec2f", icon: "Cuboid", callback: iUpdateUniformType.bind( this ) },
+                                { name: "vec2i", icon: "Cuboid", callback: iUpdateUniformType.bind( this ) },
+                                { name: "vec2u", icon: "Cuboid", callback: iUpdateUniformType.bind( this ) },
+                            ] },
+                            { name: "Vec3", submenu: [
+                                { name: "vec3f", icon: "Cuboid", callback: iUpdateUniformType.bind( this ) },
+                                { name: "vec3i", icon: "Cuboid", callback: iUpdateUniformType.bind( this ) },
+                                { name: "vec3u", icon: "Cuboid", callback: iUpdateUniformType.bind( this ) },
+                            ] },
+                            { name: "Vec4", submenu: [
+                                { name: "vec4f", icon: "Cuboid", callback: iUpdateUniformType.bind( this ) },
+                                { name: "vec4i", icon: "Cuboid", callback: iUpdateUniformType.bind( this ) },
+                                { name: "vec4u", icon: "Cuboid", callback: iUpdateUniformType.bind( this ) },
+                            ] },
+                            { name: "Color", submenu: [
+                                { name: "color3", icon: "Pipette", callback: iUpdateUniformType.bind( this ) },
+                                { name: "color4", icon: "Pipette", callback: iUpdateUniformType.bind( this ) },
+                            ] },
+                            null,
+                            { name: "Delete", icon: "Trash2", className: "fg-error", callback: () => {
+                                ShaderHub.removeUniform( pass, i );
+                                this.customParametersPanel.refresh( overridePanel );
+                            }}
+                        ], { side: "top", align: "end" });
+
+                        menu.root.skipFocus = true;
+                    }, { width: "6%", icon: "Menu", buttonClass: "bg-none" } );
+
+                    overridePanel.endLine();
                 }
 
                 // Updates probably to the panel at the dialog
@@ -1089,13 +1148,12 @@ export const ui = {
         }
 
         this.openCustomParamsButton = customTabInfoButtonsPanel.addButton( null, "OpenCustomParams", ( name, event ) => {
-
             const pass = ShaderHub.currentPass;
             if( pass.name === "Common" )
                 return;
 
             this.customParametersPanel.refresh()
-            this.openCustomUniforms( event.target );
+            this.openUniformsDialog( event.target );
         }, { icon: "Settings2", title: "Custom Parameters", tooltip: true } );
 
         /*
@@ -1470,21 +1528,6 @@ export const ui = {
         closerButton.addEventListener( "click", dialog.close );
 
         this._lastOpenedDialog = dialog;
-    },
-
-    openCustomUniforms( target )
-    {
-        target = target ?? this.openCustomParamsButton.root;
-
-        if( this._lastOpenedDialog )
-        {
-            this._lastOpenedDialog.close();
-        }
-
-        // Refresh content first
-        this.customParametersPanel.refresh();
-
-        new LX.Popover( target, [ this.customParametersPanel.root.parentElement ], { align: "start", side: "top" } );
     },
 
     async openAvailableChannels( pass, channelIndex )

@@ -9,6 +9,8 @@ export const PASSWORD_MIN_LENGTH = 8;
 export const BUFFER_PASS_TEXTURE_A_INDEX = 0;
 export const BUFFER_PASS_TEXTURE_B_INDEX = 1;
 
+export const FEATURES = [ "Multipass", "Keyboard", "Sound" ];
+
 export const UNIFORM_CHANNELS_COUNT = 4;
 export const DEFAULT_UNIFORMS_LIST = [
     { name: "iTime", type: "f32", info: "Shader playback time (s)" },

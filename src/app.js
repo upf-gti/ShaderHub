@@ -1101,11 +1101,57 @@ const ShaderHub =
             return;
 
         const uName = name ?? `iUniform${ pass.uniforms.length + 1 }`;
-        pass.uniforms.push( { name: uName, value: value ?? 0, min: min ?? 0, max: max ?? 1 } );
+        pass.uniforms.push( { name: uName, type: "f32", value: value ?? 0, min: min ?? 0, max: max ?? 1 } );
         const allCode = pass.getShaderCode( false );
         if( allCode.match( new RegExp( `\\b${ uName }\\b` ) ) )
         {
             await this.compileShader( true, pass );
+        }
+    },
+
+    async removeUniform( pass, uniformIdx )
+    {
+        const uName = pass.uniforms[ uniformIdx ].name;
+        // Check if the uniforms is used to recompile shaders or not
+        const allCode = pass.getShaderCode( false );
+        pass.uniforms.splice( uniformIdx, 1 );
+        if( allCode.match( new RegExp( `\\b${ uName }\\b` ) ) )
+        {
+            this.compileShader( true, pass );
+        }
+    },
+
+    async updateUniformType( pass, uniformIdx, typeName )
+    {
+        const isColor = typeName.startsWith( "color" );
+        typeName = isColor ? `vec${ typeName[ 5 ] }f` : typeName;
+        console.log(typeName);
+        const u = pass.uniforms[ uniformIdx ];
+        u.type = typeName;
+        u.isColor = isColor;
+
+        if( typeName.startsWith( "vec" ) )
+        {
+            const size = Shader.GetUniformSize( typeName ) / 4;
+            u.value = [].concat( u.value );
+            for( let i = 0; i < size; ++i )
+            {
+                u.value[ i ] = u.value[ i ] ?? ( isColor && i == 3 ? 1 : 0 ); // add 1 as color alpha channel
+            }
+        }
+        else // number
+        {
+            u.value = [].concat( u.value )[ 0 ];
+        }
+
+        // Remove this buffer to recreate it
+        pass.uniformBuffers.splice( uniformIdx, 1 );
+
+        // Check if the uniforms is used to recompile shaders or not
+        const allCode = pass.getShaderCode( false );
+        if( allCode.match( new RegExp( `\\b${ u.name }\\b` ) ) )
+        {
+            this.compileShader( true, pass );
         }
     },
 

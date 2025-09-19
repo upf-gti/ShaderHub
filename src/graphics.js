@@ -365,7 +365,7 @@ class ShaderPass {
                 console.assert( defaultBindingsIndex > -1 );
                 templateCodeLines.splice( defaultBindingsIndex, 1, ...Constants.DEFAULT_UNIFORMS_LIST.map( ( u, index ) => {
                     if( u.skipBindings ?? false ) return;
-                    return `@group(0) @binding(${ bindingIndex++ }) var<uniform> ${ u.name } : ${ u.type };`;
+                    return `@group(0) @binding(${ bindingIndex++ }) var<uniform> ${ u.name } : ${ u.type ?? "f32" };`;
                 } ).filter( u => u !== undefined ) );
             }
 
@@ -377,11 +377,12 @@ class ShaderPass {
 
                     for( let i = 0; i < this.uniformBuffers.length; ++i )
                     {
+                        const u = this.uniforms[ i ];
                         const buffer = this.uniformBuffers[ i ];
                         if( !buffer )
                         {
                             this.uniformBuffers[ i ] = this.device.createBuffer({
-                                size: 4,
+                                size: Shader.GetUniformSize( u.type ?? "f32" ),
                                 usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
                             });
                         }
@@ -392,7 +393,7 @@ class ShaderPass {
                 console.assert( customBindingsIndex > -1 );
                 templateCodeLines.splice( customBindingsIndex, 1, ...this.uniforms.map( ( u, index ) => {
                     if( !u ) return;
-                    return `@group(0) @binding(${ bindingIndex++ }) var<uniform> ${ u.name } : f32;`;
+                    return `@group(0) @binding(${ bindingIndex++ }) var<uniform> ${ u.name } : ${ u.type };`;
                 } ).filter( u => u !== undefined ) );
             }
 
@@ -420,7 +421,7 @@ class ShaderPass {
                 console.assert( customDummiesIndex > -1 );
                 templateCodeLines.splice( customDummiesIndex, 1, ...this.uniforms.map( ( u, index ) => {
                     if( !u ) return;
-                    return `    let u${ u.name }Dummy: f32 = ${ u.name };`;
+                    return `    let u${ u.name }Dummy: ${ u.type } = ${ u.name };`;
                 } ).filter( u => u !== undefined ) );
 
                 const textureDummiesIndex = templateCodeLines.indexOf( "$texture_dummies" );
@@ -473,10 +474,19 @@ class ShaderPass {
             return;
 
         this.uniforms.map( ( u, index ) => {
+            let buffer = this.uniformBuffers[ index ];
+            if( !buffer )
+            {
+                this.uniformBuffers[ index ] = this.device.createBuffer({
+                    size: Shader.GetUniformSize( u.type ?? "f32" ),
+                    usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
+                });
+            }
+
             this.device.queue.writeBuffer(
                 this.uniformBuffers[ index ],
                 0,
-                new Float32Array([ u.value ])
+                new Float32Array( [].concat( u.value ) )
             );
         } );
 
@@ -524,6 +534,29 @@ class Shader {
         this.creationDate = data.creationDate ?? "";
         this.hasPreview = data.hasPreview ?? false;
         this.likes = data.likes ?? [];
+    }
+
+    static GetUniformSize = function( type ) {
+        switch( type )
+        {
+            case "f32":
+            case "i32":
+            case "u32":
+            return 4;
+            case "vec2f":
+            case "vec2i":
+            case "vec2u":
+            return 8;
+            case "vec3f":
+            case "vec3i":
+            case "vec3u":
+            return 12;
+            case "vec4f":
+            case "vec4i":
+            case "vec4u":
+            return 16;
+        }
+        return 0;
     }
 
     getDefaultCode( pass )
