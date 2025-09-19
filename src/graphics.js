@@ -355,6 +355,13 @@ class ShaderPass {
     {
         const templateCodeLines = [ ...( this.shader.type === "render" ) ? Shader.RENDER_SHADER_TEMPLATE : Shader.COMPUTER_SHADER_TEMPLATE ];
 
+        // Invert uv y if buffer render target
+        {
+            const invertUvsIndex = templateCodeLines.indexOf( "$invert_uv_y" );
+            console.assert( invertUvsIndex > -1 );
+            templateCodeLines.splice( invertUvsIndex, 1, this.type === "buffer" ? "    output.fragUV.y = 1.0 - output.fragUV.y;" : undefined );
+        }
+
         if( includeBindings )
         {
             let bindingIndex = 0;
@@ -602,7 +609,7 @@ fn vert_main(@builtin(vertex_index) VertexIndex : u32) -> VertexOutput {
     var output : VertexOutput;
     output.Position = vec4(pos[VertexIndex], 0.0, 1.0);
     output.fragUV = (output.Position.xy * 0.5) + vec2(0.5, 0.5);
-    output.fragUV.y = 1.0 - output.fragUV.y;
+$invert_uv_y
     output.fragCoord = output.fragUV * iResolution;
 
     var time_dummy : f32 = iTime;

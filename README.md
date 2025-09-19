@@ -2,7 +2,6 @@
 WebGPU Shadertoy-like platform to create fullscreen quad shaders.
 
 - hide custom uniforms button in common passes
-- keyboard doesn't work
 
 Roadmap:
 - [ ] Support creating Compute shaders

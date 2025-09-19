@@ -869,6 +869,8 @@ const ShaderHub =
             return;
         }
 
+        options = { ...options, flipY: true };
+
         const url = await fs.getFileUrl( fileId );
         const data = await fs.requestFile( url );
         const imageBitmap = await createImageBitmap( await new Blob([data]) );
@@ -922,9 +924,10 @@ const ShaderHub =
             data.push( 255 * ( this.keyPressed.get( w ) === true ? 1 : 0 ), 0, 0, 255 );
         }
 
+        const imageName = "Keyboard";
         const imageData = new ImageData( new Uint8ClampedArray( data ), dimensions[ 0 ], dimensions[ 1 ] );
         const imageBitmap = await createImageBitmap( imageData );
-        const imageTexture = this.device.createTexture({
+        const imageTexture = this.gpuTextures[ imageName ] ?? this.device.createTexture({
             label: "KeyboardTexture",
             size: [ imageBitmap.width, imageBitmap.height, 1 ],
             format: 'rgba8unorm',
@@ -942,7 +945,6 @@ const ShaderHub =
 
         // Recreate stuff if we update the texture and
         // a shader pass is using it
-        const imageName = "Keyboard";
         this.gpuTextures[ imageName ] = imageTexture;
 
         const pass = this.currentPass;
