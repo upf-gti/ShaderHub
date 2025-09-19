@@ -100,6 +100,8 @@ class ShaderPass {
                     usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC
                 })
             ];
+
+            this.workGroupSize = [ 16, 16, 1 ];
         }
     }
 
@@ -202,10 +204,15 @@ class ShaderPass {
                 computePass.setBindGroup( 0, bindGroup );
             }
 
-            // const dispatchX = 4
-            // const dispatchY = 4
+            const wgSizeX = this.workGroupSize[ 0 ];
+            const wgSizeY = this.workGroupSize[ 1 ];
+            const wgSizeZ = this.workGroupSize[ 2 ] ?? 1;
 
-            computePass.dispatchWorkgroups( 4, 4, 1 );
+            const dispatchX = Math.ceil( this.resolution[ 0 ]  / wgSizeX );
+            const dispatchY = Math.ceil( this.resolution[ 1 ]  / wgSizeY );
+            const dispatchZ = wgSizeZ;
+
+            computePass.dispatchWorkgroups( dispatchX, dispatchY, dispatchZ );
 
             computePass.end();
 
@@ -546,11 +553,31 @@ class ShaderPass {
             templateCodeLines.splice( commonIndex, 1, ...allCommon );
         }
 
-        // Add main image
+        // Add main lines
         {
+            const lines = [ ...this.codeLines ];
+
+            if( this.type === "compute" )
+            {
+                for( let i = 0; i < lines.length; ++i )
+                {
+                    const line = lines[ i ];
+                    if( line.startsWith( "#WORKGROUP_SIZE" ) )
+                    {
+                        const tokens = line.split( " " );
+                        this.workGroupSize = [ parseInt( tokens[ 1 ] ), parseInt( tokens[ 2 ] ?? "16" ), parseInt( tokens[ 3 ] ?? "1" ) ];
+                        lines[ i ] = "";
+                    }
+                }
+
+                const computeEntryIndex = templateCodeLines.indexOf( "$compute_entry" );
+                console.assert( computeEntryIndex > -1 );
+                templateCodeLines.splice( computeEntryIndex, 1, `@compute @workgroup_size(${ this.workGroupSize[ 0 ] }, ${ this.workGroupSize[ 1 ] }, ${ this.workGroupSize[ 2 ] })` );
+            }
+
             const mainImageIndex = templateCodeLines.indexOf( "$main_entry" );
             console.assert( mainImageIndex > -1 );
-            templateCodeLines.splice( mainImageIndex, 1, ...this.codeLines );
+            templateCodeLines.splice( mainImageIndex, 1, ...lines );
         }
 
         return templateCodeLines.join( "\n" );
@@ -598,13 +625,13 @@ class ShaderPass {
         {
 
             this.textures = [
-                device.createTexture({
+                this.device.createTexture({
                     label: "Buffer Pass Texture A",
                     size: [ resolutionX, resolutionY, 1 ],
                     format: navigator.gpu.getPreferredCanvasFormat(),
                     usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING
                 }),
-                device.createTexture({
+                this.device.createTexture({
                     label: "Buffer Pass Texture B",
                     size: [ resolutionX, resolutionY, 1 ],
                     format: navigator.gpu.getPreferredCanvasFormat(),
@@ -614,16 +641,14 @@ class ShaderPass {
         }
         else if( this.type === "compute" )
         {
-            this.resolution = [ data.resolutionX ?? 0, data.resolutionY ?? 0 ];
-
             this.textures = [
-                device.createTexture({
+                this.device.createTexture({
                     label: "Compute Pass Texture A",
                     size: [ resolutionX, resolutionY, 1 ],
                     format: "rgba16float",
                     usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC
                 }),
-                    device.createTexture({
+                this.device.createTexture({
                     label: "Compute Pass Texture B",
                     size: [ resolutionX, resolutionY, 1 ],
                     format: "rgba16float",
@@ -809,7 +834,7 @@ $output_binding
 $common
 $main_entry
 
-@compute @workgroup_size(16, 16, 1)
+$compute_entry
 fn main(@builtin(global_invocation_id) id: vec3u) {
 $default_dummies
 $custom_dummies

@@ -332,22 +332,22 @@ const ShaderHub =
             resolutionY: this.resolutionY
         } );
 
-        if( passType === "buffer" )
-        {
-            const getNextBufferName = () => {
-                const usedNames = this.shader.passes.filter( p => p.type === "buffer" ).map( p => p.name );
-                const possibleNames = ["BufferA", "BufferB", "BufferC", "BufferD"];
+        const getNextBufferName = () => {
+            const usedNames = this.shader.passes.filter( p => p.type === "buffer" ).map( p => p.name );
+            const possibleNames = ["BufferA", "BufferB", "BufferC", "BufferD"];
 
-                // Find the first unused name
-                for( const name of possibleNames )
-                {
-                    if( !usedNames.includes( name )) return name;
-                }
-
-                // All used, should not happen due to prev checks
-                return null;
+            // Find the first unused name
+            for( const name of possibleNames )
+            {
+                if( !usedNames.includes( name )) return name;
             }
 
+            // All used, should not happen due to prev checks
+            return null;
+        }
+
+        if( passType === "buffer" )
+        {
             indexOffset = -2;
             passName = shaderPass.name = getNextBufferName();
             this.shader.passes.splice( this.shader.passes.length - 1, 0, shaderPass ); // Add before MainImage
@@ -357,22 +357,22 @@ const ShaderHub =
         }
         else if( passType === "compute" )
         {
-            const getNextComputeName = () => {
-                const usedNames = this.shader.passes.filter( p => p.type === "compute" ).map( p => p.name );
-                const possibleNames = ["ComputeA", "ComputeB", "ComputeC", "ComputeD"];
+            // const getNextComputeName = () => {
+            //     const usedNames = this.shader.passes.filter( p => p.type === "compute" ).map( p => p.name );
+            //     const possibleNames = ["ComputeA", "ComputeB", "ComputeC", "ComputeD"];
 
-                // Find the first unused name
-                for( const name of possibleNames )
-                {
-                    if( !usedNames.includes( name )) return name;
-                }
+            //     // Find the first unused name
+            //     for( const name of possibleNames )
+            //     {
+            //         if( !usedNames.includes( name )) return name;
+            //     }
 
-                // All used, should not happen due to prev checks
-                return null;
-            }
+            //     // All used, should not happen due to prev checks
+            //     return null;
+            // }
 
             indexOffset = -2;
-            passName = shaderPass.name = getNextComputeName();
+            passName = shaderPass.name = getNextBufferName();
             this.shader.passes.splice( this.shader.passes.length - 1, 0, shaderPass ); // Add before MainImage
 
             console.assert( shaderPass.textures, "Compute does not have render target textures" );
@@ -406,7 +406,7 @@ const ShaderHub =
 
             this.onShaderPassSelected( passName );
 
-            await this.compileShader( false );
+            await this.compileShader( false, shaderPass );
 
         }, 10 );
     },
