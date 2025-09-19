@@ -392,7 +392,10 @@ const ShaderHub =
     {
         this.currentPass = this.shader.passes.find( p => p.name === passName );
         console.assert( this.currentPass, `Cannot find pass ${ passName }` );
+
         await ui.updateShaderChannelsView();
+
+        ui.toggleCustomUniformsButton( this.currentPass.type === "common" );
     },
 
     onShaderTimePaused()

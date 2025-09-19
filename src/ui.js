@@ -1640,5 +1640,10 @@ export const ui = {
     toggleShaderChannelsView( force )
     {
         this.channelsContainer.parentElement.classList.toggle( "hidden", force );
+    },
+
+    toggleCustomUniformsButton( force )
+    {
+        this.openCustomParamsButton.root.classList.toggle( "hidden", force );
     }
 };

@@ -1,8 +1,6 @@
 # ShaderHub
 WebGPU Shadertoy-like platform to create fullscreen quad shaders.
 
-- hide custom uniforms button in common passes
-
 Roadmap:
 - [ ] Support creating Compute shaders
 - [ ] Support sound channel
