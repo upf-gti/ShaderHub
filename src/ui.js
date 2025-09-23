@@ -845,38 +845,60 @@ export const ui = {
 
             if( !mobile )
             {
-                panel.sameLine();
-                panel.addButton( null, "Record", ( name, event ) => {
-                    const button = event.target;
-                    button["Format"] = button["Format"] ?? "gif";
-                    button["Frames"] = button["Frames"] ?? "120";
+                let exportOptions = {
+                    format: "gif",
+                    frames: "120",
+                    framerate: "30"
+                };
 
+                const iUpdateExportOptions = ( o, v ) =>
+                {
+                    exportOptions[ o ] = v;
+                };
+
+                panel.sameLine();
+                const container = LX.makeContainer( ["auto", "auto"], "bg-tertiary rounded-lg flex flex-row ml-auto", "", null, { backgroundColor: "var(--button-color)" } );
+                const a = new LX.Button( null, "RecordButton", ( name, event ) => {
+                    const iButton = a.root.querySelector( "button" );
+                    iButton.classList.remove( "bg-none" );
+                    iButton.classList.add( "bg-error" );
+                    ShaderHub.startCapture( exportOptions, iButton );
+                }, { icon: "Video", className: "p-0", buttonClass: "bg-none record-button", title: "Record", tooltip: true } );
+                container.appendChild( a.root );
+                const b = new LX.Button( null, "RecordSettingsButton", ( name, event ) => {
+                    const button = event.target;
+                    button["Format"] = exportOptions.format;
+                    button["Frames"] = exportOptions.frames;
+                    button["Frame Rate"] = exportOptions.framerate;
                     LX.addDropdownMenu( button, [
                         {
                             name: "Format",
                             icon: "FileArchive",
-                            closeOnClick: false,
-                            options: [
-                                { name: "gif" },
-                                { name: "png" },
-                                { name: "webm" }
-                            ]
+                            submenu: [ "gif", "png", "webm" ].map( o => {
+                                const checked = ( exportOptions[ "format" ] === `${ o }` );
+                                return { name: `${ checked ? LX.makeIcon( "Circle", { svgClass: "xxs fill-current inline-flex mr-2" } ).innerHTML : "" }${ o }`, callback: (v) => iUpdateExportOptions( "format", v ) };
+                            } )
                         },
                         {
                             name: "Frames",
                             icon: "Film",
-                            closeOnClick: false,
-                            options: [
-                                { name: "60" },
-                                { name: "120" },
-                                { name: "180" },
-                                { name: "240" },
-                                { name: "300" }
-                            ]
+                            submenu: [ 60, 120, 180, 240, 300 ].map( o => {
+                                const checked = ( exportOptions[ "frames" ] === `${ o }` );
+                                return { name: `${ checked ? LX.makeIcon( "Circle", { svgClass: "xxs fill-current inline-flex mr-2" } ).innerHTML : "" }${ o }`, callback: (v) => iUpdateExportOptions( "frames", v ) };
+                            } )
                         },
-                        { name: "Start Capture", icon: "Video", callback: () => ShaderHub.startCapture( button["Format"], parseInt( button["Frames"] ) ) },
+                        {
+                            name: "Frame Rate",
+                            icon: "Gauge",
+                            submenu: [ 10, 15, 30, 60 ].map( o => {
+                                const checked = ( exportOptions[ "framerate" ] === `${ o }` );
+                                return { name: `${ checked ? LX.makeIcon( "Circle", { svgClass: "xxs fill-current inline-flex mr-2" } ).innerHTML : "" }${ o }`, callback: (v) => iUpdateExportOptions( "framerate", v ) };
+                            } )
+                        },
                     ], { side: "bottom", align: "end" });
-                }, { icon: "Video", className: "ml-auto", title: "Record", tooltip: true } );
+                }, { icon: "ChevronDown", className: "p-0", buttonClass: "bg-none"});
+                container.appendChild( b.root );
+                panel.addContent( null, container );
                 panel.addButton( null, "Fullscreen", () => ShaderHub.requestFullscreen(), { icon: "Fullscreen", title: "Fullscreen", tooltip: true } );
                 panel.endLine( "items-center h-full ml-auto" );
             }

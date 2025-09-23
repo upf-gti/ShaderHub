@@ -1179,11 +1179,28 @@ const ShaderHub =
         }
     },
 
-    startCapture( captureFormat = 'gif', exportFramesCount = 120, captureFrameRate = 30 )
+    startCapture( options, button )
     {
-        this.exportFramesCount = exportFramesCount;
+        this.button = button;
+
+        this.exportFramesCount = parseInt( options.frames ?? 120 );
         this.captureFrameCount = 1;
-        this.capturer = new CCapture( { format: captureFormat, framerate: captureFrameRate, workersPath: './src/extra/' } );
+        this.format = options.format ?? 'gif';
+
+        switch( this.format )
+        {
+            case "gif":
+                this.mimeType = 'image/gif';
+                break;
+            case "png":
+                this.mimeType = 'image/png';
+                break;
+            case "webm":
+                this.mimeType = 'video/webm';
+                break;
+        }
+
+        this.capturer = new CCapture( { format: this.format, framerate: parseInt ( options.framerate ?? 30 ), workersPath: './src/extra/' } );
         this.capturer.start();
     },
 
@@ -1195,10 +1212,17 @@ const ShaderHub =
         }
 
         this.capturer.stop();
-        this.capturer.save();
 
-        delete this.capturer;
-        delete this.frameCount;
+        const callback = ( blob ) => {
+            this.button.classList.remove( "bg-error" );
+            this.button.classList.add( "bg-none" );
+            download( blob, `${ this.shader.name }.${ this.format }`, this.mimeType );
+            delete this.capturer;
+            delete this.frameCount;
+            return false;
+        };
+
+        this.capturer.save( callback );
 
         // custom save, will get a blob in the callback
         // this.capturer.save( function( blob ) { /* ... */ } );

@@ -85,16 +85,12 @@
     grid-row-end: span 1;
 }
 
-.shader-list-initial .shader-item {
-	/* aspect-ratio: 16 / 10; */
-}
-
 .shader-item.featured {
     grid-column-end: span 2;
 }
 
-.lexskeleton .shader-item {
-	/* aspect-ratio: 16 / 10; */
+.record-button {
+	transition: background-color 0.1s ease-in;
 }
 
 .channel-server-list {

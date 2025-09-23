@@ -2,7 +2,6 @@
 WebGPU Shadertoy-like platform to create fullscreen quad shaders.
 
 Roadmap:
-- [ ] Support creating Compute shaders
 - [ ] Support sound channel
 - [ ] Shader desc/comments format
 - [ ] Shader Comments
@@ -11,6 +10,7 @@ Roadmap:
 - [ ] Give more info on form validation errors (LX)
 - [ ] Give more info on form validation errors (LX)
 
+- [x] Support creating Compute shader passes
 - [x] Add some Texture/Keyboard Shader Utils
 - [x] Change uniforms type
 - [x] Add shader info (multipass, sound, etc) to filter based on shader
