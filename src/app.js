@@ -93,11 +93,6 @@ const ShaderHub =
                 this._mouseDown ?? -1, this._mousePressed ? 1.0 : -1.0      // button clicks
             ];
 
-            // [
-            //     this.mousePosition[ 0 ], this.mousePosition[ 1 ],
-            //     this.lastMousePosition[ 0 ] * ( this._mouseDown ? 1.0 : -1.0 ), this.lastMousePosition[ 1 ] * ( this._mousePressed ? 1.0 : -1.0 )
-            // ]
-
             this.device.queue.writeBuffer(
                 this.gpuBuffers[ "mouse" ],
                 0,
@@ -287,6 +282,9 @@ const ShaderHub =
                 pass.resolutionX = this.resolutionX;
                 pass.resolutionY = this.resolutionY;
 
+                pass.uniforms = pass.uniforms ?? [];
+                pass.uniforms.forEach( u => u.type = u.type ?? "f32");
+
                 // Push passes to the shader
                 const shaderPass = new ShaderPass( shader, this.device, pass );
                 if( pass.type === "buffer" || pass.type === "compute" )
@@ -294,6 +292,7 @@ const ShaderHub =
                     console.assert( shaderPass.textures, "Buffer does not have render target textures" );
                     this.gpuTextures[ pass.name ] = shaderPass.textures;
                 }
+
                 this.shader.passes.push( shaderPass );
 
                 // Set code in the editor
