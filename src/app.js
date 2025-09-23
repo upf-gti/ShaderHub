@@ -82,13 +82,28 @@ const ShaderHub =
             new Float32Array([ this.resolutionX ?? this.gpuCanvas.offsetWidth, this.resolutionY ?? this.gpuCanvas.offsetHeight ])
         );
 
-        this.device.queue.writeBuffer(
-            this.gpuBuffers[ "mouse" ],
-            0,
-            new Float32Array([
-                this.mousePosition[ 0 ], this.mousePosition[ 1 ],
-                this.lastMousePosition[ 0 ] * ( this._mouseDown ? 1.0 : -1.0 ), this.lastMousePosition[ 1 ] * ( this._mousePressed ? 1.0 : -1.0 ) ])
-        );
+        // Write mouse data
+        {
+            const data =
+            [
+                this.mousePosition[ 0 ], this.mousePosition[ 1 ],           // current position when pressed
+                this.lastMousePosition[ 0 ], this.lastMousePosition[ 1 ],   // start position
+                this.lastMousePosition[ 0 ] - this.mousePosition[ 0 ], 
+                this.lastMousePosition[ 1 ] - this.mousePosition[ 1 ],      // delta position
+                this._mouseDown ?? -1, this._mousePressed ? 1.0 : -1.0      // button clicks
+            ];
+
+            // [
+            //     this.mousePosition[ 0 ], this.mousePosition[ 1 ],
+            //     this.lastMousePosition[ 0 ] * ( this._mouseDown ? 1.0 : -1.0 ), this.lastMousePosition[ 1 ] * ( this._mousePressed ? 1.0 : -1.0 )
+            // ]
+
+            this.device.queue.writeBuffer(
+                this.gpuBuffers[ "mouse" ],
+                0,
+                new Float32Array( data )
+            );
+        }
 
         this.lastTime = now;
 
@@ -188,8 +203,8 @@ const ShaderHub =
 
     async onMouseDown( e )
     {
-        this._mouseDown = e;
-        this.mousePosition = [ e.offsetX, e.offsetY ];
+        this._mouseDown = parseInt( e.button );
+        this.mousePosition = [ e.offsetX, this.gpuCanvas.offsetHeight - e.offsetY ];
         this.lastMousePosition = [ ...this.mousePosition ];
         this._mousePressed = true;
     },
@@ -201,9 +216,9 @@ const ShaderHub =
 
     async onMouseMove( e )
     {
-        if( this._mouseDown )
+        if( this._mouseDown !== undefined )
         {
-            this.mousePosition = [ e.offsetX, e.offsetY ];
+            this.mousePosition = [ e.offsetX, this.gpuCanvas.offsetHeight - e.offsetY ];
         }
     },
 
@@ -857,7 +872,7 @@ const ShaderHub =
             });
 
             this.gpuBuffers[ "mouse" ] = this.device.createBuffer({
-                size: 16,
+                size: 32,
                 usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
             });
         }

@@ -115,7 +115,10 @@ class ShaderPass {
         if( this.mustCompile || !this.pipeline || !this.bindGroup )
         {
             const r = await this.compile( format, buffers );
-            console.assert( r === WEBGPU_OK );
+            if( r !== WEBGPU_OK )
+            {
+                return;
+            }
         }
 
         if( this.type === "image" )
@@ -742,7 +745,16 @@ Shader.WGSL_KEYBOARD_UTILS = `fn keyDown( texture: texture_2d<f32>, code : i32 )
 fn keyPressed( texture: texture_2d<f32>, code : i32 ) -> f32 { return textureLoad( texture, vec2i(code, 1), 0 ).x; }
 fn keyState( texture: texture_2d<f32>, code : i32 ) -> f32 { return textureLoad( texture, vec2i(code, 2), 0 ).x; }`.split( "\n" );
 
-Shader.RENDER_SHADER_TEMPLATE = `$default_bindings
+Shader.COMMON = `struct MouseData {
+    pos : vec2f,
+    start : vec2f,
+    delta : vec2f,
+    press : f32,
+    click : f32,
+}
+`;
+
+Shader.RENDER_SHADER_TEMPLATE = `${ Shader.COMMON }$default_bindings
 $custom_bindings
 $texture_bindings
 
@@ -810,7 +822,7 @@ Shader.RENDER_BUFFER_TEMPLATE = `fn mainImage(fragUV : vec2f, fragCoord : vec2f)
     Compute Shaders
 */
 
-Shader.COMPUTER_SHADER_TEMPLATE = `// struct DispatchInfo {
+Shader.COMPUTER_SHADER_TEMPLATE = `${ Shader.COMMON }// struct DispatchInfo {
 //     id: u32
 // }
 

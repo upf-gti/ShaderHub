@@ -17,7 +17,7 @@ export const DEFAULT_UNIFORMS_LIST = [
     { name: "iTimeDelta", type: "f32", info: "Render time (s)" },
     { name: "iFrame", type: "i32", info: "Shader playback frame" },
     { name: "iResolution", type: "vec2f", info: "Viewport resolution (px)" },
-    { name: "iMouse", type: "vec4f", info: "Mouse data" },
+    { name: "iMouse", type: "MouseData", info: "{ pos, start, delta, press, click }" },
     { name: "iChannel0..3", type: "texture_2d<f32>", info: "Texture input channel", skipBindings: true }
 ];
 export const DEFAULT_UNIFORM_NAMES = DEFAULT_UNIFORMS_LIST.map( u => u.name );
