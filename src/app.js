@@ -222,6 +222,7 @@ const ShaderHub =
         this.resizeBuffers( xResolution, yResolution );
         this.resolutionX = xResolution;
         this.resolutionY = yResolution;
+        LX.emit( "@resolution", `${ xResolution }x${ yResolution }` );
     },
 
     async onShaderEditorCreated( shader, canvas )
