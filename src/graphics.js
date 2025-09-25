@@ -46,20 +46,22 @@ class ShaderPass {
     constructor( shader, device, data )
     {
         this.shader = shader;
-        this.name = data.name;
+        this.name   = data.name;
         this.device = device;
-        this.type = data.type ?? "image";
+        this.type   = data.type ?? "image";
         // Make sure we copy everything to avoid references
-        this.codeLines = [ ...( data.codeLines ?? this.shader.getDefaultCode( this ) ) ];
-        this.channels = [ ...( data.channels ?? [] ) ];
-        this.uniforms = [ ...( data.uniforms ?? [] ) ];
-        this.channelTextures = [];
-        this.uniformBuffers = [];
+        this.codeLines  = [ ...( data.codeLines ?? this.shader.getDefaultCode( this ) ) ];
+        this.channels   = [ ...( data.channels ?? [] ) ];
+        this.uniforms   = [ ...( data.uniforms ?? [] ) ];
+        this.channelTextures    = [];
+        this.uniformBuffers     = [];
 
-        this.pipeline = null;
-        this.bindGroup = null;
+        this.pipeline   = null;
+        this.bindGroup  = null;
 
-        this.uniformsDirty = false;
+        this.executeOnce    = false;
+        this.executionDone  = false;
+        this.uniformsDirty  = false;
 
         this.frameCount = 0;
 
@@ -105,9 +107,14 @@ class ShaderPass {
         }
     }
 
-    async draw( format, ctx, buffers )
+    async execute( format, ctx, buffers )
     {
         if( this.type === "common" )
+        {
+            return;
+        }
+
+        if( this.executeOnce && this.executionDone )
         {
             return;
         }
@@ -223,6 +230,8 @@ class ShaderPass {
 
             this.frameCount++;
         }
+
+        this.executionDone = true;
     }
 
     async createPipeline( format )
@@ -389,14 +398,14 @@ class ShaderPass {
 
     async compile( format, buffers )
     {
-        const p = await this.createPipeline( format );
-        if( p?.constructor !== GPURenderPipeline && p?.constructor !== GPUComputePipeline )
+        const pipeline = await this.createPipeline( format );
+        if( pipeline?.constructor !== GPURenderPipeline && pipeline?.constructor !== GPUComputePipeline )
         {
-            return p;
+            return pipeline;
         }
 
-        const bg = await this.createBindGroup( buffers );
-        if( bg?.constructor !== GPUBindGroup )
+        const bindGroup = await this.createBindGroup( buffers );
+        if( bindGroup?.constructor !== GPUBindGroup )
         {
             return WEBGPU_ERROR;
         }
@@ -562,13 +571,26 @@ class ShaderPass {
 
             if( this.type === "compute" )
             {
+                this.executeOnce = false;
+
                 for( let i = 0; i < lines.length; ++i )
                 {
                     const line = lines[ i ];
-                    if( line.startsWith( "#WORKGROUP_SIZE" ) )
+                    let removeLine = false;
+                    if( line.startsWith( "#workgroup_size" ) )
                     {
                         const tokens = line.split( " " );
                         this.workGroupSize = [ parseInt( tokens[ 1 ] ), parseInt( tokens[ 2 ] ?? "16" ), parseInt( tokens[ 3 ] ?? "1" ) ];
+                        removeLine = true;
+                    }
+                    else if( line.startsWith( "#dispatch_once" ) )
+                    {
+                        this.executeOnce    = true;
+                        removeLine          = true;
+                    }
+
+                    if( removeLine )
+                    {
                         lines[ i ] = "";
                     }
                 }

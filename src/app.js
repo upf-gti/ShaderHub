@@ -141,7 +141,7 @@ const ShaderHub =
 
             if( !this._lastShaderCompilationWithErrors )
             {
-                await pass.draw(
+                await pass.execute(
                     this.presentationFormat,
                     this.webGPUContext,
                     this.gpuBuffers
@@ -466,6 +466,11 @@ const ShaderHub =
             0,
             new Int32Array([ this.frameCount ])
         );
+
+        if( this.currentPass )
+        {
+            this.currentPass.executionDone = false;
+        }
 
         LX.emit( "@elapsed-time", `${ this.elapsedTime.toFixed( 2 ) }s` );
     },
