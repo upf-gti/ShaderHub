@@ -122,6 +122,7 @@ export const ui = {
                         fs.user.name,
                         null,
                         { name: "Profile", icon: "User", callback: () => ShaderHub.openProfile( fs.getUserId() ) },
+                        { name: "Liked Shaders", icon: "Heart", callback: () => ShaderHub.openProfileLikes( fs.getUserId() ) },
                         { name: "Logout", icon: "LogOut", className: "fg-error", callback: async () => {
                             await this.onLogout();
                         } },
@@ -152,6 +153,7 @@ export const ui = {
         const params = new URLSearchParams( document.location.search );
         const queryShader = params.get( "shader" );
         const queryProfile = params.get( "profile" );
+        const queryLikes = params.get( "show_likes" );
 
         if( queryShader )
         {
@@ -159,7 +161,7 @@ export const ui = {
         }
         else if( queryProfile )
         {
-            await this.makeProfileView( queryProfile );
+            await this.makeProfileView( queryProfile, queryLikes );
         }
         else
         {
@@ -480,7 +482,7 @@ export const ui = {
         }, 10 );
     },
 
-    async makeProfileView( userID )
+    async makeProfileView( userID, showLikes )
     {
         let [ topArea, bottomArea ] = this.area.split({ type: "vertical", sizes: ["calc(100% - 48px)", null], resize: false });
         topArea.root.parentElement.classList.add( "hub-background" )
@@ -501,95 +503,201 @@ export const ui = {
         const user = users.documents[ 0 ];
         const userName = user[ "user_name" ];
 
-        document.title = `${ userName } - ShaderHub`;
-
-        const infoContainer = LX.makeContainer( ["100%", "auto"], "gap-8 p-2 my-8 justify-center", `
-            <div style="font-size: 2.5rem" class="font-bold">@${ userName }</span>
-        `, topArea );
-
-        const queries = [
-            Query.equal( "author_id", userID ),
-        ];
-
+        // Likes are only shown for the active user, they are private!
         const ownProfile = this.fs.user && ( userID === this.fs.getUserId() );
-        if( !ownProfile )
+        showLikes &= ownProfile;
+
+        // Show profile
+        if( !showLikes )
         {
-            queries.push( Query.or( [ Query.equal( "public", true ), Query.isNull( "public" ) ] ) );
-        }
+            document.title = `${ userName } - ShaderHub`;
 
-        const result = await this.fs.listDocuments( FS.SHADERS_COLLECTION_ID, queries );
+            const infoContainer = LX.makeContainer( ["100%", "auto"], "gap-8 p-2 my-8 justify-center", `
+                <div style="font-size: 2.5rem" class="font-bold">@${ userName }</span>
+            `, topArea );
 
-        if( result.total === 0 )
-        {
-            LX.makeContainer( ["100%", "auto"], "mt-8 text-xxl font-medium justify-center text-center", "No shaders found.", topArea );
-            return;
-        }
+            const queries = [
+                Query.equal( "author_id", userID ),
+            ];
 
-        let skeletonHtml = "";
+            if( !ownProfile )
+            {
+                queries.push( Query.or( [ Query.equal( "public", true ), Query.isNull( "public" ) ] ) );
+            }
 
-        for( let i = 0; i < result.total; ++i )
-        {
-            const shaderItem = LX.makeElement( "li", `shader-item lexskeletonpart relative rounded-lg bg-blur hover:bg-tertiary overflow-hidden flex flex-col h-auto`, "" );
-            const shaderPreview = LX.makeElement( "img", "opacity-0 rounded-t-lg bg-blur hover:bg-tertiary border-none cursor-pointer self-center mt-1", "", shaderItem );
-            shaderPreview.style.width = "calc(100% - 0.5rem)";
-            shaderPreview.style.height = "calc(100% - 0.5rem)";
-            shaderPreview.src = "images/shader_preview.png";
-            LX.makeContainer( ["100%", "auto"], "absolute bottom-0 bg-blur flex flex-row rounded-b-lg gap-6 p-4 select-none", `
-                <div class="w-full flex flex-col gap-1">
-                    <div class="w-3/4 h-3 lexskeletonpart"></div>
-                    <div class="w-1/2 h-3 lexskeletonpart"></div>
-                </div>`, shaderItem );
+            const result = await this.fs.listDocuments( FS.SHADERS_COLLECTION_ID, queries );
 
-            skeletonHtml += shaderItem.outerHTML;
-        }
+            if( result.total === 0 )
+            {
+                LX.makeContainer( ["100%", "auto"], "mt-8 text-xxl font-medium justify-center text-center", "No shaders found.", topArea );
+                return;
+            }
 
-        const skeleton = new LX.Skeleton( skeletonHtml );
-        skeleton.root.classList.add( "grid", "shader-list", "gap-6", "justify-center" );
-        topArea.attach( skeleton.root );
-
-        LX.doAsync( async () => {
-
-            // Instead of destroying it, convert to normal container
-            skeleton.root.querySelectorAll( ".lexskeletonpart" ).forEach( i => i.classList.remove( "lexskeletonpart" ) );
+            let skeletonHtml = "";
 
             for( let i = 0; i < result.total; ++i )
             {
-                const document = result.documents[ i ];
-                const name = document.name;
-
-                const shaderInfo = {
-                    name,
-                    uid: document[ "$id" ],
-                    likeCount: document[ "like_count" ] ?? 0,
-                };
-
-                const previewName = `${ shaderInfo.uid }.png`;
-                const r = await this.fs.listFiles( [ Query.equal( "name", previewName ) ] );
-                if( r.total > 0 )
-                {
-                    shaderInfo.preview = await this.fs.getFileUrl( r.files[ 0 ][ "$id" ] );
-                }
-
-                const shaderItem = skeleton.root.children[ i ];
-                const shaderPreview = shaderItem.querySelector( "img" );
+                const shaderItem = LX.makeElement( "li", `shader-item lexskeletonpart relative rounded-lg bg-blur hover:bg-tertiary overflow-hidden flex flex-col h-auto`, "" );
+                const shaderPreview = LX.makeElement( "img", "opacity-0 rounded-t-lg bg-blur hover:bg-tertiary border-none cursor-pointer self-center mt-1", "", shaderItem );
                 shaderPreview.style.width = "calc(100% - 0.5rem)";
-                shaderPreview.src = shaderInfo.preview ?? "images/shader_preview.png";
-                shaderPreview.onload = () => shaderPreview.classList.remove( "opacity-0" );
-                shaderItem.querySelector( "div" ).remove();
-                const shaderDesc = LX.makeContainer( ["100%", "100%"], "flex flex-row rounded-b-lg gap-6 p-4 items-center select-none", `
-                    <div class="w-full">
-                        <div class="text-lg font-bold"><span>${ shaderInfo.name }</span></div>
-                    </div>
-                    <div class="flex flex-row gap-1">
-                        ${ LX.makeIcon( "Heart", { svgClass: "fill-current fg-secondary" } ).innerHTML }
-                        <span>${ shaderInfo.likeCount ?? 0 }</span>
+                shaderPreview.style.height = "calc(100% - 0.5rem)";
+                shaderPreview.src = "images/shader_preview.png";
+                LX.makeContainer( ["100%", "auto"], "absolute bottom-0 bg-blur flex flex-row rounded-b-lg gap-6 p-4 select-none", `
+                    <div class="w-full flex flex-col gap-1">
+                        <div class="w-3/4 h-3 lexskeletonpart"></div>
+                        <div class="w-1/2 h-3 lexskeletonpart"></div>
                     </div>`, shaderItem );
 
-                shaderPreview.addEventListener( "click", ( e ) => {
-                    ShaderHub.openShader( shaderInfo.uid );
-                } );
+                skeletonHtml += shaderItem.outerHTML;
             }
-        }, 10 );
+
+            const skeleton = new LX.Skeleton( skeletonHtml );
+            skeleton.root.classList.add( "grid", "shader-list", "gap-6", "justify-center" );
+            topArea.attach( skeleton.root );
+
+            LX.doAsync( async () => {
+
+                // Instead of destroying it, convert to normal container
+                skeleton.root.querySelectorAll( ".lexskeletonpart" ).forEach( i => i.classList.remove( "lexskeletonpart" ) );
+
+                for( let i = 0; i < result.total; ++i )
+                {
+                    const document = result.documents[ i ];
+                    const name = document.name;
+
+                    const shaderInfo = {
+                        name,
+                        uid: document[ "$id" ],
+                        likeCount: document[ "like_count" ] ?? 0,
+                    };
+
+                    const previewName = `${ shaderInfo.uid }.png`;
+                    const r = await this.fs.listFiles( [ Query.equal( "name", previewName ) ] );
+                    if( r.total > 0 )
+                    {
+                        shaderInfo.preview = await this.fs.getFileUrl( r.files[ 0 ][ "$id" ] );
+                    }
+
+                    const shaderItem = skeleton.root.children[ i ];
+                    const shaderPreview = shaderItem.querySelector( "img" );
+                    shaderPreview.style.width = "calc(100% - 0.5rem)";
+                    shaderPreview.src = shaderInfo.preview ?? "images/shader_preview.png";
+                    shaderPreview.onload = () => shaderPreview.classList.remove( "opacity-0" );
+                    shaderItem.querySelector( "div" ).remove();
+                    const shaderDesc = LX.makeContainer( ["100%", "100%"], "flex flex-row rounded-b-lg gap-6 p-4 items-center select-none", `
+                        <div class="w-full">
+                            <div class="text-lg font-bold"><span>${ shaderInfo.name }</span></div>
+                        </div>
+                        <div class="flex flex-row gap-1">
+                            ${ LX.makeIcon( "Heart", { svgClass: "fill-current fg-secondary" } ).innerHTML }
+                            <span>${ shaderInfo.likeCount ?? 0 }</span>
+                        </div>`, shaderItem );
+
+                    shaderPreview.addEventListener( "click", ( e ) => {
+                        ShaderHub.openShader( shaderInfo.uid );
+                    } );
+                }
+            }, 10 );
+        }
+        // Show liked shaders
+        else
+        {
+            document.title = `${ userName } Likes - ShaderHub`;
+
+            const infoContainer = LX.makeContainer( ["100%", "auto"], "gap-8 p-2 my-8 justify-center", `
+                <div style="font-size: 2.5rem" class="font-bold">Liked Shaders</span>
+            `, topArea );
+
+            const queries = [
+                Query.or( [ Query.equal( "public", true ), Query.isNull( "public" ) ] ),
+            ];
+
+            const likes = user[ "liked_shaders" ];
+            const qOrs = [];
+            likes.forEach( l => {
+                qOrs.push( Query.equal( "$id", l ) );
+            } )
+
+            if( qOrs.length )
+            {
+                queries.push( qOrs.length === 1 ? qOrs[ 0 ] : Query.or( qOrs ) );
+            }
+
+            const result = await this.fs.listDocuments( FS.SHADERS_COLLECTION_ID, queries );
+
+            if( result.total === 0 )
+            {
+                LX.makeContainer( ["100%", "auto"], "mt-8 text-xxl font-medium justify-center text-center", "No shaders found.", topArea );
+                return;
+            }
+
+            let skeletonHtml = "";
+
+            for( let i = 0; i < result.total; ++i )
+            {
+                const shaderItem = LX.makeElement( "li", `shader-item lexskeletonpart relative rounded-lg bg-blur hover:bg-tertiary overflow-hidden flex flex-col h-auto`, "" );
+                const shaderPreview = LX.makeElement( "img", "opacity-0 rounded-t-lg bg-blur hover:bg-tertiary border-none cursor-pointer self-center mt-1", "", shaderItem );
+                shaderPreview.style.width = "calc(100% - 0.5rem)";
+                shaderPreview.style.height = "calc(100% - 0.5rem)";
+                shaderPreview.src = "images/shader_preview.png";
+                LX.makeContainer( ["100%", "auto"], "absolute bottom-0 bg-blur flex flex-row rounded-b-lg gap-6 p-4 select-none", `
+                    <div class="w-full flex flex-col gap-1">
+                        <div class="w-3/4 h-3 lexskeletonpart"></div>
+                        <div class="w-1/2 h-3 lexskeletonpart"></div>
+                    </div>`, shaderItem );
+
+                skeletonHtml += shaderItem.outerHTML;
+            }
+
+            const skeleton = new LX.Skeleton( skeletonHtml );
+            skeleton.root.classList.add( "grid", "shader-list", "gap-6", "justify-center" );
+            topArea.attach( skeleton.root );
+
+            LX.doAsync( async () => {
+
+                // Instead of destroying it, convert to normal container
+                skeleton.root.querySelectorAll( ".lexskeletonpart" ).forEach( i => i.classList.remove( "lexskeletonpart" ) );
+
+                for( let i = 0; i < result.total; ++i )
+                {
+                    const document = result.documents[ i ];
+                    const name = document.name;
+
+                    const shaderInfo = {
+                        name,
+                        uid: document[ "$id" ],
+                        likeCount: document[ "like_count" ] ?? 0,
+                    };
+
+                    const previewName = `${ shaderInfo.uid }.png`;
+                    const r = await this.fs.listFiles( [ Query.equal( "name", previewName ) ] );
+                    if( r.total > 0 )
+                    {
+                        shaderInfo.preview = await this.fs.getFileUrl( r.files[ 0 ][ "$id" ] );
+                    }
+
+                    const shaderItem = skeleton.root.children[ i ];
+                    const shaderPreview = shaderItem.querySelector( "img" );
+                    shaderPreview.style.width = "calc(100% - 0.5rem)";
+                    shaderPreview.src = shaderInfo.preview ?? "images/shader_preview.png";
+                    shaderPreview.onload = () => shaderPreview.classList.remove( "opacity-0" );
+                    shaderItem.querySelector( "div" ).remove();
+                    const shaderDesc = LX.makeContainer( ["100%", "100%"], "flex flex-row rounded-b-lg gap-6 p-4 items-center select-none", `
+                        <div class="w-full">
+                            <div class="text-lg font-bold"><span>${ shaderInfo.name }</span></div>
+                        </div>
+                        <div class="flex flex-row gap-1">
+                            ${ LX.makeIcon( "Heart", { svgClass: "fill-current fg-secondary" } ).innerHTML }
+                            <span>${ shaderInfo.likeCount ?? 0 }</span>
+                        </div>`, shaderItem );
+
+                    shaderPreview.addEventListener( "click", ( e ) => {
+                        ShaderHub.openShader( shaderInfo.uid );
+                    } );
+                }
+            }, 10 );
+        }
+
     },
 
     async makeShaderView( shaderUid )
@@ -671,7 +779,7 @@ export const ui = {
             onContextMenu: ( editor, content, event ) => {
                 const pass = ShaderHub.currentPass;
                 if( pass.name === "Common" ) return;
-                    
+
                 const word = content.trim().match( /([A-Za-z0-9_]+)/g )[ 0 ];
                 if( !word ) return;
 
@@ -852,7 +960,7 @@ export const ui = {
 
             const canvas = this.makeGPUCanvas();
             canvasArea.attach( canvas );
-        
+
             const panel = canvasControlsArea.addPanel( { className: "flex flex-row" } );
             panel.sameLine();
             panel.addButton( null, "ResetTime", () => ShaderHub.onShaderTimeReset(), { icon: "SkipBack", title: "Reset time", tooltip: true } );

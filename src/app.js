@@ -605,6 +605,11 @@ const ShaderHub =
         window.location.href = `${ this.getFullPath() }?profile=${ userID }`;
     },
 
+    openProfileLikes( userID )
+    {
+        window.location.href = `${ this.getFullPath() }?profile=${ userID }&show_likes=true`;
+    },
+
     openShader( shaderID )
     {
         window.location.href = `${ this.getFullPath() }?shader=${ shaderID }`;
