@@ -320,7 +320,6 @@ const ShaderHub =
     async onShaderLike()
     {
         const userId = fs.getUserId();
-
         const likeIndex = this.shader.likes.indexOf( userId );
         if( likeIndex !== -1 )
         {
@@ -329,6 +328,28 @@ const ShaderHub =
         else
         {
             this.shader.likes.push( userId );
+        }
+
+        // Update user likes
+        {
+            const users = await fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_id", userId ) ] );
+            const user = users?.documents[ 0 ];
+            console.assert( user );
+            const userLikes = user[ "liked_shaders" ];
+            const userLikeIndex = userLikes.indexOf( this.shader.id );
+            if( userLikeIndex !== -1 )
+            {
+                userLikes.splice( userLikeIndex, 1 );
+            }
+            else
+            {
+                userLikes.push( this.shader.id );
+            }
+
+            // this is not the user id, it's the id of the user row in the users DB
+            await fs.updateDocument( FS.USERS_COLLECTION_ID, user[ "$id" ], {
+                "liked_shaders": userLikes
+            } );
         }
 
         const alreadyLiked = this.shader.likes.includes( userId );

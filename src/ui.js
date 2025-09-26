@@ -505,7 +505,7 @@ export const ui = {
 
         // Likes are only shown for the active user, they are private!
         const ownProfile = this.fs.user && ( userID === this.fs.getUserId() );
-        showLikes &= ownProfile;
+        showLikes = JSON.parse( showLikes ) && ownProfile;
 
         // Show profile
         if( !showLikes )
