@@ -1186,10 +1186,8 @@ const ShaderHub =
         }
     },
 
-    startCapture( options, button )
+    startCapture( options )
     {
-        this.button = button;
-
         this.exportFramesCount = parseInt( options.frames ?? 120 );
         this.captureFrameCount = 1;
         this.format = options.format ?? 'gif';
@@ -1221,11 +1219,10 @@ const ShaderHub =
         this.capturer.stop();
 
         const callback = ( blob ) => {
-            this.button.classList.remove( "bg-error" );
-            this.button.classList.add( "bg-none" );
             download( blob, `${ this.shader.name }.${ this.format }`, this.mimeType );
             delete this.capturer;
             delete this.frameCount;
+            ui.onStopCapture();
             return false;
         };
 

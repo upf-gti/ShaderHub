@@ -14,6 +14,8 @@ export const ui = {
 
     imageCache: {},
 
+    allowCapture: true,
+
     async init( fs )
     {
         this.fs = fs;
@@ -866,13 +868,14 @@ export const ui = {
 
                 panel.sameLine();
                 const container = LX.makeContainer( ["auto", "auto"], "bg-tertiary rounded-lg flex flex-row ml-auto", "", null, { backgroundColor: "var(--button-color)" } );
-                const a = new LX.Button( null, "RecordButton", ( name, event ) => {
-                    const iButton = a.root.querySelector( "button" );
-                    iButton.classList.remove( "bg-none" );
-                    iButton.classList.add( "bg-error" );
-                    ShaderHub.startCapture( exportOptions, iButton );
+                this._recordButton = new LX.Button( null, "RecordButton", ( name, event ) => {
+                    const iButton = this._recordButton.root.querySelector( "button" );
+                    iButton.classList.remove( "bg-none", "lexbutton" );
+                    iButton.classList.add( "bg-error", "hover:bg-error", "rounded-lg", "border-none" );
+                    this.allowCapture = false;
+                    ShaderHub.startCapture( exportOptions );
                 }, { icon: "Video", className: "p-0", buttonClass: "bg-none record-button", title: "Record", tooltip: true } );
-                container.appendChild( a.root );
+                container.appendChild( this._recordButton.root );
                 const b = new LX.Button( null, "RecordSettingsButton", ( name, event ) => {
                     const button = event.target;
                     button["Format"] = exportOptions.format;
@@ -1329,6 +1332,15 @@ export const ui = {
         {
             await this._createShaderDataView();
         }
+    },
+
+    onStopCapture()
+    {
+        const iButton = this._recordButton.root.querySelector( "button" );
+        iButton.classList.remove( "bg-error",  "hover:bg-error" );
+        iButton.classList.add( "bg-none", "lexbutton" );
+
+        this.allowCapture = true;
     },
 
     openLoginDialog()
