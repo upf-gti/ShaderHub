@@ -590,11 +590,6 @@ export const ui = {
         const isNewShader = ( shaderUid === "new" );
         this.shader = shader;
 
-        window.onbeforeunload = ( event ) => {
-            event.preventDefault();
-            event.returnValue = "";
-        };
-
         let [ leftArea, rightArea ] = this.area.split({ sizes: ["50%", "50%"] });
         rightArea.root.className += " bg-none p-3 shader-edit-content";
         leftArea.root.className += " bg-none p-3 flex flex-col gap-2";
@@ -638,6 +633,17 @@ export const ui = {
             }
         } );
 
+        const iCompileShader = async () => {
+            const error = await ShaderHub.compileShader( true, null, false, true );
+            if( error === 0 && !window.onbeforeunload )
+            {
+                window.onbeforeunload = ( event ) => {
+                    event.preventDefault();
+                    event.returnValue = "";
+                };
+            }
+        };
+
         this.editor = await new LX.CodeEditor( codeArea, {
             allowClosingTabs: false,
             allowLoadingFiles: false,
@@ -648,9 +654,9 @@ export const ui = {
             statusShowEditorFilename: false,
             customSuggestions,
             onCreateStatusPanel: this.makeStatusBarButtons.bind( this ),
-            onCtrlSpace: ShaderHub.compileShader.bind( ShaderHub ),
-            onSave: ShaderHub.compileShader.bind( ShaderHub ),
-            onRun: ShaderHub.compileShader.bind( ShaderHub ),
+            onCtrlSpace: iCompileShader.bind( this ),
+            onSave: iCompileShader.bind( this ),
+            onRun: iCompileShader.bind( this ),
             onCreateFile: ( editor ) => null,
             onContextMenu: ( editor, content, event ) => {
                 const pass = ShaderHub.currentPass;

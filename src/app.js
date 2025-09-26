@@ -12,27 +12,28 @@ const ERROR_CODE_DEFAULT    = 0;
 const ERROR_CODE_SUCCESS    = 1;
 const ERROR_CODE_ERROR      = 2;
 
-const fs = new FS();
-const fps = new FPSCounter();
-const Query = Appwrite.Query;
+const fs =      new FS();
+const fps =     new FPSCounter();
+const Query =   Appwrite.Query;
 
 const ShaderHub =
 {
     gpuTextures: {},
     gpuBuffers: {},
 
-    keyState: new Map(),
-    keyToggleState: new Map(),
-    keyPressed: new Map(),
-    mousePosition: [ 0, 0 ],
-    lastMousePosition: [ 0, 0 ],
-    generateKbTexture: true,
+    keyState:           new Map(),
+    keyToggleState:     new Map(),
+    keyPressed:         new Map(),
+    mousePosition:      [ 0, 0 ],
+    lastMousePosition:  [ 0, 0 ],
 
-    frameCount: 0,
-    lastTime: 0,
-    elapsedTime: 0,
-    timePaused: false,
-    capturer: null,
+    frameCount:         0,
+    lastTime:           0,
+    elapsedTime:        0,
+    capturer:           null,
+    generateKbTexture:  true,
+    timePaused:         false,
+    manualCompile:      false,
 
     async init()
     {
@@ -1004,7 +1005,7 @@ const ShaderHub =
         this._mustResetBorder = true;
     },
 
-    async compileShader( showFeedback = true, pass, focusCanvas = false )
+    async compileShader( showFeedback = true, pass, focusCanvas = false, manualCompile = false )
     {
         this._lastShaderCompilationWithErrors = false;
 
@@ -1060,6 +1061,8 @@ const ShaderHub =
         {
             this.gpuCanvas.focus();
         }
+
+        this.manualCompile |= ( manualCompile ?? false );
 
         return WEBGPU_OK;
     },
