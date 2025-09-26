@@ -309,7 +309,8 @@ const ShaderHub =
             }
         }
 
-        LX.emit( "@on_like_changed", this.shader.likes.length );
+        const alreadyLiked = fs?.user && this.shader.likes.includes( fs.getUserId() );
+        LX.emit( "@on_like_changed", [ this.shader.likes.length, alreadyLiked ] );
 
         this.currentPass = this.shader.passes.at( -1 );
 
@@ -330,7 +331,8 @@ const ShaderHub =
             this.shader.likes.push( userId );
         }
 
-        LX.emit( "@on_like_changed", this.shader.likes.length );
+        const alreadyLiked = this.shader.likes.includes( userId );
+        LX.emit( "@on_like_changed", [ this.shader.likes.length, alreadyLiked ] );
 
         let result = await ShaderHub.shaderExists();
         await this.saveShader( result, false, false );
@@ -615,14 +617,15 @@ const ShaderHub =
         if( needsReload ) window.location.reload();
     },
 
-    async saveShaderFiles( ownShader )
+    async saveShaderFiles( ownShader, isRemix )
     {
         const passes = ownShader ? this.shader.passes : ( this.shader._json?.passes ?? this.shader.passes );
+        const likes = isRemix ? [] : this.shader.likes; // can be updated by anyone, use latest data
 
         // Upload file and get id
         const json = {
             name: this.shader.name, // only updated by user
-            likes: this.shader.likes, // can be updated
+            likes: likes,
             // use json data or updated data depending on who's saving
             passes: passes.map( p => {
                 return {
@@ -780,7 +783,7 @@ const ShaderHub =
 
         const shaderName = this.shader.name;
         const shaderUid = this.shader.uid;
-        const newFileId = await this.saveShaderFiles();
+        const newFileId = await this.saveShaderFiles( false, true );
 
         // Create a new shader in the DB
         const result = await fs.createDocument( FS.SHADERS_COLLECTION_ID, {
@@ -789,7 +792,8 @@ const ShaderHub =
             "author_id": fs.getUserId(),
             "original_id": shaderUid,
             "file_id": newFileId,
-            "description": this.shader.description
+            "description": this.shader.description,
+            "like_count": 0
         } );
 
         // Upload canvas snapshot

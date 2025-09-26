@@ -785,14 +785,16 @@ export const ui = {
             `, shaderOptions );
 
             const likeSpan = shaderStats.querySelector( "span" );
+            const likeButton = shaderStats.querySelector( "svg" );
 
-            LX.addSignal( "@on_like_changed", ( target, likesCount ) => {
+            LX.addSignal( "@on_like_changed", ( target, likeData ) => {
+                const [ likesCount, alreadyLiked ] = likeData;
                 likeSpan.innerHTML = likesCount;
+                likeButton.classList.toggle( "fg-error", alreadyLiked );
             } );
 
             if( this.fs.user && !ownProfile && !isNewShader )
             {
-                const likeButton = shaderStats.querySelector( "svg" );
                 likeButton.classList.add( "hover:fg-error", "cursor-pointer" );
                 likeButton.title = "Like Shader";
                 LX.asTooltip( likeButton, likeButton.title );
