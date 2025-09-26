@@ -685,7 +685,9 @@ const ShaderHub =
                     "author_name": this.shader.author ?? "",
                     "file_id": newFileId,
                     "like_count": this.shader.likes.length,
-                    "features": this.shader.getFeatures()
+                    "features": this.shader.getFeatures(),
+                    "remixable": true,
+                    "public": true
                 } );
 
                 this.shader.uid = result[ "$id" ];
@@ -793,7 +795,9 @@ const ShaderHub =
             "original_id": shaderUid,
             "file_id": newFileId,
             "description": this.shader.description,
-            "like_count": 0
+            "like_count": 0,
+            "remixable": true,
+            "public": true
         } );
 
         // Upload canvas snapshot

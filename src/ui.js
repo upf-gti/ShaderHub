@@ -255,7 +255,7 @@ export const ui = {
         LX.doAsync( async () => {
 
             // Get all stored shader files (not the code, only the data)
-            const result = await this.fs.listDocuments( FS.SHADERS_COLLECTION_ID );
+            const result = await this.fs.listDocuments( FS.SHADERS_COLLECTION_ID, [ Query.or( [ Query.equal( "public", true ), Query.isNull( "public" ) ] ) ] );
             const dbShaders = result.documents.sort( (a, b) => ( b[ "like_count" ] ?? 0 ) - ( a[ "like_count" ] ?? 0 ) ).slice( 0, 3 );
 
             let shaderList = [];
@@ -368,7 +368,7 @@ export const ui = {
         }
 
         // Get all stored shader files (not the code, only the data)
-        const result = await this.fs.listDocuments( FS.SHADERS_COLLECTION_ID );
+        const result = await this.fs.listDocuments( FS.SHADERS_COLLECTION_ID, [ Query.or( [ Query.equal( "public", true ), Query.isNull( "public" ) ] ) ] );
         const dbShaders = result.documents.filter( (d) => {
             if( !queryFeature ) return true;
             return ( d[ "features" ] ?? "" ).split( "," ).includes( queryFeature );
@@ -415,6 +415,7 @@ export const ui = {
                     creationDate: Utils.toESDate( document[ "$createdAt" ] ),
                     likeCount: document[ "like_count" ],
                     features: ( document[ "features" ] ?? "" ).split( "," ),
+                    public: document[ "public" ] ?? true
                 };
 
                 if( queryFeature && !shaderInfo.features.includes( queryFeature ) )
@@ -499,7 +500,6 @@ export const ui = {
 
         const user = users.documents[ 0 ];
         const userName = user[ "user_name" ];
-        // const ownProfile = ( userID === this.fs.getUserId() );
 
         document.title = `${ userName } - ShaderHub`;
 
@@ -507,9 +507,17 @@ export const ui = {
             <div style="font-size: 2.5rem" class="font-bold">@${ userName }</span>
         `, topArea );
 
-        const result = await this.fs.listDocuments( FS.SHADERS_COLLECTION_ID, [
-            Query.equal( "author_id", userID )
-        ] );
+        const queries = [
+            Query.equal( "author_id", userID ),
+        ];
+
+        const ownProfile = this.fs.user && ( userID === this.fs.getUserId() );
+        if( !ownProfile )
+        {
+            queries.push( Query.or( [ Query.equal( "public", true ), Query.isNull( "public" ) ] ) );
+        }
+
+        const result = await this.fs.listDocuments( FS.SHADERS_COLLECTION_ID, queries );
 
         if( result.total === 0 )
         {
@@ -1457,6 +1465,11 @@ export const ui = {
 
         const dialog = new LX.Dialog( "Shader Settings", ( p ) => {
 
+            p.addCheckbox( "Public", r.public ?? true, ( v ) => {
+                shaderDirty = true;
+                r.public = v;
+            }, { className: "contrast" } );
+
             p.addCheckbox( "Allow Remix", r.remixable ?? true, ( v ) => {
                 shaderDirty = true;
                 r.remixable = v;
@@ -1469,6 +1482,7 @@ export const ui = {
             p.addButton( null, "Save Shader", async () => {
                 if( !shaderDirty ) return;
                 await this.fs.updateDocument( FS.SHADERS_COLLECTION_ID, r[ "$id" ], {
+                    "public": r.public ?? true,
                     "remixable": r.remixable ?? true
                 } );
                 Utils.toast( `✅ Shader updated`, `Shader: ${ r.name } by ${ this.fs.user.name }` );
