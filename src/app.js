@@ -12,27 +12,28 @@ const ERROR_CODE_DEFAULT    = 0;
 const ERROR_CODE_SUCCESS    = 1;
 const ERROR_CODE_ERROR      = 2;
 
-const fs = new FS();
-const fps = new FPSCounter();
-const Query = Appwrite.Query;
+const fs =      new FS();
+const fps =     new FPSCounter();
+const Query =   Appwrite.Query;
 
 const ShaderHub =
 {
     gpuTextures: {},
     gpuBuffers: {},
 
-    keyState: new Map(),
-    keyToggleState: new Map(),
-    keyPressed: new Map(),
-    mousePosition: [ 0, 0 ],
-    lastMousePosition: [ 0, 0 ],
-    generateKbTexture: true,
+    keyState:           new Map(),
+    keyToggleState:     new Map(),
+    keyPressed:         new Map(),
+    mousePosition:      [ 0, 0 ],
+    lastMousePosition:  [ 0, 0 ],
 
-    frameCount: 0,
-    lastTime: 0,
-    elapsedTime: 0,
-    timePaused: false,
-    capturer: null,
+    frameCount:         0,
+    lastTime:           0,
+    elapsedTime:        0,
+    capturer:           null,
+    generateKbTexture:  true,
+    timePaused:         false,
+    manualCompile:      false,
 
     async init()
     {
@@ -309,7 +310,8 @@ const ShaderHub =
             }
         }
 
-        LX.emit( "@on_like_changed", this.shader.likes.length );
+        const alreadyLiked = fs?.user && this.shader.likes.includes( fs.getUserId() );
+        LX.emit( "@on_like_changed", [ this.shader.likes.length, alreadyLiked ] );
 
         this.currentPass = this.shader.passes.at( -1 );
 
@@ -319,7 +321,6 @@ const ShaderHub =
     async onShaderLike()
     {
         const userId = fs.getUserId();
-
         const likeIndex = this.shader.likes.indexOf( userId );
         if( likeIndex !== -1 )
         {
@@ -330,7 +331,30 @@ const ShaderHub =
             this.shader.likes.push( userId );
         }
 
-        LX.emit( "@on_like_changed", this.shader.likes.length );
+        // Update user likes
+        {
+            const users = await fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_id", userId ) ] );
+            const user = users?.documents[ 0 ];
+            console.assert( user );
+            const userLikes = user[ "liked_shaders" ];
+            const userLikeIndex = userLikes.indexOf( this.shader.id );
+            if( userLikeIndex !== -1 )
+            {
+                userLikes.splice( userLikeIndex, 1 );
+            }
+            else
+            {
+                userLikes.push( this.shader.id );
+            }
+
+            // this is not the user id, it's the id of the user row in the users DB
+            await fs.updateDocument( FS.USERS_COLLECTION_ID, user[ "$id" ], {
+                "liked_shaders": userLikes
+            } );
+        }
+
+        const alreadyLiked = this.shader.likes.includes( userId );
+        LX.emit( "@on_like_changed", [ this.shader.likes.length, alreadyLiked ] );
 
         let result = await ShaderHub.shaderExists();
         await this.saveShader( result, false, false );
@@ -608,6 +632,11 @@ const ShaderHub =
         window.location.href = `${ this.getFullPath() }?profile=${ userID }`;
     },
 
+    openProfileLikes( userID )
+    {
+        window.location.href = `${ this.getFullPath() }?profile=${ userID }&show_likes=true`;
+    },
+
     openShader( shaderID )
     {
         window.location.href = `${ this.getFullPath() }?shader=${ shaderID }`;
@@ -620,14 +649,15 @@ const ShaderHub =
         if( needsReload ) window.location.reload();
     },
 
-    async saveShaderFiles( ownShader )
+    async saveShaderFiles( ownShader, isRemix )
     {
         const passes = ownShader ? this.shader.passes : ( this.shader._json?.passes ?? this.shader.passes );
+        const likes = isRemix ? [] : this.shader.likes; // can be updated by anyone, use latest data
 
         // Upload file and get id
         const json = {
             name: this.shader.name, // only updated by user
-            likes: this.shader.likes, // can be updated
+            likes: likes,
             // use json data or updated data depending on who's saving
             passes: passes.map( p => {
                 return {
@@ -687,7 +717,9 @@ const ShaderHub =
                     "author_name": this.shader.author ?? "",
                     "file_id": newFileId,
                     "like_count": this.shader.likes.length,
-                    "features": this.shader.getFeatures()
+                    "features": this.shader.getFeatures(),
+                    "remixable": true,
+                    "public": true
                 } );
 
                 this.shader.uid = result[ "$id" ];
@@ -785,7 +817,7 @@ const ShaderHub =
 
         const shaderName = this.shader.name;
         const shaderUid = this.shader.uid;
-        const newFileId = await this.saveShaderFiles();
+        const newFileId = await this.saveShaderFiles( false, true );
 
         // Create a new shader in the DB
         const result = await fs.createDocument( FS.SHADERS_COLLECTION_ID, {
@@ -794,7 +826,10 @@ const ShaderHub =
             "author_id": fs.getUserId(),
             "original_id": shaderUid,
             "file_id": newFileId,
-            "description": this.shader.description
+            "description": this.shader.description,
+            "like_count": 0,
+            "remixable": true,
+            "public": true
         } );
 
         // Upload canvas snapshot
@@ -1010,7 +1045,7 @@ const ShaderHub =
         this._mustResetBorder = true;
     },
 
-    async compileShader( showFeedback = true, pass, focusCanvas = false )
+    async compileShader( showFeedback = true, pass, focusCanvas = false, manualCompile = false )
     {
         this._lastShaderCompilationWithErrors = false;
 
@@ -1066,6 +1101,8 @@ const ShaderHub =
         {
             this.gpuCanvas.focus();
         }
+
+        this.manualCompile |= ( manualCompile ?? false );
 
         return WEBGPU_OK;
     },
@@ -1185,10 +1222,8 @@ const ShaderHub =
         }
     },
 
-    startCapture( options, button )
+    startCapture( options )
     {
-        this.button = button;
-
         this.exportFramesCount = parseInt( options.frames ?? 120 );
         this.captureFrameCount = 1;
         this.format = options.format ?? 'gif';
@@ -1220,11 +1255,10 @@ const ShaderHub =
         this.capturer.stop();
 
         const callback = ( blob ) => {
-            this.button.classList.remove( "bg-error" );
-            this.button.classList.add( "bg-none" );
             download( blob, `${ this.shader.name }.${ this.format }`, this.mimeType );
             delete this.capturer;
             delete this.frameCount;
+            ui.onStopCapture();
             return false;
         };
 
