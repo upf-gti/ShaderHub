@@ -86,7 +86,10 @@ class ShaderPass {
         }
         else if( this.type === "compute" )
         {
-            this.resolution = [ data.resolutionX ?? 0, data.resolutionY ?? 0 ];
+            this.resolution         = [ data.resolutionX ?? 0, data.resolutionY ?? 0 ];
+            this.workGroupSize      = [ 16, 16, 1 ];
+            this.computePipelines   = [ ];
+            this.storageBuffers     = { };
 
             this.textures = [
                 device.createTexture({
@@ -102,8 +105,6 @@ class ShaderPass {
                     usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC
                 })
             ];
-
-            this.workGroupSize = [ 16, 16, 1 ];
         }
     }
 
@@ -119,7 +120,7 @@ class ShaderPass {
             return;
         }
 
-        if( this.mustCompile || !this.pipeline || !this.bindGroup )
+        if( this.mustCompile || ( !this.pipeline && !( this.computePipelines ?? [] ).length ) || !this.bindGroup )
         {
             const r = await this.compile( format, buffers );
             if( r !== WEBGPU_OK )
@@ -204,27 +205,36 @@ class ShaderPass {
             }
 
             const commandEncoder = this.device.createCommandEncoder();
-            const computePass = commandEncoder.beginComputePass();
 
-            computePass.setPipeline( this.pipeline );
-
-            const bindGroup = ( this.frameCount % 2 === 0 ) ? this.bindGroup : this.bindGroupB;
-            if( bindGroup )
+            for( const pipelineRes of this.computePipelines )
             {
-                computePass.setBindGroup( 0, bindGroup );
+                const computePass = commandEncoder.beginComputePass();
+                computePass.setPipeline( pipelineRes.pipeline );
+
+                const bindGroup = pipelineRes.bindGroup; //( this.frameCount % 2 === 0 ) ? this.bindGroup : this.bindGroupB;
+                if( bindGroup )
+                {
+                    computePass.setBindGroup( 0, bindGroup );
+                }
+
+                const storageBindGroup = pipelineRes.storageBindGroup;
+                if( storageBindGroup )
+                {
+                    computePass.setBindGroup( 1, storageBindGroup );
+                }
+
+                const wgSizeX = this.workGroupSize[ 0 ];
+                const wgSizeY = this.workGroupSize[ 1 ];
+                const wgSizeZ = this.workGroupSize[ 2 ] ?? 1;
+
+                const dispatchX = Math.ceil( this.resolution[ 0 ]  / wgSizeX );
+                const dispatchY = Math.ceil( this.resolution[ 1 ]  / wgSizeY );
+                const dispatchZ = wgSizeZ;
+
+                computePass.dispatchWorkgroups( dispatchX, dispatchY, dispatchZ );
+
+                computePass.end();
             }
-
-            const wgSizeX = this.workGroupSize[ 0 ];
-            const wgSizeY = this.workGroupSize[ 1 ];
-            const wgSizeZ = this.workGroupSize[ 2 ] ?? 1;
-
-            const dispatchX = Math.ceil( this.resolution[ 0 ]  / wgSizeX );
-            const dispatchY = Math.ceil( this.resolution[ 1 ]  / wgSizeY );
-            const dispatchZ = wgSizeZ;
-
-            computePass.dispatchWorkgroups( dispatchX, dispatchY, dispatchZ );
-
-            computePass.end();
 
             this.device.queue.submit([commandEncoder.finish()]);
 
@@ -269,24 +279,32 @@ class ShaderPass {
         }
         else
         {
-            this.pipeline = await this.device.createComputePipeline({
-                label: `Compute Pipeline: ${ this.name }`,
-                layout: 'auto',
-                compute: {
-                    module: result.module,
-                    entryPoint: "main",
-                }
-            });
+            this.computePipelines = [];
+
+            for( const e of result.entries )
+            {
+                const p = await this.device.createComputePipeline( {
+                    label: `Compute Pipeline Entry: ${ e }`,
+                    layout: 'auto',
+                    compute: {
+                        module: result.module,
+                        entryPoint: e,
+                    }
+                } );
+                this.computePipelines.push( { pipeline: p } );
+            }
 
             console.warn( "Info: Compute Pipeline created!" );
+
+            return this.computePipelines[ 0 ].pipeline;
         }
 
         return this.pipeline;
     }
 
-    async createBindGroup( buffers )
+    async createBindGroup( pipeline, buffers )
     {
-        if( !this.pipeline )
+        if( !pipeline )
         {
             return;
         }
@@ -328,9 +346,7 @@ class ShaderPass {
                 );
                 entries.push( {
                     binding: bindingIndex++,
-                    resource: {
-                        buffer,
-                    }
+                    resource: { buffer }
                 } );
             } );
         }
@@ -360,7 +376,7 @@ class ShaderPass {
 
         this.bindGroup = await this.device.createBindGroup({
             label: "Bind Group A",
-            layout: this.pipeline.getBindGroupLayout( 0 ),
+            layout: pipeline.getBindGroupLayout( 0 ),
             entries
         });
 
@@ -386,7 +402,7 @@ class ShaderPass {
 
             this.bindGroupB = await this.device.createBindGroup({
                 label: "Bind Group B",
-                layout: this.pipeline.getBindGroupLayout( 0 ),
+                layout: pipeline.getBindGroupLayout( 0 ),
                 entries: baseEntries
             });
         }
@@ -396,20 +412,71 @@ class ShaderPass {
         return this.bindGroup;
     }
 
+    async createStorageBindGroup( pipeline )
+    {
+        if( !pipeline )
+        {
+            return;
+        }
+
+        const entries       = [];
+
+        let bindingIndex    = 0;
+
+        this.storageBuffers.map( ( u, index ) => {
+            const buffer = this.storageBuffers[ index ].resource;
+            entries.push( {
+                binding: bindingIndex++,
+                resource: { buffer }
+            } );
+        } );
+
+        this.storageBindGroup = await this.device.createBindGroup({
+            label: "Storage Bind Group A",
+            layout: pipeline.getBindGroupLayout( 1 ),
+            entries
+        });
+
+        console.warn( "Info: Storage Bind Group created!" );
+
+        return this.storageBindGroup;
+    }
+
     async compile( format, buffers )
     {
         const pipeline = await this.createPipeline( format );
-        if( pipeline?.constructor !== GPURenderPipeline && pipeline?.constructor !== GPUComputePipeline )
+        if( pipeline?.constructor !== GPURenderPipeline
+            && pipeline?.constructor !== GPUComputePipeline )
         {
             return pipeline;
         }
 
-        const bindGroup = await this.createBindGroup( buffers );
-        if( bindGroup?.constructor !== GPUBindGroup )
+        const pipelines = [ this.pipeline, ...this.computePipelines ?? [] ];
+        for( const p of pipelines )
         {
-            return WEBGPU_ERROR;
+            if( !p ) continue;
+            const bindGroup = await this.createBindGroup( p.pipeline ?? p, buffers );
+            p.bindGroup = bindGroup;
+            if( bindGroup?.constructor !== GPUBindGroup )
+            {
+                return WEBGPU_ERROR;
+            }
         }
-        
+
+        if( this.type === "compute" )
+        {
+            const pipelines = this.computePipelines ?? [];
+            for( const p of pipelines )
+            {
+                const storageBindGroup = await this.createStorageBindGroup( p.pipeline );
+                p.storageBindGroup = storageBindGroup;
+                if( storageBindGroup?.constructor !== GPUBindGroup )
+                {
+                    return WEBGPU_ERROR;
+                }
+            }
+        }
+
         this.mustCompile = false;
 
         return WEBGPU_OK;
@@ -442,7 +509,25 @@ class ShaderPass {
             }
         }
 
-        return { valid: true, module };
+        const entries = [];
+
+        // Get entry points data
+        if( this.type === "compute" )
+        {
+            const regex = /@compute[\s\S]*?fn\s+([A-Za-z_]\w*)\s*\(/g;
+            let match;
+
+            while ( ( match = regex.exec( code ) ) !== null )
+            {
+                entries.push( match[ 1 ] );
+            }
+        }
+        else
+        {
+            entries.push( "vert_main", "frag_main" );
+        }
+
+        return { valid: true, module, entries };
     }
 
     getShaderCode( includeBindings = true )
@@ -571,33 +656,17 @@ class ShaderPass {
 
             if( this.type === "compute" )
             {
-                this.executeOnce = false;
+                this.executeOnce    = false;
+                this.storageBuffers = [];
 
                 for( let i = 0; i < lines.length; ++i )
                 {
-                    const line = lines[ i ];
-                    let removeLine = false;
-                    if( line.startsWith( "#workgroup_size" ) )
-                    {
-                        const tokens = line.split( " " );
-                        this.workGroupSize = [ parseInt( tokens[ 1 ] ), parseInt( tokens[ 2 ] ?? "16" ), parseInt( tokens[ 3 ] ?? "1" ) ];
-                        removeLine = true;
-                    }
-                    else if( line.startsWith( "#dispatch_once" ) )
-                    {
-                        this.executeOnce    = true;
-                        removeLine          = true;
-                    }
-
-                    if( removeLine )
-                    {
-                        lines[ i ] = "";
-                    }
+                    lines[ i ] = this.parseComputeLine( lines[ i ] );
                 }
 
                 const computeEntryIndex = templateCodeLines.indexOf( "$compute_entry" );
                 console.assert( computeEntryIndex > -1 );
-                templateCodeLines.splice( computeEntryIndex, 1, `@compute @workgroup_size(${ this.workGroupSize[ 0 ] }, ${ this.workGroupSize[ 1 ] }, ${ this.workGroupSize[ 2 ] })` );
+                templateCodeLines.splice( computeEntryIndex, 1, `@compute @workgroup_size(${ this.workGroupSize })` );
             }
 
             const mainImageIndex = templateCodeLines.indexOf( "$main_entry" );
@@ -606,6 +675,44 @@ class ShaderPass {
         }
 
         return templateCodeLines.join( "\n" );
+    }
+
+    parseComputeLine( line )
+    {
+        const tokens = line.split( " " );
+
+        if( line.startsWith( "#workgroup_size" ) )
+        {
+            this.workGroupSize = [ parseInt( tokens[ 1 ] ), parseInt( tokens[ 2 ] ?? "16" ), parseInt( tokens[ 3 ] ?? "1" ) ];
+            return "";
+        }
+        else if( line.startsWith( "#dispatch_once" ) )
+        {
+            this.executeOnce = true;
+            return "";
+        }
+        else if( line.startsWith( "#storage" ) )
+        {
+            // Parse name and type and create storage buffer
+            const bufferName = tokens[ 1 ];
+            const bufferType = tokens[ 2 ];
+
+            // TODO
+            // Get size from buffer type
+            const bufferSize = 4;
+
+            const storageBuffer = this.device.createBuffer({
+                label: `${ bufferName} (storage)`,
+                size: bufferSize,
+                usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+            });
+
+            const index = this.storageBuffers.length;
+            this.storageBuffers.push( { name: bufferName, size: bufferSize, resource: storageBuffer } );
+            return `@group(1) @binding(${ index }) var<storage, read_write> ${ bufferName }: ${ bufferType };`;
+        }
+
+        return line;
     }
 
     setChannelTexture( channelIndex, texture )
@@ -729,14 +836,7 @@ class Shader {
 
     getDefaultCode( pass )
     {
-        if( this.type === "render" )
-        {
-            return ( pass.type === "buffer" ? Shader.RENDER_BUFFER_TEMPLATE : ( pass.type === "compute" ? Shader.COMPUTE_MAIN_TEMPLATE : Shader.RENDER_COMMON_TEMPLATE ) )
-        }
-        // else if( this.type === "compute" )
-        // {
-        //     return "";
-        // }
+        return ( pass.type === "buffer" ? Shader.RENDER_BUFFER_TEMPLATE : ( pass.type === "compute" ? Shader.COMPUTE_MAIN_TEMPLATE : Shader.RENDER_COMMON_TEMPLATE ) )
     }
 
     getFeatures()

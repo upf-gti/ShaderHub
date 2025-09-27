@@ -1715,8 +1715,15 @@ export const ui = {
                 return;
             }
 
+            const usedMiscChannels = [ "Keyboard", ...( ShaderHub.shader?.passes.map( p => p.name ) ?? [] ) ];
+
             for( const document of result.documents )
             {
+                if( category === "misc" && !usedMiscChannels.includes( document.name ) )
+                {
+                    continue;
+                }
+
                 const channelItem = LX.makeElement( "li", "relative flex rounded-lg bg-secondary hover:bg-tertiary overflow-hidden", "", container );
                 channelItem.style.maxHeight = "200px";
                 const channelPreview = LX.makeElement( "img", "w-full h-full rounded-t-lg bg-secondary hover:bg-tertiary border-none cursor-pointer", "", channelItem );
@@ -1751,8 +1758,9 @@ export const ui = {
         if( !this.miscContainer )
         {
             this.miscContainer = LX.makeContainer( [ "100%", "100%" ], "grid channel-server-list gap-4 p-4 border rounded-lg justify-center overflow-scroll" );
-            await _createChannelItems( "misc", this.miscContainer );
         }
+        this.miscContainer.innerHTML = "";
+        await _createChannelItems( "misc", this.miscContainer );
         this.miscContainer.style.display = "grid";
         tabs.add( "Misc", this.miscContainer, { xselected: true } );
 
