@@ -873,16 +873,15 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
 $default_dummies
 $custom_dummies
 $texture_dummies
-    let col : vec4f = mainCompute(id);
-    textureStore(screen, id.xy, col);
+    mainCompute(id);
 }`.split( "\n" );
 
-Shader.COMPUTE_MAIN_TEMPLATE = `fn mainCompute(id: vec3u) -> vec4f {
+Shader.COMPUTE_MAIN_TEMPLATE = `fn mainCompute(id: vec3u) {
     // Viewport resolution (in pixels)
     let screen_size = textureDimensions(screen);
 
     // Prevent overdraw for workgroups on the edge of the viewport
-    if (id.x >= screen_size.x || id.y >= screen_size.y) { return vec4f(0.0); }
+    if (id.x >= screen_size.x || id.y >= screen_size.y) { return; }
 
     // Pixel coordinates (centre of pixel, origin at bottom left)
     let fragCoord = vec2f(f32(id.x) + 0.5, f32(screen_size.y - id.y) - 0.5);
@@ -897,7 +896,7 @@ Shader.COMPUTE_MAIN_TEMPLATE = `fn mainCompute(id: vec3u) -> vec4f {
     col = pow(col, vec3f(2.2));
 
     // Output to screen (linear colour space)
-    return vec4f(col, 1.0);
+    textureStore(screen, id.xy, vec4f(col, 1.0));
 }`.split( "\n" );
 
 export { Shader, ShaderPass, FPSCounter };
