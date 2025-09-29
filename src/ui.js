@@ -198,7 +198,7 @@ export const ui = {
 
         // Create title/login area
         {
-            const container = LX.makeContainer( ["100%", "100%"], "bg-blur flex flex-col gap-8 rounded-lg place-content-center items-center overflow-scroll", "", rightSide );
+            const container = LX.makeContainer( ["100%", "100%"], "bg-blur flex flex-col gap-8 rounded-lg box-shadow box-border place-content-center items-center overflow-scroll", "", rightSide );
             const header = LX.makeContainer( [ null, "auto" ], "flex flex-col mt-8 px-12 gap-4 text-center items-center place-content-center", `
                 <h2 class="fg-secondary">ShaderHub beta</h2>
                 <h1 style="font-size: 3rem">Create and Share Shaders<br> using latest WebGPU!</h1>
@@ -207,7 +207,7 @@ export const ui = {
             if( !mobile )
             {
                 const headerButtons = LX.makeContainer( [ "auto", "auto" ], "flex flex-row p-2", ``, header );
-                const getStartedButton = new LX.Button( null, "Create a Shader", () => ShaderHub.openShader( "new" ), { icon: "ChevronRight", iconPosition: "end", buttonClass: "fg-primary text-xl p-2 px-4" } );
+                const getStartedButton = new LX.Button( null, "Create a Shader", () => ShaderHub.openShader( "new" ), { icon: "ChevronRight", iconPosition: "end", buttonClass: "fg-primary box-border text-xl p-2 px-4" } );
                 headerButtons.appendChild( getStartedButton.root );
             }
 
@@ -312,7 +312,7 @@ export const ui = {
                 shaderPreview.src = shader.preview ?? "images/shader_preview.png";
                 shaderPreview.onload = () => shaderPreview.classList.remove( "opacity-0" );
                 shaderItem.querySelector( "div" ).remove();
-                const shaderDesc = LX.makeContainer( ["100%", "auto"], "bg-blur flex flex-row rounded-b-lg gap-6 p-4 select-none", `
+                const shaderDesc = LX.makeContainer( ["100%", "auto"], "flex flex-row rounded-b-lg gap-6 p-4 select-none", `
                     <div class="w-full">
                         <div class="text-md font-bold">${ shader.name }</div>
                         <div class="text-sm font-light">by ${ !shader.anonAuthor ? `<a onclick='ShaderHub.openProfile("${ shader.authorId }")' class='dodgerblue cursor-pointer hover:text-underline'>` : "" }<span class="font-bold">${ shader.author }</span>${ !shader.anonAuthor ? "</a>" : "" }</div>
@@ -586,6 +586,8 @@ export const ui = {
                 // Instead of destroying it, convert to normal container
                 skeleton.root.querySelectorAll( ".lexskeletonpart" ).forEach( i => i.classList.remove( "lexskeletonpart" ) );
 
+                result.documents = result.documents.sort( (a, b) => a.name.localeCompare( b.name ) );
+
                 for( let i = 0; i < result.total; ++i )
                 {
                     const document = result.documents[ i ];
@@ -658,10 +660,6 @@ export const ui = {
         {
             document.title = `${ userName } Likes - ShaderHub`;
 
-            const infoContainer = LX.makeContainer( ["100%", "auto"], "gap-8 p-2 my-8 justify-center", `
-                <div style="font-size: 2.5rem" class="font-bold">Liked Shaders</span>
-            `, topArea );
-
             const queries = [
                 Query.or( [ Query.equal( "public", true ), Query.isNull( "public" ) ] ),
             ];
@@ -684,6 +682,11 @@ export const ui = {
                 LX.makeContainer( ["100%", "auto"], "mt-8 text-xxl font-medium justify-center text-center", "No shaders found.", topArea );
                 return;
             }
+
+            const infoContainer = LX.makeContainer( ["100%", "auto"], "flex flex-col gap-2 p-2 my-8 justify-center", `
+                <div style="font-size: 2.5rem" class="font-bold">${ result.total } Liked Shaders</div>
+                <div style="font-size: 1rem;" class="font-medium fg-secondary">Order: Most recent</div>
+            `, topArea );
 
             let skeletonHtml = "";
 
@@ -711,6 +714,9 @@ export const ui = {
 
                 // Instead of destroying it, convert to normal container
                 skeleton.root.querySelectorAll( ".lexskeletonpart" ).forEach( i => i.classList.remove( "lexskeletonpart" ) );
+
+                const indexMap = new Map( likes.map( ( id, i ) => [ id, i ] ) );
+                result.documents = result.documents.sort( ( a, b ) => indexMap.get( a ) - indexMap.get( b ) ).reverse();
 
                 for( let i = 0; i < result.total; ++i )
                 {

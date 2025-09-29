@@ -337,14 +337,14 @@ const ShaderHub =
             const user = users?.documents[ 0 ];
             console.assert( user );
             const userLikes = user[ "liked_shaders" ];
-            const userLikeIndex = userLikes.indexOf( this.shader.id );
+            const userLikeIndex = userLikes.indexOf( this.shader.uid );
             if( userLikeIndex !== -1 )
             {
                 userLikes.splice( userLikeIndex, 1 );
             }
             else
             {
-                userLikes.push( this.shader.id );
+                userLikes.push( this.shader.uid );
             }
 
             // this is not the user id, it's the id of the user row in the users DB

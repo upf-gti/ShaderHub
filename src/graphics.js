@@ -1121,6 +1121,9 @@ $output_binding
 //     return textureLoad(pass_in, coord, pass_index, lod);
 // }
 
+// Constants
+const PI : f32 = 3.14159265359;
+
 $common
 $main_entry
 
