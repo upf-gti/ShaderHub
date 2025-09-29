@@ -17,6 +17,7 @@
 .code-border-error { border: 1px solid var(--global-color-error) }
 
 .box-shadow { box-shadow: 0 0 8px 4px rgba(0, 0, 0, 0.15) }
+.box-border { border: 1px solid var(--global-color-tertiary) }
 
 .notifications ol .lextoast .lextoastcontent .desc {
 	transition: all 0.5s cubic-bezier(.42, .97, .52, 1.19);
@@ -83,6 +84,8 @@
 .shader-item {
     grid-column-end: span 1;
     grid-row-end: span 1;
+	border: 1px solid var(--global-color-tertiary);
+	box-shadow: 0 0 8px 4px rgba(0, 0, 0, 0.25);
 }
 
 .shader-item.featured {
