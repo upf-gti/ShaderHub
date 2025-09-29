@@ -52,13 +52,13 @@ const ShaderHub =
         if( !this.timePaused )
         {
             this.device.queue.writeBuffer(
-                this.gpuBuffers[ "timeDelta" ],
+                this.gpuBuffers[ "iTimeDelta" ],
                 0,
                 new Float32Array([ this.timeDelta ])
             );
 
             this.device.queue.writeBuffer(
-                this.gpuBuffers[ "time" ],
+                this.gpuBuffers[ "iTime" ],
                 0,
                 new Float32Array([ this.elapsedTime ])
             );
@@ -66,7 +66,7 @@ const ShaderHub =
             this.elapsedTime += this.timeDelta;
 
             this.device.queue.writeBuffer(
-                this.gpuBuffers[ "frameCount" ],
+                this.gpuBuffers[ "iFrame" ],
                 0,
                 new Int32Array([ this.frameCount ])
             );
@@ -78,7 +78,7 @@ const ShaderHub =
         }
 
         this.device.queue.writeBuffer(
-            this.gpuBuffers[ "resolution" ],
+            this.gpuBuffers[ "iResolution" ],
             0,
             new Float32Array([ this.resolutionX ?? this.gpuCanvas.offsetWidth, this.resolutionY ?? this.gpuCanvas.offsetHeight ])
         );
@@ -95,7 +95,7 @@ const ShaderHub =
             ];
 
             this.device.queue.writeBuffer(
-                this.gpuBuffers[ "mouse" ],
+                this.gpuBuffers[ "iMouse" ],
                 0,
                 new Float32Array( data )
             );
@@ -140,7 +140,7 @@ const ShaderHub =
                 pass.updateUniforms();
             }
 
-            if( !this._lastShaderCompilationWithErrors )
+            if( !this._lastShaderCompilationWithErrors && !this._compilingShader )
             {
                 await pass.execute(
                     this.presentationFormat,
@@ -474,19 +474,19 @@ const ShaderHub =
         this.timeDelta = 0;
 
         this.device.queue.writeBuffer(
-            this.gpuBuffers[ "timeDelta" ],
+            this.gpuBuffers[ "iTimeDelta" ],
             0,
             new Float32Array([ this.timeDelta ])
         );
 
         this.device.queue.writeBuffer(
-            this.gpuBuffers[ "time" ],
+            this.gpuBuffers[ "iTime" ],
             0,
             new Float32Array([ this.elapsedTime ])
         );
 
         this.device.queue.writeBuffer(
-            this.gpuBuffers[ "frameCount" ],
+            this.gpuBuffers[ "iFrame" ],
             0,
             new Int32Array([ this.frameCount ])
         );
@@ -891,27 +891,27 @@ const ShaderHub =
 
         // Input Parameters
         {
-            this.gpuBuffers[ "time" ] = this.device.createBuffer({
+            this.gpuBuffers[ "iTime" ] = this.device.createBuffer({
                 size: 4,
                 usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
             });
 
-            this.gpuBuffers[ "timeDelta" ] = this.device.createBuffer({
+            this.gpuBuffers[ "iTimeDelta" ] = this.device.createBuffer({
                 size: 4,
                 usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
             });
 
-            this.gpuBuffers[ "frameCount" ] = this.device.createBuffer({
+            this.gpuBuffers[ "iFrame" ] = this.device.createBuffer({
                 size: 4,
                 usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
             });
 
-            this.gpuBuffers[ "resolution" ] = this.device.createBuffer({
+            this.gpuBuffers[ "iResolution" ] = this.device.createBuffer({
                 size: 8,
                 usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
             });
 
-            this.gpuBuffers[ "mouse" ] = this.device.createBuffer({
+            this.gpuBuffers[ "iMouse" ] = this.device.createBuffer({
                 size: 32,
                 usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
             });
@@ -1048,6 +1048,7 @@ const ShaderHub =
     async compileShader( showFeedback = true, pass, focusCanvas = false, manualCompile = false )
     {
         this._lastShaderCompilationWithErrors = false;
+        this._compilingShader = true;
 
         ui.editor.processLines();
 
@@ -1103,6 +1104,7 @@ const ShaderHub =
         }
 
         this.manualCompile |= ( manualCompile ?? false );
+        this._compilingShader = false;
 
         return WEBGPU_OK;
     },
@@ -1169,7 +1171,7 @@ const ShaderHub =
 
         const uName = name ?? `iUniform${ pass.uniforms.length + 1 }`;
         pass.uniforms.push( { name: uName, type: "f32", value: value ?? 0, min: min ?? 0, max: max ?? 1 } );
-        const allCode = pass.getShaderCode( false );
+        const allCode = pass.getShaderCode( false ).code;
         if( allCode.match( new RegExp( `\\b${ uName }\\b` ) ) )
         {
             await this.compileShader( true, pass );
@@ -1180,7 +1182,7 @@ const ShaderHub =
     {
         const uName = pass.uniforms[ uniformIdx ].name;
         // Check if the uniforms is used to recompile shaders or not
-        const allCode = pass.getShaderCode( false );
+        const allCode = pass.getShaderCode( false ).code;
         pass.uniforms.splice( uniformIdx, 1 );
         if( allCode.match( new RegExp( `\\b${ uName }\\b` ) ) )
         {
@@ -1215,7 +1217,7 @@ const ShaderHub =
         pass.uniformBuffers.splice( uniformIdx, 1 );
 
         // Check if the uniforms is used to recompile shaders or not
-        const allCode = pass.getShaderCode( false );
+        const allCode = pass.getShaderCode( false ).code;
         if( allCode.match( new RegExp( `\\b${ u.name }\\b` ) ) )
         {
             this.compileShader( true, pass );

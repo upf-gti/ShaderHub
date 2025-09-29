@@ -59,8 +59,6 @@ class ShaderPass {
         this.pipeline   = null;
         this.bindGroup  = null;
 
-        this.executeOnce    = false;
-        this.executionDone  = false;
         this.uniformsDirty  = false;
 
         this.frameCount = 0;
@@ -111,11 +109,6 @@ class ShaderPass {
     async execute( format, ctx, buffers )
     {
         if( this.type === "common" )
-        {
-            return;
-        }
-
-        if( this.executeOnce && this.executionDone )
         {
             return;
         }
@@ -208,10 +201,15 @@ class ShaderPass {
 
             for( const pipelineRes of this.computePipelines )
             {
+                if( pipelineRes.executeOnce && pipelineRes.executionDone )
+                {
+                    continue;
+                }
+
                 const computePass = commandEncoder.beginComputePass();
                 computePass.setPipeline( pipelineRes.pipeline );
 
-                const bindGroup = pipelineRes.bindGroup; //( this.frameCount % 2 === 0 ) ? this.bindGroup : this.bindGroupB;
+                const bindGroup = ( this.frameCount % 2 === 0 ) ? pipelineRes.bindGroup : pipelineRes.bindGroupB;
                 if( bindGroup )
                 {
                     computePass.setBindGroup( 0, bindGroup );
@@ -234,28 +232,28 @@ class ShaderPass {
                 computePass.dispatchWorkgroups( dispatchX, dispatchY, dispatchZ );
 
                 computePass.end();
+
+                pipelineRes.executionDone = true;
             }
 
             this.device.queue.submit([commandEncoder.finish()]);
 
             this.frameCount++;
         }
-
-        this.executionDone = true;
     }
 
     async createPipeline( format )
     {
         if( this.type === "common" ) return;
 
-        const result = await this.validate( this.getShaderCode() );
-        if( !result.valid )
-        {
-            return result;
-        }
-
         if( this.type === "image" || this.type === "buffer" )
         {
+            const result = await this.validate();
+            if( !result.valid )
+            {
+                return result;
+            }
+
             this.pipeline = await this.device.createRenderPipeline({
                 label: `Render Pipeline: ${ this.name }`,
                 layout: 'auto',
@@ -275,23 +273,52 @@ class ShaderPass {
                 }
             });
 
+            // Attach used bindings extracted from code
+            this.pipeline.bindings = result.bindings;
+
             console.warn( "Info: Render Pipeline created!" );
         }
         else
         {
+            const computeFuncs = this.extractComputeFunctions( this.codeLines );
+
             this.computePipelines = [];
 
-            for( const e of result.entries )
+            let utilsCode = this.codeLines.join( "\n" );
+
+            // Delete each entry code to generate the utils code
+            for( const [ entry, entryCode ] of Object.entries( computeFuncs ) )
             {
+                utilsCode = utilsCode.replace( entryCode, "" );
+            }
+
+            utilsCode = utilsCode.trim();
+
+            for( const [ entry, entryCode ] of Object.entries( computeFuncs ) )
+            {
+                // rename main entry
+                const entryName = entry.replace( "mainCompute", "compute_main" );
+                const entryUtils = `${ utilsCode }\n${ entryCode.includes( "mainCompute" ) ? "" : "fn mainCompute(id: vec3u) { }" }`;
+
+                const result = await this.validate( `${ entryUtils }\n${ entryCode }` );
+                if( !result.valid )
+                {
+                    return result;
+                }
+
                 const p = await this.device.createComputePipeline( {
-                    label: `Compute Pipeline Entry: ${ e }`,
+                    label: `Compute Pipeline Entry: ${ entryName }`,
                     layout: 'auto',
                     compute: {
                         module: result.module,
-                        entryPoint: e,
+                        entryPoint: entryName,
                     }
                 } );
-                this.computePipelines.push( { pipeline: p } );
+
+                // Attach used bindings extracted from code
+                p.bindings = result.bindings;
+
+                this.computePipelines.push( { pipeline: p, executeOnce: ( entryName === result.executeOnce ) } );
             }
 
             console.warn( "Info: Compute Pipeline created!" );
@@ -311,28 +338,13 @@ class ShaderPass {
 
         let bindingIndex = 0;
 
-        const entries = [
-            {
-                binding: bindingIndex++,
-                resource: { buffer: buffers[ "time" ] }
-            },
-            {
-                binding: bindingIndex++,
-                resource: { buffer: buffers[ "timeDelta" ] }
-            },
-            {
-                binding: bindingIndex++,
-                resource: { buffer: buffers[ "frameCount" ] }
-            },
-            {
-                binding: bindingIndex++,
-                resource: { buffer: buffers[ "resolution" ] }
-            },
-            {
-                binding: bindingIndex++,
-                resource: { buffer: buffers[ "mouse" ] }
-            }
-        ]
+        const entries = [];
+
+        console.assert( pipeline.bindings, "Pipeline does not have used bindings!" );
+
+        Object.entries( pipeline.bindings ).forEach( b => {
+            entries.push( { binding: bindingIndex++, resource: { buffer: buffers[ b[ 1 ] ] } } );
+        } );
 
         const customUniformCount = this.uniforms.length;
         if( customUniformCount )
@@ -456,7 +468,8 @@ class ShaderPass {
         {
             if( !p ) continue;
             const bindGroup = await this.createBindGroup( p.pipeline ?? p, buffers );
-            p.bindGroup = bindGroup;
+            p.bindGroup = this.bindGroup;
+            p.bindGroupB = this.bindGroupB;
             if( bindGroup?.constructor !== GPUBindGroup )
             {
                 return WEBGPU_ERROR;
@@ -482,12 +495,13 @@ class ShaderPass {
         return WEBGPU_OK;
     }
 
-    async validate( code )
+    async validate( entryCode )
     {
+        const { code, bindings, executeOnce } = this.getShaderCode( true, entryCode );
+
         // Close all toasts
         document.querySelectorAll( ".lextoast" ).forEach( t => t.close() );
 
-        // Validate shader
         const module = this.device.createShaderModule({ code });
         const info = await module.getCompilationInfo();
 
@@ -505,34 +519,71 @@ class ShaderPass {
 
             if( errorMsgs.length > 0 )
             {
+                console.log( entryCode );
                 return { valid: false, code, messages: errorMsgs };
             }
         }
 
-        const entries = [];
+        return { valid: true, module, bindings, executeOnce };
+    }
 
-        // Get entry points data
-        if( this.type === "compute" )
+    extractComputeFunctions( lines )
+    {
+        let results = {};
+        let currentFunctionCode = null;
+
+        for( const line of lines )
         {
-            const regex = /@compute[\s\S]*?fn\s+([A-Za-z_]\w*)\s*\(/g;
+            if( line.startsWith( "@compute" ) || line.startsWith( "fn mainCompute" ) )
+            {
+                if( currentFunctionCode )
+                {
+                    const code = currentFunctionCode.join( "\n" );
+                    const regex = /(@compute[\s\S]*?fn\s+([A-Za-z_]\w*)\s*\(|fn\s+(mainCompute)\s*\()/g;
+
+                    let match;
+
+                    while ( ( match = regex.exec( code ) ) !== null )
+                    {
+                        results[ match[ 2 ] || match[ 3 ] ] = code;
+                    }
+                }
+
+                currentFunctionCode = [ line ];
+            }
+            else if( currentFunctionCode )
+            {
+                currentFunctionCode.push( line );
+            }
+        }
+
+        if( currentFunctionCode )
+        {
+            const code = currentFunctionCode.join( "\n" );
+            const regex = /(@compute[\s\S]*?fn\s+([A-Za-z_]\w*)\s*\(|fn\s+(mainCompute)\s*\()/g;
+
             let match;
 
             while ( ( match = regex.exec( code ) ) !== null )
             {
-                entries.push( match[ 1 ] );
+                results[ match[ 2 ] || match[ 3 ] ] = code;
             }
         }
-        else
-        {
-            entries.push( "vert_main", "frag_main" );
-        }
 
-        return { valid: true, module, entries };
+        return results;
     }
 
-    getShaderCode( includeBindings = true )
+    isBindingUsed( binding, entryCode )
     {
         const templateCodeLines = [ ...( this.type === "compute" ) ? Shader.COMPUTER_SHADER_TEMPLATE : Shader.RENDER_SHADER_TEMPLATE ];
+        const lines = [ ...templateCodeLines, ...( entryCode ? entryCode.split( "\n" ) : this.codeLines ) ];
+        return lines.filter( l => l.includes( binding ) ).length > 0;
+    }
+
+    getShaderCode( includeBindings = true, entryCode )
+    {
+        const templateCodeLines = [ ...( this.type === "compute" ) ? Shader.COMPUTER_SHADER_TEMPLATE : Shader.RENDER_SHADER_TEMPLATE ];
+        const bindings = {};
 
         // Invert uv y if buffer render target
         const invertUvsIndex = templateCodeLines.indexOf( "$invert_uv_y" );
@@ -551,7 +602,10 @@ class ShaderPass {
                 console.assert( defaultBindingsIndex > -1 );
                 templateCodeLines.splice( defaultBindingsIndex, 1, ...Constants.DEFAULT_UNIFORMS_LIST.map( ( u, index ) => {
                     if( u.skipBindings ?? false ) return;
-                    return `@group(0) @binding(${ bindingIndex++ }) var<uniform> ${ u.name } : ${ u.type ?? "f32" };`;
+                    if( !this.isBindingUsed( u.name, entryCode ) ) return;
+                    const binding = bindingIndex++;
+                    bindings[ binding ] = u.name;
+                    return `@group(0) @binding(${ binding }) var<uniform> ${ u.name } : ${ u.type ?? "f32" };`;
                 } ).filter( u => u !== undefined ) );
             }
 
@@ -601,15 +655,8 @@ class ShaderPass {
                 templateCodeLines.splice( outputBindingIndex, 1, `@group(0) @binding(${ bindingIndex++ }) var screen: texture_storage_2d<rgba16float,write>;` );
             }
 
-            // Process dummies so using them isn't mandatory
+            // Process some dummies so using them isn't mandatory
             {
-                const defaultDummiesIndex = templateCodeLines.indexOf( "$default_dummies" );
-                console.assert( defaultDummiesIndex > -1 );
-                templateCodeLines.splice( defaultDummiesIndex, 1, ...Constants.DEFAULT_UNIFORMS_LIST.map( ( u, index ) => {
-                    if( u.skipBindings ?? false ) return;
-                    return `    let u${ u.name }Dummy: ${ u.type } = ${ u.name };`;
-                } ).filter( u => u !== undefined ) );
-
                 const customDummiesIndex = templateCodeLines.indexOf( "$custom_dummies" );
                 console.assert( customDummiesIndex > -1 );
                 templateCodeLines.splice( customDummiesIndex, 1, ...this.uniforms.map( ( u, index ) => {
@@ -652,11 +699,11 @@ class ShaderPass {
 
         // Add main lines
         {
-            const lines = [ ...this.codeLines ];
+            const lines = [ ...( entryCode ? entryCode.split( "\n" ) : this.codeLines ) ];
 
             if( this.type === "compute" )
             {
-                this.executeOnce    = false;
+                this.structs        = this.parseStructs( lines.join( "\n" ) );
                 this.storageBuffers = [];
 
                 for( let i = 0; i < lines.length; ++i )
@@ -674,7 +721,99 @@ class ShaderPass {
             templateCodeLines.splice( mainImageIndex, 1, ...lines );
         }
 
-        return templateCodeLines.join( "\n" );
+        const shaderResult = { code: templateCodeLines.join( "\n" ), bindings, executeOnce: this.executeOnce };
+
+        // delete tmp context
+        delete this.structs;
+        delete this.executeOnce;
+
+        return shaderResult;
+    }
+
+    getStorageTypeSize( type )
+    {
+        // for now only support arrays and native types
+        if( type.startsWith( "array" ) )
+        {
+            const matches = [...type.matchAll(/<([^>]+)>/g)].map(m => m[1]);
+            type = matches[ 0 ];
+            const ts = type.split( "," );
+            let size = Shader.GetUniformSize( ts[ 0 ] );
+            // unknown type, must be a custom type
+            if( size === 0 )
+            {
+                size = this.structs[ ts[ 0 ] ]?.size ?? 0;
+            }
+
+            if( ts.length === 1 )
+            {
+                return size;
+            }
+            else
+            {
+                const count = parseInt( ts[ 1 ] );
+                return size * count;
+            }
+        }
+        else
+        {
+            return Shader.GetUniformSize( type );
+        }
+    }
+
+    computeStructSize( members )
+    {
+        let offset      = 0;
+        let maxAlign    = 1;
+
+        for( const m of members )
+        {
+            const align = Shader.GetUniformAlign( m.type );
+            const size = Shader.GetUniformSize( m.type );
+
+            // align offset
+            offset = Math.ceil(offset / align) * align;
+            m.offset = offset;
+
+            offset += size;
+            maxAlign = Math.max( maxAlign, align );
+        }
+
+        // round struct size up to alignment
+        const size = Math.ceil( offset / maxAlign ) * maxAlign;
+
+        // array stride = round up to 16 bytes
+        const stride = Math.ceil( size / 16 ) * 16;
+
+        return { size, stride };
+    }
+
+    parseStructs( code )
+    {
+        const structs = {};
+        const structRegex = /struct\s+(\w+)\s*{([^}]*)}/g;
+        let match;
+
+        while( ( match = structRegex.exec( code ) ) !== null )
+        {
+            const name = match[ 1 ];
+            const body = match[ 2 ].trim();
+
+            // parse members
+            const members = [];
+            const memberRegex = /(\w+)\s*:\s*([\w<>\s]+)(,|\\n)/g;
+            let m;
+            while( ( m = memberRegex.exec( body ) ) !== null )
+            {
+                members.push({ name: m[ 1 ], type: m[ 2 ].trim() });
+            }
+
+            // compute struct size
+            const { size, stride } = this.computeStructSize( members );
+            structs[ name ] = { name, members, size, stride };
+        }
+
+        return structs;
     }
 
     parseComputeLine( line )
@@ -688,18 +827,15 @@ class ShaderPass {
         }
         else if( line.startsWith( "#dispatch_once" ) )
         {
-            this.executeOnce = true;
+            this.executeOnce = tokens[ 1 ];
             return "";
         }
         else if( line.startsWith( "#storage" ) )
         {
             // Parse name and type and create storage buffer
             const bufferName = tokens[ 1 ];
-            const bufferType = tokens[ 2 ];
-
-            // TODO
-            // Get size from buffer type
-            const bufferSize = 4;
+            const bufferType = tokens.slice( 2 ).join( " " ); // All starting from the 2nd index
+            const bufferSize = this.getStorageTypeSize( bufferType );
 
             const storageBuffer = this.device.createBuffer({
                 label: `${ bufferName} (storage)`,
@@ -834,6 +970,28 @@ class Shader {
         return 0;
     }
 
+    static GetUniformAlign = function( type ) {
+        switch( type )
+        {
+            case "f32":
+            case "i32":
+            case "u32":
+            return 4;
+            case "vec2f":
+            case "vec2i":
+            case "vec2u":
+            return 8;
+            case "vec3f":
+            case "vec3i":
+            case "vec3u":
+            case "vec4f":
+            case "vec4i":
+            case "vec4u":
+            return 16;
+        }
+        return 0;
+    }
+
     getDefaultCode( pass )
     {
         return ( pass.type === "buffer" ? Shader.RENDER_BUFFER_TEMPLATE : ( pass.type === "compute" ? Shader.COMPUTE_MAIN_TEMPLATE : Shader.RENDER_COMMON_TEMPLATE ) )
@@ -914,7 +1072,6 @@ $main_entry
 
 @fragment
 fn frag_main(@location(0) fragUV : vec2f, @location(1) fragCoord : vec2f) -> @location(0) vec4f {
-$default_dummies
 $custom_dummies
 $texture_dummies
     return mainImage(fragUV, fragCoord);
@@ -961,16 +1118,11 @@ $output_binding
 //     return textureLoad(pass_in, coord, pass_index, lod);
 // }
 
-// fn passSampleLevelBilinearRepeat(pass_index: int, uv: float2, lod: float) -> float4 {
-//     return textureSampleLevel(pass_in, bilinear, fract(uv), pass_index, lod);
-// }
-
 $common
 $main_entry
 
 $compute_entry
-fn main(@builtin(global_invocation_id) id: vec3u) {
-$default_dummies
+fn compute_main(@builtin(global_invocation_id) id: vec3u) {
 $custom_dummies
 $texture_dummies
     mainCompute(id);
