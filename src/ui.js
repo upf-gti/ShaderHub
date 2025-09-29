@@ -513,9 +513,34 @@ export const ui = {
         {
             document.title = `${ userName } - ShaderHub`;
 
-            const infoContainer = LX.makeContainer( ["100%", "auto"], "gap-8 p-2 my-8 justify-center", `
-                <div style="font-size: 2.5rem" class="font-bold">@${ userName }</span>
+            const infoContainer = LX.makeContainer( ["100%", "auto"], "flex flex-col gap-2 p-2 my-8 justify-center", `
+                <div style="font-size: 2.5rem" class="font-bold">@${ userName }</div>
+                <div class="flex flex-row gap-2">
+                    <div class="w-auto self-start mt-1">${ ownProfile ? LX.makeIcon("Edit", { svgClass: "mr-3 cursor-pointer hover:fg-primary" } ).innerHTML : "" }</div>
+                    <div style="font-size: 1.25rem; max-width: 600px; overflow-wrap: break-word;" class="desc-content font-medium fg-secondary">${ user[ "description" ] ?? "" }</div>
+                </div>
             `, topArea );
+
+            const editButton = infoContainer.querySelector( "svg" );
+            if( editButton )
+            {
+                editButton.addEventListener( "click", (e) => {
+                    if( this._editingDescription ) return;
+                    e.preventDefault();
+                    const text = infoContainer.querySelector( ".desc-content" );
+                    const input = new LX.TextArea( null, text.innerHTML, async (v) => {
+                        text.innerHTML = v;
+                        input.root.replaceWith( text );
+                        await this.fs.updateDocument( FS.USERS_COLLECTION_ID, user[ "$id" ], {
+                            "description": v
+                        } );
+                        this._editingDescription = false;
+                    }, { width: "600px", resize: false, placeholder: "Enter your description here", className: "h-full", inputClass: "text-xl font-medium fg-secondary bg-tertiary", fitHeight: true } );
+                    text.replaceWith( input.root );
+                    LX.doAsync( () => input.root.focus() );
+                    this._editingDescription = true;
+                } );
+            }
 
             const queries = [
                 Query.equal( "author_id", userID ),
@@ -592,32 +617,35 @@ export const ui = {
                             <div class="text-lg font-bold"><span>${ shaderInfo.name }</span></div>
                         </div>
                         <div class="flex flex-row gap-2 items-center">
-                            ${ LX.makeIcon( shaderInfo.public ? "Eye" : "EyeOff", { svgClass: "viz-icon fg-secondary" } ).innerHTML }
+                            ${ ownProfile ? LX.makeIcon( shaderInfo.public ? "Eye" : "EyeOff", { svgClass: "viz-icon fg-secondary" } ).innerHTML : "" }
                             <div class="flex flex-row gap-1 items-center">
                                 ${ LX.makeIcon( "Heart", { svgClass: "fill-current fg-secondary" } ).innerHTML }
                                 <span>${ shaderInfo.likeCount ?? 0 }</span>
                             </div>
-                            <span class="h-3 mx-2 border-right border-colored fg-quaternary self-center items-center"></span>
-                            ${ LX.makeIcon( "EllipsisVertical", { svgClass: "shader-prof-opt fg-secondary cursor-pointer" } ).innerHTML }
+                            ${ ownProfile ? `<span class="h-3 mx-2 border-right border-colored fg-quaternary self-center items-center"></span>` : "" }
+                            ${ ownProfile ? LX.makeIcon( "EllipsisVertical", { svgClass: "shader-prof-opt fg-secondary cursor-pointer" } ).innerHTML : "" }
                         </div>`, shaderItem );
 
                     let vizIcon = shaderDesc.querySelector( ".viz-icon" );
                     const optButton = shaderDesc.querySelector( ".shader-prof-opt" );
-                    optButton.addEventListener( "click", ( e ) => {
-                        new LX.DropdownMenu( optButton, [
-                            { name: shaderInfo.public ? "Make Private" : "Make Public", icon: shaderInfo.public ? "EyeOff" : "Eye", callback: async () => {
-                                shaderInfo.public = !shaderInfo.public;
-                                const newIcon = LX.makeIcon( shaderInfo.public ? "Eye" : "EyeOff", { svgClass: "viz-icon fg-secondary" } ).querySelector( "svg" );
-                                vizIcon.replaceWith( newIcon );
-                                vizIcon = newIcon;
-                                await this.fs.updateDocument( FS.SHADERS_COLLECTION_ID, uid, {
-                                    "public": shaderInfo.public,
-                                } );
-                            } },
-                            null,
-                            { name: "Delete", icon: "Trash2", className: "fg-error", callback: () => ShaderHub.deleteShader( { uid, name } ) },
-                        ], { side: "bottom", align: "end" });
-                    } );
+                    if( optButton )
+                    {
+                        optButton.addEventListener( "click", ( e ) => {
+                            new LX.DropdownMenu( optButton, [
+                                { name: shaderInfo.public ? "Make Private" : "Make Public", icon: shaderInfo.public ? "EyeOff" : "Eye", callback: async () => {
+                                    shaderInfo.public = !shaderInfo.public;
+                                    const newIcon = LX.makeIcon( shaderInfo.public ? "Eye" : "EyeOff", { svgClass: "viz-icon fg-secondary" } ).querySelector( "svg" );
+                                    vizIcon.replaceWith( newIcon );
+                                    vizIcon = newIcon;
+                                    await this.fs.updateDocument( FS.SHADERS_COLLECTION_ID, uid, {
+                                        "public": shaderInfo.public,
+                                    } );
+                                } },
+                                null,
+                                { name: "Delete", icon: "Trash2", className: "fg-error", callback: () => ShaderHub.deleteShader( { uid, name } ) },
+                            ], { side: "bottom", align: "end" });
+                        } );
+                    }
 
                     shaderPreview.addEventListener( "click", ( e ) => {
                         ShaderHub.openShader( shaderInfo.uid );
