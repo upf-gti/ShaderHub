@@ -70,6 +70,7 @@ export const ui = {
                 if( fs.user )
                 {
                     m.add( "Profile", { icon: "User", callback: () => ShaderHub.openProfile( fs.getUserId() ) } );
+                    m.add( "Liked Shaders", { icon: "Heart", callback: () => ShaderHub.openProfileLikes( fs.getUserId() ) } );
                     m.add( "Browse", { icon: "Search", callback: () => ShaderHub.openBrowseList() } );
                     m.add( "Help", { icon: "HelpCircle", callback: () => ShaderHub.openHelp() } );
                     m.add( "Logout", { icon: "LogOut", callback: async () => {
@@ -563,12 +564,14 @@ export const ui = {
                 for( let i = 0; i < result.total; ++i )
                 {
                     const document = result.documents[ i ];
+                    const uid = document[ "$id" ];
                     const name = document.name;
 
                     const shaderInfo = {
                         name,
-                        uid: document[ "$id" ],
+                        uid,
                         likeCount: document[ "like_count" ] ?? 0,
+                        public: document[ "public" ] ?? true,
                     };
 
                     const previewName = `${ shaderInfo.uid }.png`;
@@ -588,10 +591,33 @@ export const ui = {
                         <div class="w-full">
                             <div class="text-lg font-bold"><span>${ shaderInfo.name }</span></div>
                         </div>
-                        <div class="flex flex-row gap-1">
-                            ${ LX.makeIcon( "Heart", { svgClass: "fill-current fg-secondary" } ).innerHTML }
-                            <span>${ shaderInfo.likeCount ?? 0 }</span>
+                        <div class="flex flex-row gap-2 items-center">
+                            ${ LX.makeIcon( shaderInfo.public ? "Eye" : "EyeOff", { svgClass: "viz-icon fg-secondary" } ).innerHTML }
+                            <div class="flex flex-row gap-1 items-center">
+                                ${ LX.makeIcon( "Heart", { svgClass: "fill-current fg-secondary" } ).innerHTML }
+                                <span>${ shaderInfo.likeCount ?? 0 }</span>
+                            </div>
+                            <span class="h-3 mx-2 border-right border-colored fg-quaternary self-center items-center"></span>
+                            ${ LX.makeIcon( "EllipsisVertical", { svgClass: "shader-prof-opt fg-secondary cursor-pointer" } ).innerHTML }
                         </div>`, shaderItem );
+
+                    let vizIcon = shaderDesc.querySelector( ".viz-icon" );
+                    const optButton = shaderDesc.querySelector( ".shader-prof-opt" );
+                    optButton.addEventListener( "click", ( e ) => {
+                        new LX.DropdownMenu( optButton, [
+                            { name: shaderInfo.public ? "Make Private" : "Make Public", icon: shaderInfo.public ? "EyeOff" : "Eye", callback: async () => {
+                                shaderInfo.public = !shaderInfo.public;
+                                const newIcon = LX.makeIcon( shaderInfo.public ? "Eye" : "EyeOff", { svgClass: "viz-icon fg-secondary" } ).querySelector( "svg" );
+                                vizIcon.replaceWith( newIcon );
+                                vizIcon = newIcon;
+                                await this.fs.updateDocument( FS.SHADERS_COLLECTION_ID, uid, {
+                                    "public": shaderInfo.public,
+                                } );
+                            } },
+                            null,
+                            { name: "Delete", icon: "Trash2", className: "fg-error", callback: () => ShaderHub.deleteShader( { uid, name } ) },
+                        ], { side: "bottom", align: "end" });
+                    } );
 
                     shaderPreview.addEventListener( "click", ( e ) => {
                         ShaderHub.openShader( shaderInfo.uid );
@@ -669,6 +695,20 @@ export const ui = {
                         likeCount: document[ "like_count" ] ?? 0,
                     };
 
+                    const authorId = document[ "author_id" ];
+                    if( authorId )
+                    {
+                        const r = await this.fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_id", authorId ) ] );
+                        const author = r.documents[ 0 ][ "user_name" ];
+                        shaderInfo.author = author;
+                        shaderInfo.authorId = authorId;
+                    }
+                    else
+                    {
+                        shaderInfo.author = document[ "author_name" ];
+                        shaderInfo.anonAuthor = true;
+                    }
+
                     const previewName = `${ shaderInfo.uid }.png`;
                     const r = await this.fs.listFiles( [ Query.equal( "name", previewName ) ] );
                     if( r.total > 0 )
@@ -685,8 +725,9 @@ export const ui = {
                     const shaderDesc = LX.makeContainer( ["100%", "100%"], "flex flex-row rounded-b-lg gap-6 p-4 items-center select-none", `
                         <div class="w-full">
                             <div class="text-lg font-bold"><span>${ shaderInfo.name }</span></div>
+                            <div class="text-sm font-light">by ${ !shaderInfo.anonAuthor ? `<a onclick='ShaderHub.openProfile("${ shaderInfo.authorId }")' class='dodgerblue cursor-pointer hover:text-underline'>` : "" }<span class="font-bold">${ shaderInfo.author }</span>${ !shaderInfo.anonAuthor ? "</a>" : "" }</div>
                         </div>
-                        <div class="flex flex-row gap-1">
+                        <div class="flex flex-row gap-1 items-center">
                             ${ LX.makeIcon( "Heart", { svgClass: "fill-current fg-secondary" } ).innerHTML }
                             <span>${ shaderInfo.likeCount ?? 0 }</span>
                         </div>`, shaderItem );

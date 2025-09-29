@@ -771,35 +771,45 @@ const ShaderHub =
         }
     },
 
-    async deleteShader()
+    async deleteShader( shaderInfo )
     {
-        let result = await this.shaderExists();
+        const uid = this.shader?.uid ?? shaderInfo?.uid;
+        const name = this.shader?.name ?? shaderInfo?.name;
+
+        if( !uid || !name )
+        {
+            console.error( "Can't delete shader, uid or name missing." );
+            return;
+        }
+
+        let result = await this.shaderExists( uid );
         if( !result )
         {
+            console.error( "Can't delete shader, uid does not exist in DB." );
             return;
         }
 
         const innerDelete = async () => {
 
             // DB entry
-            await fs.deleteDocument( FS.SHADERS_COLLECTION_ID, this.shader.uid );
+            await fs.deleteDocument( FS.SHADERS_COLLECTION_ID, uid );
 
             // Shader files
             await fs.deleteFile( result[ "file_id" ] );
 
             // Preview
-            const previewName = `${ this.shader.uid }.png`;
+            const previewName = `${ uid }.png`;
             result = await fs.listFiles( [ Query.equal( "name", previewName ) ] );
             if( result.total > 0 )
             {
                 await fs.deleteFile( result.files[ 0 ][ "$id" ] );
             }
 
-            Utils.toast( `✅ Shader deleted`, `Shader: ${ this.shader.name } by ${ fs.user.name }` );
+            Utils.toast( `✅ Shader deleted`, `Shader: ${ name } by ${ fs.user.name }` );
 
         };
 
-        const dialog = new LX.Dialog( "Delete shader", (p) => {
+        const dialog = new LX.Dialog( `Delete shader: ${ name }`, (p) => {
             p.root.classList.add( "p-2" );
             p.addTextArea( null, "Are you sure? This action cannot be undone.", null, { disabled: true } );
             p.addSeparator();
@@ -1109,10 +1119,10 @@ const ShaderHub =
         return WEBGPU_OK;
     },
 
-    async shaderExists()
+    async shaderExists( uid )
     {
         try {
-            return await fs.getDocument( FS.SHADERS_COLLECTION_ID, this.shader.uid );
+            return await fs.getDocument( FS.SHADERS_COLLECTION_ID, uid ?? this.shader.uid );
         } catch (error) {
             // Doesn't exist...
         }
