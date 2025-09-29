@@ -20,7 +20,7 @@ export const ui = {
     {
         this.fs = fs;
         this.area = await LX.init();
-        this.area.root.classList.add( "hub-background" );
+        // this.area.root.classList.add( "hub-background" );
 
         const starterTheme = LX.getTheme();
 
@@ -148,7 +148,6 @@ export const ui = {
         } );
 
         menubar.root.classList.add( "hub-background-blur-md" );
-        menubar.siblingArea.root.classList.add( "content-area", "bg-none" );
 
         const params = new URLSearchParams( document.location.search );
         const queryShader = params.get( "shader" );
@@ -184,7 +183,8 @@ export const ui = {
     async makeInitialPage()
     {
         var [ topArea, bottomArea ] = this.area.split({ type: "vertical", sizes: ["calc(100% - 48px)", "48px"], resize: false });
-        bottomArea.root.className += " hub-background-blur-md items-center content-center";
+        this.area.root.className += " hub-background";
+        bottomArea.root.className += " items-center content-center";
         topArea.root.className += " flex flex-row hub-background-blur content-area";
 
         // Shaderhub footer
@@ -1037,18 +1037,19 @@ export const ui = {
 
     makeHelpView()
     {
-        this.area.sections[ 1 ].root.classList.add( "hub-background-blur" );
+        this.area.sections[ 1 ].root.classList.add( "hub-background" );
+        const viewContainer = LX.makeContainer( [ "100%", "100%" ], "hub-background-blur", "", this.area );
 
         const header = LX.makeContainer( [ null, "200px" ], "flex flex-col gap-2 text-center items-center place-content-center", `
             <a><span class="fg-secondary">Documentation</span></a>
             <h1>Get started with ShaderHub</h1>
-        `, this.area );
+        `, viewContainer );
 
         const headerButtons = LX.makeContainer( [ "auto", "auto" ], "flex flex-row p-2", ``, header );
         const getStartedButton = new LX.Button( null, "Get Started", () => ShaderHub.openShader( "new" ), { buttonClass: "box-shadow contrast p-1 px-3" } );
         headerButtons.appendChild( getStartedButton.root );
 
-        const content = LX.makeContainer( [ null, "calc(100% - 200px)" ], "help-content flex flex-col gap-2 px-10 pt-4 overflow-scroll", "", this.area );
+        const content = LX.makeContainer( [ null, "calc(100% - 200px)" ], "help-content flex flex-col gap-2 px-10 pt-4 overflow-scroll", "", viewContainer );
         SET_DOM_TARGET( content );
 
         MAKE_HEADER( "Creating Shaders.", "h1", "creating-shaders" );
