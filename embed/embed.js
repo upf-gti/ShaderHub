@@ -148,6 +148,7 @@ const ShaderHub =
                 panel.addButton( null, "PauseTime", () => this.onShaderTimePaused(), { icon: "Pause", title: "Pause/Resume", tooltip: true, swap: "Play" } );
                 panel.addLabel( "0.0", { signal: "@elapsed-time", inputClass: "size-content" } );
                 panel.addLabel( "0 FPS", { signal: "@fps", inputClass: "size-content" } );
+                panel.addLabel( "0x0", { signal: "@resolution", inputClass: "size-content" } );
                 panel.endLine( "items-center h-full" );
             }
 
@@ -166,13 +167,13 @@ const ShaderHub =
         if( !this.timePaused )
         {
             this.device.queue.writeBuffer(
-                this.gpuBuffers[ "timeDelta" ],
+                this.gpuBuffers[ "iTimeDelta" ],
                 0,
                 new Float32Array([ this.timeDelta ])
             );
 
             this.device.queue.writeBuffer(
-                this.gpuBuffers[ "time" ],
+                this.gpuBuffers[ "iTime" ],
                 0,
                 new Float32Array([ this.elapsedTime ])
             );
@@ -180,7 +181,7 @@ const ShaderHub =
             this.elapsedTime += this.timeDelta;
 
             this.device.queue.writeBuffer(
-                this.gpuBuffers[ "frameCount" ],
+                this.gpuBuffers[ "iFrame" ],
                 0,
                 new Int32Array([ this.frameCount ])
             );
@@ -192,18 +193,28 @@ const ShaderHub =
         }
 
         this.device.queue.writeBuffer(
-            this.gpuBuffers[ "resolution" ],
+            this.gpuBuffers[ "iResolution" ],
             0,
             new Float32Array([ this.resolutionX ?? this.gpuCanvas.offsetWidth, this.resolutionY ?? this.gpuCanvas.offsetHeight ])
         );
 
-        this.device.queue.writeBuffer(
-            this.gpuBuffers[ "mouse" ],
-            0,
-            new Float32Array([
-                this.mousePosition[ 0 ], this.mousePosition[ 1 ],
-                this.lastMousePosition[ 0 ] * ( this._mouseDown ? 1.0 : -1.0 ), this.lastMousePosition[ 1 ] * ( this._mousePressed ? 1.0 : -1.0 ) ])
-        );
+        // Write mouse data
+        {
+            const data =
+            [
+                this.mousePosition[ 0 ], this.mousePosition[ 1 ],           // current position when pressed
+                this.lastMousePosition[ 0 ], this.lastMousePosition[ 1 ],   // start position
+                this.lastMousePosition[ 0 ] - this.mousePosition[ 0 ], 
+                this.lastMousePosition[ 1 ] - this.mousePosition[ 1 ],      // delta position
+                this._mouseDown ?? -1, this._mousePressed ? 1.0 : -1.0      // button clicks
+            ];
+
+            this.device.queue.writeBuffer(
+                this.gpuBuffers[ "iMouse" ],
+                0,
+                new Float32Array( data )
+            );
+        }
 
         this.lastTime = now;
 
@@ -216,7 +227,6 @@ const ShaderHub =
             // Fill buffers and textures for each pass channel
             for( let c = 0; c < pass.channels?.length ?? 0; ++c )
             {
-                const isCurrentPass = ( this.currentPass.name === pass.name );
                 const channelName = pass.channels[ c ];
                 if( !channelName ) continue;
 
@@ -224,16 +234,16 @@ const ShaderHub =
                 {
                     if( channelName === "Keyboard" )
                     {
-                        await this.createKeyboardTexture( c, true );
+                        await this.createKeyboardTexture( c );
                     }
                     else if( channelName.startsWith( "Buffer" ) )
                     {
-                        await this.loadBufferChannel( pass, channelName, c, isCurrentPass )
+                        await this.loadBufferChannel( pass, channelName, c )
                     }
                     else // Texture from file
                     {
                         // Only update preview in case that's the current pass
-                        await this.createTexture( channelName, c, isCurrentPass );
+                        await this.createTexture( channelName, c );
                     }
                 }
 
@@ -245,9 +255,9 @@ const ShaderHub =
                 pass.updateUniforms();
             }
 
-            if( !this._lastShaderCompilationWithErrors )
+            if( !this._lastShaderCompilationWithErrors && !this._compilingShader )
             {
-                await pass.draw(
+                await pass.execute(
                     this.presentationFormat,
                     this.webGPUContext,
                     this.gpuBuffers
@@ -269,6 +279,18 @@ const ShaderHub =
         }
 
         this._mousePressed = false;
+
+        if( this.capturer )
+        {
+            this.capturer.capture( this.gpuCanvas );
+
+            this.captureFrameCount++;
+
+            if( this.captureFrameCount == this.exportFramesCount )
+            {
+                this.saveCapture();
+            }
+        }
 
         requestAnimationFrame( this.onFrame.bind( this ) );
     },
@@ -292,8 +314,8 @@ const ShaderHub =
 
     async onMouseDown( e )
     {
-        this._mouseDown = e;
-        this.mousePosition = [ e.offsetX, e.offsetY ];
+        this._mouseDown = parseInt( e.button );
+        this.mousePosition = [ e.offsetX, this.gpuCanvas.offsetHeight - e.offsetY ];
         this.lastMousePosition = [ ...this.mousePosition ];
         this._mousePressed = true;
     },
@@ -305,9 +327,9 @@ const ShaderHub =
 
     async onMouseMove( e )
     {
-        if( this._mouseDown )
+        if( this._mouseDown !== undefined )
         {
-            this.mousePosition = [ e.offsetX, e.offsetY ];
+            this.mousePosition = [ e.offsetX, this.gpuCanvas.offsetHeight - e.offsetY ];
         }
     },
 
@@ -316,6 +338,7 @@ const ShaderHub =
         this.resizeBuffers( xResolution, yResolution );
         this.resolutionX = xResolution;
         this.resolutionY = yResolution;
+        LX.emit( "@resolution", `${ xResolution }x${ yResolution }` );
     },
 
     async onShaderEditorCreated( shader, canvas )
@@ -340,8 +363,6 @@ const ShaderHub =
                 }
 
                 this.shader.passes.splice( passIndex, 1 );
-                this.renderPipelines.splice( passIndex, 1 );
-                this.renderBindGroups.splice( passIndex, 1 );
 
                 await this.compileShader();
             }
@@ -360,20 +381,27 @@ const ShaderHub =
 
             const shaderPass = new ShaderPass( shader, this.device, pass );
             this.shader.passes.push( shaderPass );
+            this.shader.likes = [];
         }
         else
         {
             const json = JSON.parse( await fs.requestFile( this.shader.url, "text" ) );
             console.assert( json, "DB: No JSON Shader data available!" );
 
+            this.shader._json = LX.deepCopy( json );
+            this.shader.likes = [ ...( json.likes ?? [] ) ];
+
             for( const pass of json.passes ?? [] )
             {
                 pass.resolutionX = this.resolutionX;
                 pass.resolutionY = this.resolutionY;
 
+                pass.uniforms = pass.uniforms ?? [];
+                pass.uniforms.forEach( u => u.type = u.type ?? "f32");
+
                 // Push passes to the shader
                 const shaderPass = new ShaderPass( shader, this.device, pass );
-                if( pass.type === "buffer" )
+                if( pass.type === "buffer" || pass.type === "compute" )
                 {
                     console.assert( shaderPass.textures, "Buffer does not have render target textures" );
                     this.gpuTextures[ pass.name ] = shaderPass.textures;
@@ -388,6 +416,9 @@ const ShaderHub =
                 }
             }
         }
+
+        const alreadyLiked = fs?.user && this.shader.likes.includes( fs.getUserId() );
+        LX.emit( "@on_like_changed", [ this.shader.likes.length, alreadyLiked ] );
 
         this.currentPass = this.shader.passes.at( -1 );
     },
@@ -518,33 +549,33 @@ const ShaderHub =
 
         // Input Parameters
         {
-            this.gpuBuffers[ "time" ] = this.device.createBuffer({
+            this.gpuBuffers[ "iTime" ] = this.device.createBuffer({
                 size: 4,
                 usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
             });
 
-            this.gpuBuffers[ "timeDelta" ] = this.device.createBuffer({
+            this.gpuBuffers[ "iTimeDelta" ] = this.device.createBuffer({
                 size: 4,
                 usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
             });
 
-            this.gpuBuffers[ "frameCount" ] = this.device.createBuffer({
+            this.gpuBuffers[ "iFrame" ] = this.device.createBuffer({
                 size: 4,
                 usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
             });
 
-            this.gpuBuffers[ "resolution" ] = this.device.createBuffer({
+            this.gpuBuffers[ "iResolution" ] = this.device.createBuffer({
                 size: 8,
                 usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
             });
 
-            this.gpuBuffers[ "mouse" ] = this.device.createBuffer({
-                size: 16,
+            this.gpuBuffers[ "iMouse" ] = this.device.createBuffer({
+                size: 32,
                 usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
             });
         }
 
-        this.globalSampler = this.device.createSampler({
+        Shader.globalSampler = this.device.createSampler({
             magFilter: 'linear',
             minFilter: 'linear',
         });
@@ -558,6 +589,8 @@ const ShaderHub =
         {
             return;
         }
+
+        options = { ...options, flipY: true };
 
         const url = await fs.getFileUrl( fileId );
         const data = await fs.requestFile( url );
@@ -583,13 +616,13 @@ const ShaderHub =
 
         if( updatePreview )
         {
-            ui.updateShaderChannelPreview( channel, url );
+            await ui.updateShaderChannelsView( null, channel );
         }
 
         return imageTexture;
     },
 
-    async createKeyboardTexture( channel, updatePreview )
+    async createKeyboardTexture( channel, updatePreview = false )
     {
         const dimensions = [ 256, 3 ];
         const data = [];
@@ -612,9 +645,10 @@ const ShaderHub =
             data.push( 255 * ( this.keyPressed.get( w ) === true ? 1 : 0 ), 0, 0, 255 );
         }
 
+        const imageName = "Keyboard";
         const imageData = new ImageData( new Uint8ClampedArray( data ), dimensions[ 0 ], dimensions[ 1 ] );
         const imageBitmap = await createImageBitmap( imageData );
-        const imageTexture = this.device.createTexture({
+        const imageTexture = this.gpuTextures[ imageName ] ?? this.device.createTexture({
             label: "KeyboardTexture",
             size: [ imageBitmap.width, imageBitmap.height, 1 ],
             format: 'rgba8unorm',
@@ -632,7 +666,6 @@ const ShaderHub =
 
         // Recreate stuff if we update the texture and
         // a shader pass is using it
-        const imageName = "Keyboard";
         this.gpuTextures[ imageName ] = imageTexture;
 
         const pass = this.currentPass;
@@ -646,58 +679,41 @@ const ShaderHub =
         {
             pass.channels[ channel ] = imageName;
 
-            const passIndex = this.shader.passes.indexOf( pass );
-            this.renderPipelines[ passIndex ] = null;
-            this.renderBindGroups[ passIndex ] = null;
-
-            // await this.compileShader( false, pass );
-
             if( updatePreview )
             {
-                ui.updateShaderChannelPreview( channel, "images/keyboard.png" );
+                await ui.updateShaderChannelsView( pass );
             }
         }
     },
 
-    async compileShader( showFeedback = true, pass )
+    async compileShader( showFeedback = true, pass, focusCanvas = false, manualCompile = false )
     {
         this._lastShaderCompilationWithErrors = false;
+        this._compilingShader = true;
 
-        ui.editor.processLines();
-
-        const tabs = ui.editor.tabs.tabs;
         const compilePasses = pass ? [ pass ] : this.shader.passes;
 
         for( let i = 0; i < compilePasses.length; ++i )
         {
             // Buffers and images draw
             const pass = compilePasses[ i ];
-            pass.codeLines = tabs[ pass.name ].lines;
-            console.assert( pass.codeLines, `No tab with name ${ pass.name }` );
             if( pass.type === "common" ) continue;
 
-            const result = await pass.compile( this.presentationFormat, this.gpuBuffers, this.gpuTextures );
+            const result = await pass.compile( this.presentationFormat, this.gpuBuffers );
             if( result !== WEBGPU_OK ) // error object
             {
-                ui.editor.loadTab( pass.name ); // Open the tab with the error
-
-                // Make async so the tab is opened before adding the error feedback
-                LX.doAsync( () => {
-
-                    const mainImageLineOffset = result.code.split( "\n" ).indexOf( pass.codeLines[ 0 ] );
-                    console.assert( mainImageLineOffset > 0 );
-
-                    for( const msg of result.messages )
-                    {
-                        const fragLineNumber = msg.lineNum - ( mainImageLineOffset );
-                    }
-                }, 10 );
-
                 this._lastShaderCompilationWithErrors = true;
-
                 return WEBGPU_ERROR; // Stop at first error
             }
         }
+
+        if( focusCanvas )
+        {
+            this.gpuCanvas.focus();
+        }
+
+        this.manualCompile |= ( manualCompile ?? false );
+        this._compilingShader = false;
 
         return WEBGPU_OK;
     },
