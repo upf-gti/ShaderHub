@@ -1004,6 +1004,9 @@ class Shader {
         const buffers = this.passes.filter( p => p.type === "buffer" );
         if( buffers.length ) features.push( "multipass" );
 
+        const computes = this.passes.filter( p => p.type === "compute" );
+        if( computes.length ) features.push( "compute" );
+
         this.passes.some( p => {
             const keyboardPasses = p.channels.filter( u => u === "Keyboard" );
             if( keyboardPasses.length )
