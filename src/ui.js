@@ -599,6 +599,7 @@ export const ui = {
                         uid,
                         likeCount: document[ "like_count" ] ?? 0,
                         public: document[ "public" ] ?? true,
+                        url: await this.fs.getFileUrl( document[ "file_id" ] ),
                     };
 
                     const previewName = `${ shaderInfo.uid }.png`;
@@ -642,6 +643,16 @@ export const ui = {
                                     await this.fs.updateDocument( FS.SHADERS_COLLECTION_ID, uid, {
                                         "public": shaderInfo.public,
                                     } );
+                                } },
+                                { name: "Export", icon: "Download", callback: async () => {
+                                    const json = JSON.parse( await this.fs.requestFile( shaderInfo.url, "text" ) );
+                                    const code = json.passes.map( (p, i) => {
+                                        const lines = [];
+                                        if( i !== 0 ) lines.push( "" );
+                                        lines.push( `// ${ p.name }`, "", ...p.codeLines );
+                                        return lines.join( "\n" );
+                                    } ).join( "\n" );
+                                    LX.downloadFile( `${ shaderInfo.name.replaceAll( " ", "" ) }.wgsl`, code );
                                 } },
                                 null,
                                 { name: "Delete", icon: "Trash2", className: "fg-error", callback: () => ShaderHub.deleteShader( { uid, name } ) },
