@@ -85,7 +85,6 @@ class ShaderPass {
         else if( this.type === "compute" )
         {
             this.resolution         = [ data.resolutionX ?? 0, data.resolutionY ?? 0 ];
-            this.workGroupSize      = [ 16, 16, 1 ];
             this.computePipelines   = [ ];
             this.storageBuffers     = { };
 
@@ -206,6 +205,8 @@ class ShaderPass {
                     continue;
                 }
 
+                // console.log(pipelineRes.pipeline.label)
+
                 const computePass = commandEncoder.beginComputePass();
                 computePass.setPipeline( pipelineRes.pipeline );
 
@@ -215,19 +216,19 @@ class ShaderPass {
                     computePass.setBindGroup( 0, bindGroup );
                 }
 
-                const storageBindGroup = pipelineRes.storageBindGroup;
+                const storageBindGroup = ( this.frameCount % 2 === 0 ) ? pipelineRes.storageBindGroupB : pipelineRes.storageBindGroup;
                 if( storageBindGroup )
                 {
                     computePass.setBindGroup( 1, storageBindGroup );
                 }
 
-                const wgSizeX = this.workGroupSize[ 0 ];
-                const wgSizeY = this.workGroupSize[ 1 ];
-                const wgSizeZ = this.workGroupSize[ 2 ] ?? 1;
+                const wgSizeX = pipelineRes.workGroupSize[ 0 ];
+                const wgSizeY = pipelineRes.workGroupSize[ 1 ];
+                const wgSizeZ = pipelineRes.workGroupSize[ 2 ] ?? 1;
 
-                const dispatchX = Math.ceil( this.resolution[ 0 ]  / wgSizeX );
-                const dispatchY = Math.ceil( this.resolution[ 1 ]  / wgSizeY );
-                const dispatchZ = wgSizeZ;
+                const dispatchX = pipelineRes.workGroupCount[ 0 ] ?? Math.ceil( this.resolution[ 0 ] / wgSizeX );
+                const dispatchY = pipelineRes.workGroupCount[ 1 ] ?? Math.ceil( this.resolution[ 1 ] / wgSizeY );
+                const dispatchZ = pipelineRes.workGroupCount[ 2 ] ?? wgSizeZ;
 
                 computePass.dispatchWorkgroups( dispatchX, dispatchY, dispatchZ );
 
@@ -318,7 +319,12 @@ class ShaderPass {
                 // Attach used bindings extracted from code
                 p.bindings = result.bindings;
 
-                this.computePipelines.push( { pipeline: p, executeOnce: ( entryName === result.executeOnce ) } );
+                this.computePipelines.push( {
+                    pipeline: p,
+                    executeOnce: ( entryName === result.executeOnce ),
+                    workGroupSize: result.wgSize,
+                    workGroupCount: ( entryName === result.wgCount[ 0 ] ? result.wgCount.slice( 1 ) : [] )
+                } );
             }
 
             console.warn( "Info: Compute Pipeline created!" );
@@ -424,7 +430,7 @@ class ShaderPass {
         return this.bindGroup;
     }
 
-    async createStorageBindGroup( pipeline )
+    async createStorageBindGroup( pipeline, useSecondary )
     {
         if( !pipeline )
         {
@@ -436,22 +442,24 @@ class ShaderPass {
         let bindingIndex    = 0;
 
         this.storageBuffers.map( ( u, index ) => {
-            const buffer = this.storageBuffers[ index ].resource;
+            const buffer = useSecondary ? this.storageBuffers[ index ].resourceB : this.storageBuffers[ index ].resource;
             entries.push( {
                 binding: bindingIndex++,
                 resource: { buffer }
             } );
         } );
 
-        this.storageBindGroup = await this.device.createBindGroup({
-            label: "Storage Bind Group A",
+        const storageBindGroup = await this.device.createBindGroup({
+            label: `Storage Bind Group ${ useSecondary ? "B" : "A" }`,
             layout: pipeline.getBindGroupLayout( 1 ),
             entries
         });
 
+        this[ `storageBindGroup${ useSecondary ? 'B' : '' }` ] = storageBindGroup;
+
         console.warn( "Info: Storage Bind Group created!" );
 
-        return this.storageBindGroup;
+        return storageBindGroup;
     }
 
     async compile( format, buffers )
@@ -487,6 +495,13 @@ class ShaderPass {
                 {
                     return WEBGPU_ERROR;
                 }
+
+                const storageBindGroupB = await this.createStorageBindGroup( p.pipeline, true );
+                p.storageBindGroupB = storageBindGroupB;
+                if( storageBindGroupB?.constructor !== GPUBindGroup )
+                {
+                    return WEBGPU_ERROR;
+                }
             }
         }
 
@@ -497,7 +512,7 @@ class ShaderPass {
 
     async validate( entryCode )
     {
-        const { code, bindings, executeOnce } = this.getShaderCode( true, entryCode );
+        const { code, bindings, executeOnce, wgSize, wgCount } = this.getShaderCode( true, entryCode );
 
         // Close all toasts
         document.querySelectorAll( ".lextoast" ).forEach( t => t.close() );
@@ -524,7 +539,7 @@ class ShaderPass {
             }
         }
 
-        return { valid: true, module, bindings, executeOnce };
+        return { valid: true, module, bindings, executeOnce, wgSize, wgCount };
     }
 
     extractComputeFunctions( lines )
@@ -553,6 +568,21 @@ class ShaderPass {
             }
             else if( currentFunctionCode )
             {
+                if( line.startsWith( "#" ) ) // Make pre-processor utility code
+                {
+                    const code = currentFunctionCode.join( "\n" );
+                    const regex = /(@compute[\s\S]*?fn\s+([A-Za-z_]\w*)\s*\(|fn\s+(mainCompute)\s*\()/g;
+
+                    let match;
+
+                    while ( ( match = regex.exec( code ) ) !== null )
+                    {
+                        results[ match[ 2 ] || match[ 3 ] ] = code;
+                    }
+
+                    continue;
+                }
+
                 currentFunctionCode.push( line );
             }
         }
@@ -721,11 +751,19 @@ class ShaderPass {
             templateCodeLines.splice( mainImageIndex, 1, ...lines );
         }
 
-        const shaderResult = { code: templateCodeLines.join( "\n" ), bindings, executeOnce: this.executeOnce };
+        const shaderResult = {
+            code: templateCodeLines.join( "\n" ),
+            bindings,
+            executeOnce: this.executeOnce,
+            wgSize: this.workGroupSize,
+            wgCount: this.workGroupCount ?? []
+        };
 
         // delete tmp context
         delete this.structs;
         delete this.executeOnce;
+        delete this.workGroupSize;
+        delete this.workGroupCount;
 
         return shaderResult;
     }
@@ -820,9 +858,18 @@ class ShaderPass {
     {
         const tokens = line.split( " " );
 
-        if( line.startsWith( "#workgroup_size" ) )
+        if( line.includes( "@workgroup_size" ) )
         {
-            this.workGroupSize = [ parseInt( tokens[ 1 ] ), parseInt( tokens[ 2 ] ?? "16" ), parseInt( tokens[ 3 ] ?? "1" ) ];
+            const match = line.match( /@workgroup_size\s*\(\s*(\d+)(?:\s*,\s*(\d+))?(?:\s*,\s*(\d+))?\s*\)/ );
+            if( match )
+            {
+                const [, x, y, z] = match;
+                this.workGroupSize = [ parseInt( x ?? 16 ), parseInt( y ?? 16 ), parseInt( z ?? 1 ) ];
+            }
+        }
+        else if( line.startsWith( "#workgroup_count" ) )
+        {
+            this.workGroupCount = [ tokens[ 1 ], parseInt( tokens[ 2 ] ), parseInt( tokens[ 3 ] ?? "16" ), parseInt( tokens[ 4 ] ?? "1" ) ];
             return "";
         }
         else if( line.startsWith( "#dispatch_once" ) )
@@ -843,8 +890,14 @@ class ShaderPass {
                 usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
             });
 
+            const storageBufferB = this.device.createBuffer({
+                label: `${ bufferName} (storage B)`,
+                size: bufferSize,
+                usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+            });
+
             const index = this.storageBuffers.length;
-            this.storageBuffers.push( { name: bufferName, size: bufferSize, resource: storageBuffer } );
+            this.storageBuffers.push( { name: bufferName, size: bufferSize, resource: storageBuffer, resourceB: storageBufferB } );
             return `@group(1) @binding(${ index }) var<storage, read_write> ${ bufferName }: ${ bufferType };`;
         }
 
