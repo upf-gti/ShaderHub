@@ -13,7 +13,7 @@
 .webgpu-canvas:-ms-fullscreen { width: 100%; height: 100%; }
 
 .code-border-success { border: 1px solid var(--global-color-success) }
-.code-border-default { border: 1px solid transparent }
+.code-border-default { border: 1px solid var(--global-color-tertiary) }
 .code-border-error { border: 1px solid var(--global-color-error) }
 
 .box-shadow { box-shadow: 0 0 8px 4px rgba(0, 0, 0, 0.15) }
@@ -72,13 +72,12 @@
 }
 
 .channel-title {
-	border-bottom-left-radius: 8px;
-	border-bottom-right-radius: 8px;
+	border-top-left-radius: 8px;
+	border-top-right-radius: 8px;
 }
 
 .shader-list-initial {
 	grid-template-columns:repeat(2, 1fr);
-	/* grid-auto-rows: 1fr; */
 }
 
 .shader-item {

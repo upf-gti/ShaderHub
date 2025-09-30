@@ -1150,10 +1150,7 @@ Shader.COMPUTE_MAIN_TEMPLATE = `fn mainCompute(id: vec3u) {
     // Time varying pixel colour
     var col = 0.5 + 0.5 * cos(iTime + uv.xyx + vec3f(0.,2.,4.));
 
-    // Convert from gamma-encoded to linear colour space
-    col = pow(col, vec3f(2.2));
-
-    // Output to screen (linear colour space)
+    // Output to screen (gamma colour space, will be auto-converted later)
     textureStore(screen, id.xy, vec4f(col, 1.0));
 }`.split( "\n" );
 

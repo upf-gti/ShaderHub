@@ -372,7 +372,7 @@ const ShaderHub =
         } );
 
         const getNextBufferName = () => {
-            const usedNames = this.shader.passes.filter( p => p.type === "buffer" ).map( p => p.name );
+            const usedNames = this.shader.passes.filter( p => ( p.type === "buffer" ) || ( p.type === "compute" ) ).map( p => p.name );
             const possibleNames = ["BufferA", "BufferB", "BufferC", "BufferD"];
 
             // Find the first unused name
@@ -385,36 +385,13 @@ const ShaderHub =
             return null;
         }
 
-        if( passType === "buffer" )
+        if( passType === "buffer" || passType === "compute" )
         {
             indexOffset = -2;
             passName = shaderPass.name = getNextBufferName();
             this.shader.passes.splice( this.shader.passes.length - 1, 0, shaderPass ); // Add before MainImage
 
-            console.assert( shaderPass.textures, "Buffer does not have render target textures" );
-            this.gpuTextures[ passName ] = shaderPass.textures;
-        }
-        else if( passType === "compute" )
-        {
-            // const getNextComputeName = () => {
-            //     const usedNames = this.shader.passes.filter( p => p.type === "compute" ).map( p => p.name );
-            //     const possibleNames = ["ComputeA", "ComputeB", "ComputeC", "ComputeD"];
-
-            //     // Find the first unused name
-            //     for( const name of possibleNames )
-            //     {
-            //         if( !usedNames.includes( name )) return name;
-            //     }
-
-            //     // All used, should not happen due to prev checks
-            //     return null;
-            // }
-
-            indexOffset = -2;
-            passName = shaderPass.name = getNextBufferName();
-            this.shader.passes.splice( this.shader.passes.length - 1, 0, shaderPass ); // Add before MainImage
-
-            console.assert( shaderPass.textures, "Compute does not have render target textures" );
+            console.assert( shaderPass.textures, "Buffer/Compute pass does not have render target textures" );
             this.gpuTextures[ passName ] = shaderPass.textures;
         }
         else if( passType === "common" )
@@ -620,32 +597,32 @@ const ShaderHub =
         return window.location.origin + window.location.pathname;
     },
 
-    openBrowseList()
+    openBrowseList( e )
     {
         const needsReload = window.location.search === "";
-        window.location.href = `${ this.getFullPath() }#browse`;
+        window.open( `${ this.getFullPath() }#browse`, e?.button !== 1 ? "_self" : undefined );
         if( needsReload ) window.location.reload();
     },
 
-    openProfile( userID )
+    openProfile( userID, e )
     {
-        window.location.href = `${ this.getFullPath() }?profile=${ userID }`;
+        window.open( `${ this.getFullPath() }?profile=${ userID }`, e?.button !== 1 ? "_self" : undefined );
     },
 
-    openProfileLikes( userID )
+    openProfileLikes( userID, e )
     {
-        window.location.href = `${ this.getFullPath() }?profile=${ userID }&show_likes=true`;
+        window.open( `${ this.getFullPath() }?profile=${ userID }&show_likes=true`, e?.button !== 1 ? "_self" : undefined );
     },
 
-    openShader( shaderID )
+    openShader( shaderID, e )
     {
-        window.location.href = `${ this.getFullPath() }?shader=${ shaderID }`;
+        window.open( `${ this.getFullPath() }?shader=${ shaderID }`, e?.button !== 1 ? "_self" : undefined );
     },
 
-    openHelp()
+    openHelp( e )
     {
         const needsReload = window.location.search === "";
-        window.location.href = `${ this.getFullPath() }#help`;
+        window.open( `${ this.getFullPath() }#help`, e?.button !== 1 ? "_self" : undefined );
         if( needsReload ) window.location.reload();
     },
 

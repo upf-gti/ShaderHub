@@ -136,10 +136,10 @@ export const ui = {
             } );
         }
 
-        menubar.setButtonImage("ShaderHub", `images/icon_${ starterTheme }.png`, () => {
-            const needsReload = window.location.search === "";
+        menubar.setButtonImage("ShaderHub", `images/icon_${ starterTheme }.png`, ( element, event ) => {
+            const needsReload = ( window.location.search === "" );
             window.location.hash = "";
-            window.location.href = ShaderHub.getFullPath();
+            window.open( `${ ShaderHub.getFullPath() }`, event?.button !== 1 ? "_self" : undefined );
             if( needsReload ) window.location.reload();
         }, { float: "left" } );
 
@@ -864,7 +864,7 @@ export const ui = {
             onCreateFile: ( editor ) => null,
             onContextMenu: ( editor, content, event ) => {
                 const pass = ShaderHub.currentPass;
-                if( pass.name === "Common" ) return;
+                if( pass.name === "Common" || !content ) return;
 
                 const word = content.trim().match( /([A-Za-z0-9_]+)/g )[ 0 ];
                 if( !word ) return;
@@ -897,8 +897,8 @@ export const ui = {
         });
 
         var [ graphicsArea, shaderDataArea ] = leftArea.split({ type: "vertical", sizes: ["auto", "auto"], resize: false });
-        graphicsArea.root.className += " bg-none box-shadow rounded-lg";
-        shaderDataArea.root.className += " bg-none box-shadow rounded-lg items-center justify-center";
+        graphicsArea.root.className += " bg-none box-shadow box-border rounded-lg";
+        shaderDataArea.root.className += " bg-none box-shadow box-border rounded-lg items-center justify-center";
 
         // Add Shader data
         this._createShaderDataView = async () =>
@@ -1871,7 +1871,7 @@ export const ui = {
             const child = this.channelsContainer.children[ channelIndex ];
             if( child ) this.channelsContainer.removeChild( child );
 
-            const channelContainer = LX.makeContainer( ["100%", "100%"], "relative text-center content-center box-shadow rounded-lg bg-secondary hover:bg-tertiary cursor-pointer overflow-hidden", "" );
+            const channelContainer = LX.makeContainer( ["100%", "100%"], "relative text-center content-center box-shadow box-border rounded-lg bg-secondary hover:bg-tertiary cursor-pointer overflow-hidden", "" );
             channelContainer.style.minHeight = "100px";
             this.channelsContainer.insertChildAtIndex( channelContainer, channelIndex );
 
