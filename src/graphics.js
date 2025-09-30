@@ -275,7 +275,8 @@ class ShaderPass {
             });
 
             // Attach used bindings extracted from code
-            this.pipeline.bindings = result.bindings;
+            this.pipeline.defaultBindings = result.defaultBindings;
+            this.pipeline.customBindings = result.customBindings;
 
             console.warn( "Info: Render Pipeline created!" );
         }
@@ -301,7 +302,7 @@ class ShaderPass {
                 const entryName = entry.replace( "mainCompute", "compute_main" );
                 const entryUtils = `${ utilsCode }\n${ entryCode.includes( "mainCompute" ) ? "" : "fn mainCompute(id: vec3u) { }" }`;
 
-                const result = await this.validate( `${ entryUtils }\n${ entryCode }` );
+                const result = await this.validate( entryName, `${ entryUtils }\n${ entryCode }` );
                 if( !result.valid )
                 {
                     return result;
@@ -317,13 +318,15 @@ class ShaderPass {
                 } );
 
                 // Attach used bindings extracted from code
-                p.bindings = result.bindings;
+                p.defaultBindings = result.defaultBindings;
+                p.customBindings = result.customBindings;
 
                 this.computePipelines.push( {
                     pipeline: p,
-                    executeOnce: ( entryName === result.executeOnce ),
-                    workGroupSize: result.wgSize,
-                    workGroupCount: ( entryName === result.wgCount[ 0 ] ? result.wgCount.slice( 1 ) : [] )
+                    usesComputeScreenTexture: result.usesComputeScreenTexture,
+                    executeOnce: result.executeOnce[ entryName ] ?? false,
+                    workGroupSize: result.wgSizes[ entryName ] ?? [ 16, 16, 1 ],
+                    workGroupCount: result.wgCounts[ entryName ] ?? []
                 } );
             }
 
@@ -335,8 +338,9 @@ class ShaderPass {
         return this.pipeline;
     }
 
-    async createBindGroup( pipeline, buffers )
+    async createBindGroup( p, buffers )
     {
+        const pipeline = p.pipeline ?? p;
         if( !pipeline )
         {
             return;
@@ -346,16 +350,18 @@ class ShaderPass {
 
         const entries = [];
 
-        console.assert( pipeline.bindings, "Pipeline does not have used bindings!" );
+        console.assert( pipeline.defaultBindings, "Pipeline does not have default bindings!" );
+        console.assert( pipeline.customBindings, "Pipeline does not have custom bindings!" );
 
-        Object.entries( pipeline.bindings ).forEach( b => {
+        Object.entries( pipeline.defaultBindings ).forEach( b => {
             entries.push( { binding: bindingIndex++, resource: { buffer: buffers[ b[ 1 ] ] } } );
         } );
 
         const customUniformCount = this.uniforms.length;
         if( customUniformCount )
         {
-            this.uniforms.map( ( u, index ) => {
+            this.uniforms.forEach( ( u, index ) => {
+                if( !pipeline.customBindings[ u.name ] ) return;
                 const buffer = this.uniformBuffers[ index ];
                 this.device.queue.writeBuffer(
                     buffer,
@@ -369,13 +375,13 @@ class ShaderPass {
             } );
         }
 
-        const bindings = this.channels.filter( ( u, i ) => u !== undefined && this.channelTextures[ i ] );
+        const channelBindings = this.channels.filter( ( u, i ) => u !== undefined && this.channelTextures[ i ] );
 
         // Store base entries to create 2nd bind group for buffer passes
         let baseBindingIndex = bindingIndex;
         let baseEntries = [ ...entries ];
 
-        if( bindings.length )
+        if( channelBindings.length )
         {
             entries.push( ...this.channels.map( ( channelName, index ) => {
                 if( !channelName ) return;
@@ -387,7 +393,7 @@ class ShaderPass {
             entries.push( { binding: bindingIndex++, resource: Shader.globalSampler } );
         }
 
-        if( this.type === "compute" )
+        if( this.type === "compute" && p.usesComputeScreenTexture )
         {
             entries.push( { binding: bindingIndex++, resource: this.textures[ Constants.BUFFER_PASS_TEXTURE_A_INDEX ].createView() } );
         }
@@ -401,7 +407,7 @@ class ShaderPass {
         // Create 2nd bind group for buffer passes to swap textures
         if( this.type === "buffer" || this.type === "compute" )
         {
-            if( bindings.length )
+            if( channelBindings.length )
             {
                 baseEntries.push( ...this.channels.map( ( channelName, index ) => {
                     if( !channelName ) return;
@@ -413,7 +419,7 @@ class ShaderPass {
                 baseEntries.push( { binding: baseBindingIndex++, resource: Shader.globalSampler } );
             }
 
-            if( this.type === "compute" )
+            if( this.type === "compute" && p.usesComputeScreenTexture )
             {
                 baseEntries.push( { binding: baseBindingIndex++, resource: this.textures[ Constants.BUFFER_PASS_TEXTURE_B_INDEX ].createView() } );
             }
@@ -475,7 +481,7 @@ class ShaderPass {
         for( const p of pipelines )
         {
             if( !p ) continue;
-            const bindGroup = await this.createBindGroup( p.pipeline ?? p, buffers );
+            const bindGroup = await this.createBindGroup( p, buffers );
             p.bindGroup = this.bindGroup;
             p.bindGroupB = this.bindGroupB;
             if( bindGroup?.constructor !== GPUBindGroup )
@@ -510,14 +516,14 @@ class ShaderPass {
         return WEBGPU_OK;
     }
 
-    async validate( entryCode )
+    async validate( entryName, entryCode )
     {
-        const { code, bindings, executeOnce, wgSize, wgCount } = this.getShaderCode( true, entryCode );
+        const r = this.getShaderCode( true, entryName, entryCode );
 
         // Close all toasts
         document.querySelectorAll( ".lextoast" ).forEach( t => t.close() );
 
-        const module = this.device.createShaderModule({ code });
+        const module = this.device.createShaderModule({ code: r.code });
         const info = await module.getCompilationInfo();
 
         if( info.messages.length > 0 )
@@ -534,12 +540,17 @@ class ShaderPass {
 
             if( errorMsgs.length > 0 )
             {
-                console.log( entryCode );
-                return { valid: false, code, messages: errorMsgs };
+                console.log( entryCode ?? "" );
+                return { valid: false, code: r.code, messages: errorMsgs };
             }
         }
 
-        return { valid: true, module, bindings, executeOnce, wgSize, wgCount };
+        return { valid: true, module, ...r };
+    }
+
+    resetExecution()
+    {
+        ( this.computePipelines ?? [] ).forEach( p => p.executionDone = false );
     }
 
     extractComputeFunctions( lines )
@@ -607,13 +618,15 @@ class ShaderPass {
     {
         const templateCodeLines = [ ...( this.type === "compute" ) ? Shader.COMPUTER_SHADER_TEMPLATE : Shader.RENDER_SHADER_TEMPLATE ];
         const lines = [ ...templateCodeLines, ...( entryCode ? entryCode.split( "\n" ) : this.codeLines ) ];
-        return lines.filter( l => l.includes( binding ) ).length > 0;
+        const regex = new RegExp( `\\b${ binding }\\b` );
+        return lines.some( l => regex.test( l ) );
     }
 
-    getShaderCode( includeBindings = true, entryCode )
+    getShaderCode( includeBindings = true, entryName, entryCode )
     {
         const templateCodeLines = [ ...( this.type === "compute" ) ? Shader.COMPUTER_SHADER_TEMPLATE : Shader.RENDER_SHADER_TEMPLATE ];
-        const bindings = {};
+        const defaultBindings   = {};
+        const customBindings    = {};
 
         // Invert uv y if buffer render target
         const invertUvsIndex = templateCodeLines.indexOf( "$invert_uv_y" );
@@ -634,7 +647,7 @@ class ShaderPass {
                     if( u.skipBindings ?? false ) return;
                     if( !this.isBindingUsed( u.name, entryCode ) ) return;
                     const binding = bindingIndex++;
-                    bindings[ binding ] = u.name;
+                    defaultBindings[ binding ] = u.name;
                     return `@group(0) @binding(${ binding }) var<uniform> ${ u.name } : ${ u.type ?? "f32" };`;
                 } ).filter( u => u !== undefined ) );
             }
@@ -663,7 +676,10 @@ class ShaderPass {
                 console.assert( customBindingsIndex > -1 );
                 templateCodeLines.splice( customBindingsIndex, 1, ...this.uniforms.map( ( u, index ) => {
                     if( !u ) return;
-                    return `@group(0) @binding(${ bindingIndex++ }) var<uniform> ${ u.name } : ${ u.type };`;
+                    if( !this.isBindingUsed( u.name, entryCode ) ) return;
+                    const binding = bindingIndex++;
+                    customBindings[ binding ] = u.name;
+                    return `@group(0) @binding(${ binding }) var<uniform> ${ u.name } : ${ u.type };`;
                 } ).filter( u => u !== undefined ) );
             }
 
@@ -682,7 +698,8 @@ class ShaderPass {
             {
                 const outputBindingIndex = templateCodeLines.indexOf( "$output_binding" );
                 console.assert( outputBindingIndex > -1 );
-                templateCodeLines.splice( outputBindingIndex, 1, `@group(0) @binding(${ bindingIndex++ }) var screen: texture_storage_2d<rgba16float,write>;` );
+                this.usesComputeScreenTexture = this.isBindingUsed( "screen", entryCode );
+                templateCodeLines.splice( outputBindingIndex, 1, this.usesComputeScreenTexture ? `@group(0) @binding(${ bindingIndex++ }) var screen: texture_storage_2d<rgba16float,write>;` : undefined );
             }
 
             // Process some dummies so using them isn't mandatory
@@ -733,17 +750,20 @@ class ShaderPass {
 
             if( this.type === "compute" )
             {
-                this.structs        = this.parseStructs( lines.join( "\n" ) );
-                this.storageBuffers = [];
+                this.structs            = this.parseStructs( lines.join( "\n" ) );
+                this.storageBuffers     = [];
+                this.workGroupSizes     = {};
+                this.workGroupCounts    = {};
+                this.executeOnce        = {};
 
                 for( let i = 0; i < lines.length; ++i )
                 {
-                    lines[ i ] = this.parseComputeLine( lines[ i ] );
+                    lines[ i ] = this.parseComputeLine( lines[ i ], entryName );
                 }
 
                 const computeEntryIndex = templateCodeLines.indexOf( "$compute_entry" );
                 console.assert( computeEntryIndex > -1 );
-                templateCodeLines.splice( computeEntryIndex, 1, `@compute @workgroup_size(${ this.workGroupSize })` );
+                templateCodeLines.splice( computeEntryIndex, 1, `@compute @workgroup_size(${ this.workGroupSizes[ entryName ] ?? [ 16, 16, 1 ] })` );
             }
 
             const mainImageIndex = templateCodeLines.indexOf( "$main_entry" );
@@ -753,17 +773,20 @@ class ShaderPass {
 
         const shaderResult = {
             code: templateCodeLines.join( "\n" ),
-            bindings,
+            defaultBindings,
+            customBindings,
             executeOnce: this.executeOnce,
-            wgSize: this.workGroupSize,
-            wgCount: this.workGroupCount ?? []
+            wgSizes: this.workGroupSizes,
+            wgCounts: this.workGroupCounts,
+            usesComputeScreenTexture: this.usesComputeScreenTexture
         };
 
         // delete tmp context
         delete this.structs;
         delete this.executeOnce;
-        delete this.workGroupSize;
-        delete this.workGroupCount;
+        delete this.workGroupSizes;
+        delete this.workGroupCounts;
+        delete this.usesComputeScreenTexture;
 
         return shaderResult;
     }
@@ -854,7 +877,7 @@ class ShaderPass {
         return structs;
     }
 
-    parseComputeLine( line )
+    parseComputeLine( line, entryName )
     {
         const tokens = line.split( " " );
 
@@ -864,17 +887,19 @@ class ShaderPass {
             if( match )
             {
                 const [, x, y, z] = match;
-                this.workGroupSize = [ parseInt( x ?? 16 ), parseInt( y ?? 16 ), parseInt( z ?? 1 ) ];
+                this.workGroupSizes[ entryName ] = [ parseInt( x ?? 16 ), parseInt( y ?? 16 ), parseInt( z ?? 1 ) ];
             }
         }
         else if( line.startsWith( "#workgroup_count" ) )
         {
-            this.workGroupCount = [ tokens[ 1 ], parseInt( tokens[ 2 ] ), parseInt( tokens[ 3 ] ?? "16" ), parseInt( tokens[ 4 ] ?? "1" ) ];
+            const entry = tokens[ 1 ];
+            this.workGroupCounts[ entry ] = [ parseInt( tokens[ 2 ] ), parseInt( tokens[ 3 ] ?? "16" ), parseInt( tokens[ 4 ] ?? "1" ) ];
             return "";
         }
         else if( line.startsWith( "#dispatch_once" ) )
         {
-            this.executeOnce = tokens[ 1 ];
+            const entry = tokens[ 1 ];
+            this.executeOnce[ entry ] = true;
             return "";
         }
         else if( line.startsWith( "#storage" ) )

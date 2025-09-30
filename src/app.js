@@ -470,7 +470,7 @@ const ShaderHub =
 
         if( this.currentPass )
         {
-            this.currentPass.executionDone = false;
+            this.currentPass.resetExecution();
         }
 
         LX.emit( "@elapsed-time", `${ this.elapsedTime.toFixed( 2 ) }s` );
