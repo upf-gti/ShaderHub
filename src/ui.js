@@ -1821,21 +1821,25 @@ export const ui = {
             this._lastOpenedDialog.close();
         }
 
+        if( !this._dbAssets )
+        {
+            this._dbAssets = await this.fs.listDocuments( FS.ASSETS_COLLECTION_ID, [
+                // Query.equal( "category", category )
+            ] );
+        }
+
+        if( this._dbAssets.total === 0 )
+        {
+            LX.makeContainer( ["100%", "auto"], "mt-8 text-xxl font-medium justify-center text-center", "No data found.", container );
+            return;
+        }
+
         const _createChannelItems = async ( category, container ) => {
 
-            const result = await this.fs.listDocuments( FS.ASSETS_COLLECTION_ID, [
-                Query.equal( "category", category )
-            ] );
-
-            if( result.total === 0 )
-            {
-                LX.makeContainer( ["100%", "auto"], "mt-8 text-xxl font-medium justify-center text-center", "No channels found.", container );
-                return;
-            }
-
+            const assets = this._dbAssets.documents.filter( a => a.category === category );
             const usedMiscChannels = [ "Keyboard", ...( ShaderHub.shader?.passes.map( p => p.name ) ?? [] ) ];
 
-            for( const document of result.documents )
+            for( const document of assets )
             {
                 if( category === "misc" && !usedMiscChannels.includes( document.name ) )
                 {
@@ -1868,8 +1872,9 @@ export const ui = {
         if( !this.texturesContainer )
         {
             this.texturesContainer = LX.makeContainer( [ "100%", "100%" ], "grid channel-server-list gap-4 p-4 border rounded-lg justify-center overflow-scroll" );
-            await _createChannelItems( "texture", this.texturesContainer );
         }
+        this.texturesContainer.innerHTML = "";
+        await _createChannelItems( "texture", this.texturesContainer );
         this.texturesContainer.style.display = "grid";
         tabs.add( "Textures", this.texturesContainer, { selected: true } );
 
@@ -1884,7 +1889,7 @@ export const ui = {
 
         this._currentChannelIndex = channelIndex;
 
-        let dialog = new LX.Dialog( `Channel${ channelIndex } input:`, (p) => {
+        let dialog = new LX.Dialog( `[${ pass.name }] Channel${ channelIndex } input:`, (p) => {
             p.attach( area );
         }, { modal: false, close: true, minimize: false, size: [`${ Math.min( 1280, window.innerWidth - 64 ) }px`, "512px"], draggable: true });
 
