@@ -41,13 +41,13 @@ export const ui = {
         {
             menubarOptions.push(
                 {
-                    name: "New", callback: () => ShaderHub.openShader( "new" )
+                    name: "New", callback: ( k, entry, event ) => ShaderHub.openShader( "new", event )
                 },
                 {
-                    name: "Browse", callback: () => ShaderHub.openBrowseList()
+                    name: "Browse", callback: ( k, entry, event ) => ShaderHub.openBrowseList( event )
                 },
                 {
-                    name: "Help", callback: () => ShaderHub.openHelp()
+                    name: "Help", callback: ( k, entry, event ) => ShaderHub.openHelp( event )
                 }
             );
         }
