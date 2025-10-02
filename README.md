@@ -1,49 +1,42 @@
 # ShaderHub
-WebGPU Shadertoy-like platform to create fullscreen quad shaders.
 
-Roadmap:
-- [ ] Support sound channel
-- [ ] Shader desc/comments format
-- [ ] Shader Comments
-- [ ] Add shader tags to DB
-- [ ] Submit form for Login (LX)
-- [ ] Give more info on form validation errors (LX)
-- [ ] Give more info on form validation errors (LX)
+![logo](./images/icon_dark.png#gh-dark-mode-only)
+![logo](./images/icon_light.png#gh-light-mode-only)
 
-- [x] Support creating Compute shader passes
-- [x] Add some Texture/Keyboard Shader Utils
-- [x] Change uniforms type
-- [x] Add shader info (multipass, sound, etc) to filter based on shader
-- [x] Initial page
-- [x] Shader likes
-- [x] Share shader iframe
-- [x] Export GIF/pngs (RECORD CANVAS)
-- [x] Allow shader remixable or not
-- [x] Help/Docs section
-- [x] Shader buffers
-- [x] Fullscreen mode
-- [x] Add keyboard uniform as possible texture
-- [x] Modify Shader name, description
-- [x] Delete Shader
-- [x] Remix Shader
-- [x] Create Custom Uniform from editor text selection
-- [x] Upload shader texture channels
-- [x] Delete code tabs
-- [x] Add mouse info uniform
-- [x] Add common uniforms list
-- [x] Add Tick frames uniform
-- [x] Edit description/Upload to DB
-- [x] Upload uniforms to DB
-- [x] Compile button to save all
-- [x] Shader views without edit interface in mobile, only canvas + shader data
-- [x] Uniforms popover to Dialog
-- [x] Remove uniforms
-- [x] Use Sheet+Sidebar on mobile screens instead of menubar buttons
-- [x] Create account (FS)
-- [x] Register dialog
-- [x] Manage Common shader files (FS)
-- [x] Login dialog
-- [x] Profile page
-- [x] Update Shader content (FS)
-- [x] Update Shader preview (FS)
-- [x] Create New Shader
+ShaderHub is an experimental **WebGPU-based shader playground**.  
+It is designed as a **demo tool** for exploring graphics programming, with a focus on **education and learning WebGPU**, rather than replacing other platforms.
+
+You can test it here: [upf-gti.github.io/ShaderHub/](https://upf-gti.github.io/ShaderHub/)
+
+> ⚠️ You will probably find bugs on the way, please report them to this repository issues section!
+
+---
+
+## Features
+
+- **Multi-pass rendering** — supports both fragment and compute passes.
+- **Texture inputs / channels** — attach and use multiple textures in your shaders.
+- **Custom uniforms with sliders** — tweak shader parameters interactively.
+- **Built-in uniforms** — access time, mouse, and keyboard input directly.
+- **Shader sharing & embedding** — share shaders with a link or embed them.
+- **Export options** — record shaders to GIF or video.
+- **Accounts & remixing** — log in, save your shaders, and remix others'.
+- **Shader likes** — users can like and discover shaders.
+
+---
+
+## 📸 Screenshots
+
+![Screenshot Placeholder](./images/screenshot_2.png)
+![Screenshot Placeholder](./images/screenshot_1.png)
+
+---
+
+## Roadmap
+
+- Support sound channel
+- Shader desc/comments format
+- Shader Comments
+- Add shader tags to DB
+- Submit form for Login (LX)
+- Give more info on form validation errors (LX)
