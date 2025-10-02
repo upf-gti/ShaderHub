@@ -468,6 +468,33 @@ const ShaderHub =
             new Int32Array([ this.frameCount ])
         );
 
+        // Reset mouse data
+        {
+            const X = this.resolutionX ?? this.gpuCanvas.offsetWidth;
+            const Y = this.resolutionY ?? this.gpuCanvas.offsetHeight;
+
+            this.mousePosition      = [ X * 0.5, Y * 0.5 ];
+            this.lastMousePosition  = this.mousePosition;
+
+            this._mouseDown     = undefined;
+            this._mousePressed  = undefined;
+
+            const data =
+            [
+                this.mousePosition[ 0 ], this.mousePosition[ 1 ],           // current position when pressed
+                this.lastMousePosition[ 0 ], this.lastMousePosition[ 1 ],   // start position
+                this.lastMousePosition[ 0 ] - this.mousePosition[ 0 ], 
+                this.lastMousePosition[ 1 ] - this.mousePosition[ 1 ],      // delta position
+                this._mouseDown ?? -1, this._mousePressed ?? -1.0      // button clicks
+            ];
+
+            this.device.queue.writeBuffer(
+                this.gpuBuffers[ "iMouse" ],
+                0,
+                new Float32Array( data )
+            );
+        }
+
         if( this.currentPass )
         {
             this.currentPass.resetExecution();

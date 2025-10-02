@@ -376,7 +376,7 @@ class ShaderPass {
         if( customUniformCount )
         {
             this.uniforms.forEach( ( u, index ) => {
-                if( !pipeline.customBindings[ u.name ] ) return;
+                if( pipeline.customBindings[ u.name ] === undefined ) return;
                 const binding = bindingIndex++;
                 console.assert( binding === pipeline.customBindings[ u.name ], `Custom binding indices do not match in pipeline: ${ pipeline.label }` );
                 const buffer = this.uniformBuffers[ index ];
@@ -588,6 +588,8 @@ class ShaderPass {
     resetExecution()
     {
         ( this.computePipelines ?? [] ).forEach( p => p.executionDone = false );
+
+        this.frameCount = 0;
     }
 
     extractComputeFunctions( lines )
