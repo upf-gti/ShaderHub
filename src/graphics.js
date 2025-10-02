@@ -354,7 +354,10 @@ class ShaderPass {
         console.assert( pipeline.customBindings, "Pipeline does not have custom bindings!" );
 
         Object.entries( pipeline.defaultBindings ).forEach( b => {
-            entries.push( { binding: bindingIndex++, resource: { buffer: buffers[ b[ 1 ] ] } } );
+            const [ name, index ] = b;
+            const binding = bindingIndex++;
+            console.assert( binding === index, `Default binding indices do not match in pipeline: ${ pipeline.label }` );
+            entries.push( { binding, resource: { buffer: buffers[ name ] } } );
         } );
 
         const customUniformCount = this.uniforms.length;
@@ -362,6 +365,8 @@ class ShaderPass {
         {
             this.uniforms.forEach( ( u, index ) => {
                 if( !pipeline.customBindings[ u.name ] ) return;
+                const binding = bindingIndex++;
+                console.assert( binding === pipeline.customBindings[ u.name ], `Custom binding indices do not match in pipeline: ${ pipeline.label }` );
                 const buffer = this.uniformBuffers[ index ];
                 this.device.queue.writeBuffer(
                     buffer,
@@ -369,7 +374,7 @@ class ShaderPass {
                     new Float32Array([ u.value ])
                 );
                 entries.push( {
-                    binding: bindingIndex++,
+                    binding,
                     resource: { buffer }
                 } );
             } );
@@ -647,7 +652,7 @@ class ShaderPass {
                     if( u.skipBindings ?? false ) return;
                     if( !this.isBindingUsed( u.name, entryCode ) ) return;
                     const binding = bindingIndex++;
-                    defaultBindings[ binding ] = u.name;
+                    defaultBindings[ u.name ] = binding;
                     return `@group(0) @binding(${ binding }) var<uniform> ${ u.name } : ${ u.type ?? "f32" };`;
                 } ).filter( u => u !== undefined ) );
             }
@@ -678,7 +683,7 @@ class ShaderPass {
                     if( !u ) return;
                     if( !this.isBindingUsed( u.name, entryCode ) ) return;
                     const binding = bindingIndex++;
-                    customBindings[ binding ] = u.name;
+                    customBindings[ u.name ] = binding;
                     return `@group(0) @binding(${ binding }) var<uniform> ${ u.name } : ${ u.type };`;
                 } ).filter( u => u !== undefined ) );
             }
@@ -704,13 +709,6 @@ class ShaderPass {
 
             // Process some dummies so using them isn't mandatory
             {
-                const customDummiesIndex = templateCodeLines.indexOf( "$custom_dummies" );
-                console.assert( customDummiesIndex > -1 );
-                templateCodeLines.splice( customDummiesIndex, 1, ...this.uniforms.map( ( u, index ) => {
-                    if( !u ) return;
-                    return `    let u${ u.name }Dummy: ${ u.type } = ${ u.name };`;
-                } ).filter( u => u !== undefined ) );
-
                 const textureDummiesIndex = templateCodeLines.indexOf( "$texture_dummies" );
                 console.assert( textureDummiesIndex > -1 );
                 templateCodeLines.splice( textureDummiesIndex, 1, ...this.channels.map( ( channelName, index ) => {
@@ -1153,7 +1151,6 @@ $main_entry
 
 @fragment
 fn frag_main(@location(0) fragUV : vec2f, @location(1) fragCoord : vec2f) -> @location(0) vec4f {
-$custom_dummies
 $texture_dummies
     return mainImage(fragUV, fragCoord);
 }`.split( "\n" );
@@ -1207,7 +1204,6 @@ $main_entry
 
 $compute_entry
 fn compute_main(@builtin(global_invocation_id) id: vec3u) {
-$custom_dummies
 $texture_dummies
     mainCompute(id);
 }`.split( "\n" );
