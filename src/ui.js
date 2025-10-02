@@ -322,8 +322,9 @@ export const ui = {
                         <span>${ shader.likeCount ?? 0 }</span>
                     </div>`, shaderItem );
 
-                shaderPreview.addEventListener( "click", ( e ) => {
-                    ShaderHub.openShader( shader.uid );
+                shaderPreview.addEventListener( "mousedown", e => e.preventDefault() );
+                shaderPreview.addEventListener( "mouseup", ( e ) => {
+                    ShaderHub.openShader( shader.uid, e );
                 } );
             }
 
@@ -474,8 +475,9 @@ export const ui = {
                         <span>${ shader.likeCount ?? 0 }</span>
                     </div>`, shaderItem );
 
-                shaderPreview.addEventListener( "click", ( e ) => {
-                    ShaderHub.openShader( shader.uid );
+                shaderPreview.addEventListener( "mousedown", e => e.preventDefault() );
+                shaderPreview.addEventListener( "mouseup", ( e ) => {
+                    ShaderHub.openShader( shader.uid, e );
                 } );
             }
 
@@ -660,8 +662,9 @@ export const ui = {
                         } );
                     }
 
-                    shaderPreview.addEventListener( "click", ( e ) => {
-                        ShaderHub.openShader( shaderInfo.uid );
+                    shaderPreview.addEventListener( "mousedown", e => e.preventDefault() );
+                    shaderPreview.addEventListener( "mouseup", ( e ) => {
+                        ShaderHub.openShader( shaderInfo.uid, e );
                     } );
                 }
             }, 10 );
@@ -777,8 +780,9 @@ export const ui = {
                             <span>${ shaderInfo.likeCount ?? 0 }</span>
                         </div>`, shaderItem );
 
-                    shaderPreview.addEventListener( "click", ( e ) => {
-                        ShaderHub.openShader( shaderInfo.uid );
+                    shaderPreview.addEventListener( "mousedown", e => e.preventDefault() );
+                    shaderPreview.addEventListener( "mouseup", ( e ) => {
+                        ShaderHub.openShader( shaderInfo.uid, e );
                     } );
                 }
             }, 10 );
