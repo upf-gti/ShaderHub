@@ -201,7 +201,7 @@ const ShaderHub =
     {
         this._mouseDown = parseInt( e.button );
         this._mousePressed = this._mouseDown;
-        this.mousePosition = [ e.offsetX, this.gpuCanvas.offsetHeight - e.offsetY ];
+        this.mousePosition = [ e.offsetX, e.offsetY ];
         this.lastMousePosition = [ ...this.mousePosition ];
     },
 
@@ -214,7 +214,7 @@ const ShaderHub =
     {
         if( this._mouseDown !== undefined )
         {
-            this.mousePosition = [ e.offsetX, this.gpuCanvas.offsetHeight - e.offsetY ];
+            this.mousePosition = [ e.offsetX, e.offsetY ];
         }
     },
 
@@ -951,7 +951,7 @@ const ShaderHub =
             return;
         }
 
-        options = { ...options, flipY: true };
+        options = { ...options, flipY: false };
 
         const url = await fs.getFileUrl( fileId );
         const data = await fs.requestFile( url );

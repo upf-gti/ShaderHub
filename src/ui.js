@@ -1889,7 +1889,7 @@ export const ui = {
 
         this._currentChannelIndex = channelIndex;
 
-        let dialog = new LX.Dialog( `[${ pass.name }] Channel${ channelIndex } input:`, (p) => {
+        let dialog = new LX.Dialog( `[${ pass.name }] Channel${ channelIndex }`, (p) => {
             p.attach( area );
         }, { modal: false, close: true, minimize: false, size: [`${ Math.min( 1280, window.innerWidth - 64 ) }px`, "512px"], draggable: true });
 
