@@ -91,7 +91,7 @@ const ShaderHub =
                 this.lastMousePosition[ 0 ], this.lastMousePosition[ 1 ],   // start position
                 this.lastMousePosition[ 0 ] - this.mousePosition[ 0 ], 
                 this.lastMousePosition[ 1 ] - this.mousePosition[ 1 ],      // delta position
-                this._mouseDown ?? -1, this._mousePressed ? 1.0 : -1.0      // button clicks
+                this._mouseDown ?? -1, this._mousePressed ?? -1.0      // button clicks
             ];
 
             this.device.queue.writeBuffer(
@@ -163,7 +163,7 @@ const ShaderHub =
             this._anyKeyPressed = false;
         }
 
-        this._mousePressed = false;
+        this._mousePressed = undefined;
 
         if( this.capturer )
         {
@@ -200,9 +200,9 @@ const ShaderHub =
     async onMouseDown( e )
     {
         this._mouseDown = parseInt( e.button );
+        this._mousePressed = this._mouseDown;
         this.mousePosition = [ e.offsetX, this.gpuCanvas.offsetHeight - e.offsetY ];
         this.lastMousePosition = [ ...this.mousePosition ];
-        this._mousePressed = true;
     },
 
     async onMouseUp( e )

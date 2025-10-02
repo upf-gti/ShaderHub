@@ -1197,42 +1197,72 @@ export const ui = {
         customTabInfoButtonsPanel.sameLine();
 
         /*
-            Default Uniforms list info
+            Quick help
         */
 
-        const defaultParametersContainer = LX.makeContainer(
-            [ `${ Math.min( 600, window.innerWidth - 64 ) }px`, "auto" ],
-            "overflow-scroll",
-            "",
-            null,
-            { maxHeight: "256px", maxWidth: `${ window.innerWidth - 64 }px` }
-        );
-
-        LX.makeContainer( ["auto", "auto"], "flex flex-row p-2 items-center", "Default Uniforms", defaultParametersContainer );
-
-        // Create the content for the uniforms panel
-        {
-            this.defaultParametersPanel = new LX.Panel({ className: "custom-parameters-panel w-full" });
-            defaultParametersContainer.appendChild( this.defaultParametersPanel.root );
-
-            this.defaultParametersPanel.refresh = () => {
-
-                this.defaultParametersPanel.clear();
-
-                for( let u of Constants.DEFAULT_UNIFORMS_LIST )
-                {
-                    this.defaultParametersPanel.sameLine( 2, "justify-between" );
-                    this.defaultParametersPanel.addLabel( `${ u.name } : ${ u.type ?? "f32" }`, { className: "w-full p-0" } );
-                    this.defaultParametersPanel.addLabel( u.info, { className: "w-full p-0", inputClass: "text-end" } );
-                }
-            }
-
-            this.defaultParametersPanel.refresh();
+        const makeParagraph = ( text, p, extraClass ) => {
+            LX.makeContainer( ["auto", "auto"], "p-2 fg-secondary text-sm " + extraClass, text, p, { wordBreak: "break-word" } );
         }
 
-        customTabInfoButtonsPanel.addButton( null, "OpenDefaultParams", ( name, event ) => {
-            new LX.Popover( event.target, [ defaultParametersContainer ], { align: "start", side: "top" } );
-        }, { icon: "BookOpen", title: "Default Parameters", tooltip: true } );
+        customTabInfoButtonsPanel.addButton( null, "OpenQuickHelp", ( name, event ) => {
+
+            const dialog = new LX.Dialog( "Quick Help", ( p ) => {
+
+                p.root.classList.add( "custom-parameters-panel", "help-content" );
+
+                makeParagraph( `ShaderHub is a playground for both WebGPU render and compute shaders. Everything here is written in WGSL, which is WebGPU's native shader language. For up-to-date information on WGSL, please see the <a href='https://www.w3.org/TR/WGSL/'>WGSL draft specification</a>. You can also take a <a href='https://google.github.io/tour-of-wgsl/'>tour of WGSL</a>.`, p );
+
+                p.addTitle( "Inputs" );
+                makeParagraph( `ShaderHub allows to use custom values controlled by sliders and provides the following default inputs:`, p );
+                makeParagraph( `Mouse input can be accessed from the <span class="fg-error font-semibold">iMouse</span> struct:`, p );
+                makeParagraph( `<span class="fg-primary">iMouse.pos: vec2f</span> <span class="fg-tertiary">// Mouse move position when pressed</span><br>
+<span class="fg-primary">iMouse.start: vec2f</span> <span class="fg-tertiary">// Mouse down position</span><br>
+<span class="fg-primary">iMouse.delta: vec2f</span> <span class="fg-tertiary">// Delta since last mouse move position</span><br>
+<span class="fg-primary">iMouse.press: f32</span> <span class="fg-tertiary">// Mouse button down (none = -1, left = 0, middle: 1, right = 2)</span><br>
+<span class="fg-primary">iMouse.click: f32</span> <span class="fg-tertiary">// Mouse button clicked (none = -1, left = 0, middle: 1, right = 2)</span>`, p );
+
+                makeParagraph( `Screen information:`, p );
+                makeParagraph( `<span class="fg-primary">iResolution: vec2f</span> <span class="fg-tertiary">// Viewport resolution</span><br>`, p );
+
+                makeParagraph( `Time information:`, p );
+                makeParagraph( `<span class="fg-primary">iTime: f32</span> <span class="fg-tertiary">// Elapsed time</span><br>
+<span class="fg-primary">iTimeDelta: f32</span> <span class="fg-tertiary">// Delta time between frames</span><br>
+<span class="fg-primary">iFrame: i32</span> <span class="fg-tertiary">// Frame number</span>`, p );
+
+                makeParagraph( `Selectable channel textures:`, p );
+                makeParagraph( `<span class="fg-primary">iChannel0...3: texture_2d<f32></span><br>
+<span class="fg-primary">textureSample(iChannel0...3, texSampler, uv)</span> <span class="fg-tertiary">// texSampler is a bilinear sampler</span><br>
+<span class="fg-primary">texture(iChannel0...3, uv)</span> <span class="fg-tertiary">// Use default sampler</span>`, p );
+
+                p.addTitle( "Preprocessor" );
+
+                makeParagraph( `ShaderHub also provides an experimental WGSL preprocessor. It currently allows the use of some directives in <span class="fg-error font-semibold">compute</span> shaders:`, p );
+                makeParagraph( `<ul>
+    <li><span class="fg-error font-semibold">#workgroup_count ENTRYPOINT X Y Z</span> for specifying how many workgroups should be dispatched for an entrypoint</li>
+    <li><span class="fg-error font-semibold">#dispatch_once ENTRYPOINT</span> for initialization purposes, ensuring the entrypoint is dispatched only once</li>
+    <li><span class="fg-error font-semibold">#storage NAME TYPE</span> for declaring a storage buffer</li>
+</ul>`, p );
+
+                p.addTitle( "Examples" );
+                makeParagraph( `<span class="fg-primary font-semibold hover:fg-secondary hover:text-underline cursor-pointer">Custom Uniforms</span>`, p);
+                makeParagraph( `<span class="fg-primary font-semibold hover:fg-secondary hover:text-underline cursor-pointer">Texture Buffer pass</span>`, p);
+                makeParagraph( `<span class="fg-primary font-semibold hover:fg-secondary hover:text-underline cursor-pointer">Simple Compute Pass</span>`, p);
+                makeParagraph( `<span class="fg-primary font-semibold hover:fg-secondary hover:text-underline cursor-pointer">Compute Storage usage</span>`, p);
+
+                const pass = ShaderHub.currentPass;
+                if( pass )
+                {
+                    p.addTitle( "Shader Code" );
+                    makeParagraph( `Here are the current contents of this shader:`, p );
+
+                    const code = pass.codeContent ?? "";
+                    const lines = code.replaceAll( "    ", "&emsp;" ).split( "\n" ).map( l => `<span>${ l }</span>` )
+                    makeParagraph( lines.join( "" ), p, "flex flex-col p-4" );
+                }
+
+            }, { modal: false, size: [ "700px", "900px" ] } );
+
+        }, { icon: "CircleQuestionMark", title: "Quick Help", tooltip: true } );
 
         /*
             Custom Uniforms info

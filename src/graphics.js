@@ -277,6 +277,7 @@ class ShaderPass {
             // Attach used bindings extracted from code
             this.pipeline.defaultBindings = result.defaultBindings;
             this.pipeline.customBindings = result.customBindings;
+            this.codeContent = result.code;
 
             console.warn( "Info: Render Pipeline created!" );
         }
@@ -287,6 +288,7 @@ class ShaderPass {
             this.computePipelines = [];
 
             let utilsCode = this.codeLines.join( "\n" );
+            let fullCode = "";
 
             // Delete each entry code to generate the utils code
             for( const [ entry, entryCode ] of Object.entries( computeFuncs ) )
@@ -321,6 +323,8 @@ class ShaderPass {
                 p.defaultBindings = result.defaultBindings;
                 p.customBindings = result.customBindings;
 
+                fullCode += result.code;
+
                 this.computePipelines.push( {
                     pipeline: p,
                     usesComputeScreenTexture: result.usesComputeScreenTexture,
@@ -329,6 +333,8 @@ class ShaderPass {
                     workGroupCount: result.wgCounts[ entryName ] ?? []
                 } );
             }
+
+            this.codeContent = fullCode;
 
             console.warn( "Info: Compute Pipeline created!" );
 
