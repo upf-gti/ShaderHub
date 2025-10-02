@@ -206,7 +206,7 @@ const ShaderHub =
                 this.lastMousePosition[ 0 ], this.lastMousePosition[ 1 ],   // start position
                 this.lastMousePosition[ 0 ] - this.mousePosition[ 0 ], 
                 this.lastMousePosition[ 1 ] - this.mousePosition[ 1 ],      // delta position
-                this._mouseDown ?? -1, this._mousePressed ? 1.0 : -1.0      // button clicks
+                this._mouseDown ?? -1, this._mousePressed ?? -1.0      // button clicks
             ];
 
             this.device.queue.writeBuffer(
@@ -315,9 +315,9 @@ const ShaderHub =
     async onMouseDown( e )
     {
         this._mouseDown = parseInt( e.button );
-        this.mousePosition = [ e.offsetX, this.gpuCanvas.offsetHeight - e.offsetY ];
+        this._mousePressed = this._mouseDown;
+        this.mousePosition = [ e.offsetX, e.offsetY ];
         this.lastMousePosition = [ ...this.mousePosition ];
-        this._mousePressed = true;
     },
 
     async onMouseUp( e )
@@ -329,7 +329,7 @@ const ShaderHub =
     {
         if( this._mouseDown !== undefined )
         {
-            this.mousePosition = [ e.offsetX, this.gpuCanvas.offsetHeight - e.offsetY ];
+            this.mousePosition = [ e.offsetX, e.offsetY ];
         }
     },
 
@@ -437,22 +437,54 @@ const ShaderHub =
         this.timeDelta = 0;
 
         this.device.queue.writeBuffer(
-            this.gpuBuffers[ "timeDelta" ],
+            this.gpuBuffers[ "iTimeDelta" ],
             0,
             new Float32Array([ this.timeDelta ])
         );
 
         this.device.queue.writeBuffer(
-            this.gpuBuffers[ "time" ],
+            this.gpuBuffers[ "iTime" ],
             0,
             new Float32Array([ this.elapsedTime ])
         );
 
         this.device.queue.writeBuffer(
-            this.gpuBuffers[ "frameCount" ],
+            this.gpuBuffers[ "iFrame" ],
             0,
             new Int32Array([ this.frameCount ])
         );
+
+        // Reset mouse data
+        {
+            const X = this.resolutionX ?? this.gpuCanvas.offsetWidth;
+            const Y = this.resolutionY ?? this.gpuCanvas.offsetHeight;
+
+            this.mousePosition      = [ X * 0.5, Y * 0.5 ];
+            this.lastMousePosition  = this.mousePosition;
+
+            this._mouseDown     = undefined;
+            this._mousePressed  = undefined;
+
+            const data =
+            [
+                this.mousePosition[ 0 ], this.mousePosition[ 1 ],           // current position when pressed
+                this.lastMousePosition[ 0 ], this.lastMousePosition[ 1 ],   // start position
+                this.lastMousePosition[ 0 ] - this.mousePosition[ 0 ], 
+                this.lastMousePosition[ 1 ] - this.mousePosition[ 1 ],      // delta position
+                this._mouseDown ?? -1, this._mousePressed ?? -1.0      // button clicks
+            ];
+
+            this.device.queue.writeBuffer(
+                this.gpuBuffers[ "iMouse" ],
+                0,
+                new Float32Array( data )
+            );
+        }
+
+        if( this.currentPass )
+        {
+            this.currentPass.resetExecution();
+        }
 
         LX.emit( "@elapsed-time", `${ this.elapsedTime.toFixed( 2 ) }s` );
     },
@@ -479,7 +511,8 @@ const ShaderHub =
                 uid: id,
                 url: await fs.getFileUrl( result[ "file_id" ] ),
                 description: result.description ?? "",
-                creationDate: Utils.toESDate( result[ "$createdAt" ] )
+                creationDate: Utils.toESDate( result[ "$createdAt" ] ),
+                originalId: result[ "original_id" ]
             };
 
             const authorId = result[ "author_id" ];
@@ -575,10 +608,15 @@ const ShaderHub =
             });
         }
 
-        Shader.globalSampler = this.device.createSampler({
-            magFilter: 'linear',
-            minFilter: 'linear',
-        });
+        // clamp-to-edge samplers
+        Shader.nearestSampler = this.device.createSampler();
+        Shader.bilinearSampler = this.device.createSampler({ magFilter: 'linear', minFilter: 'linear' });
+        Shader.trilinearSampler = this.device.createSampler({ magFilter: 'linear', minFilter: 'linear', mipmapFilter: 'linear' });
+
+        // repeat samplers
+        Shader.nearestRepeatSampler = this.device.createSampler({ addressModeU: "repeat", addressModeV: "repeat", addressModeW: "repeat" });
+        Shader.bilinearRepeatSampler = this.device.createSampler({ magFilter: 'linear', minFilter: 'linear', addressModeU: "repeat", addressModeV: "repeat", addressModeW: "repeat" });
+        Shader.trilinearRepeatSampler = this.device.createSampler({ magFilter: 'linear', minFilter: 'linear', mipmapFilter: 'linear', addressModeU: "repeat", addressModeV: "repeat", addressModeW: "repeat" });
 
         requestAnimationFrame( this.onFrame.bind( this) );
     },
@@ -590,7 +628,7 @@ const ShaderHub =
             return;
         }
 
-        options = { ...options, flipY: true };
+        options = { ...options, flipY: false };
 
         const url = await fs.getFileUrl( fileId );
         const data = await fs.requestFile( url );
