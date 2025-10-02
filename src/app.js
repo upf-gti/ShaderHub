@@ -904,10 +904,15 @@ const ShaderHub =
             });
         }
 
-        Shader.globalSampler = this.device.createSampler({
-            magFilter: 'linear',
-            minFilter: 'linear',
-        });
+        // clamp-to-edge samplers
+        Shader.nearestSampler = this.device.createSampler();
+        Shader.bilinearSampler = this.device.createSampler({ magFilter: 'linear', minFilter: 'linear' });
+        Shader.trilinearSampler = this.device.createSampler({ magFilter: 'linear', minFilter: 'linear', mipmapFilter: 'linear' });
+
+        // repeat samplers
+        Shader.nearestRepeatSampler = this.device.createSampler({ addressModeU: "repeat", addressModeV: "repeat", addressModeW: "repeat" });
+        Shader.bilinearRepeatSampler = this.device.createSampler({ magFilter: 'linear', minFilter: 'linear', addressModeU: "repeat", addressModeV: "repeat", addressModeW: "repeat" });
+        Shader.trilinearRepeatSampler = this.device.createSampler({ magFilter: 'linear', minFilter: 'linear', mipmapFilter: 'linear', addressModeU: "repeat", addressModeV: "repeat", addressModeW: "repeat" });
 
         requestAnimationFrame( this.onFrame.bind( this) );
     },

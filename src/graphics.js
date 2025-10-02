@@ -277,6 +277,8 @@ class ShaderPass {
             // Attach used bindings extracted from code
             this.pipeline.defaultBindings = result.defaultBindings;
             this.pipeline.customBindings = result.customBindings;
+            this.pipeline.textureBindings = result.textureBindings;
+            this.pipeline.samplerBindings = result.samplerBindings;
             this.codeContent = result.code;
 
             console.warn( "Info: Render Pipeline created!" );
@@ -322,6 +324,8 @@ class ShaderPass {
                 // Attach used bindings extracted from code
                 p.defaultBindings = result.defaultBindings;
                 p.customBindings = result.customBindings;
+                p.textureBindings = result.textureBindings;
+                p.samplerBindings = result.samplerBindings;
 
                 fullCode += result.code;
 
@@ -356,8 +360,10 @@ class ShaderPass {
 
         const entries = [];
 
-        console.assert( pipeline.defaultBindings, "Pipeline does not have default bindings!" );
-        console.assert( pipeline.customBindings, "Pipeline does not have custom bindings!" );
+        console.assert( pipeline.defaultBindings, "Pipeline does not have a default bindings list!" );
+        console.assert( pipeline.customBindings, "Pipeline does not have a custom bindings list!" );
+        console.assert( pipeline.textureBindings, "Pipeline does not have a texture bindings list!" );
+        console.assert( pipeline.samplerBindings, "Pipeline does not have a sampler bindings list!" );
 
         Object.entries( pipeline.defaultBindings ).forEach( b => {
             const [ name, index ] = b;
@@ -386,22 +392,32 @@ class ShaderPass {
             } );
         }
 
-        const channelBindings = this.channels.filter( ( u, i ) => u !== undefined && this.channelTextures[ i ] );
+        const hasTextureBindings = Object.keys( pipeline.textureBindings ).length > 0;
 
         // Store base entries to create 2nd bind group for buffer passes
         let baseBindingIndex = bindingIndex;
         let baseEntries = [ ...entries ];
 
-        if( channelBindings.length )
+        if( hasTextureBindings )
         {
             entries.push( ...this.channels.map( ( channelName, index ) => {
                 if( !channelName ) return;
+                if( !pipeline.textureBindings[ channelName ] ) return;
                 let texture = this.channelTextures[ index ];
                 if( !texture ) return;
+                const binding = bindingIndex++;
+                console.assert( binding === pipeline.textureBindings[ channelName ], `Texture binding indices do not match in pipeline: ${ pipeline.label }` );
                 texture = ( texture instanceof Array ) ? texture[ Constants.BUFFER_PASS_TEXTURE_A_INDEX ] : texture;
-                return { binding: bindingIndex++, resource: texture.createView() };
+                return { binding: binding, resource: texture.createView() };
             } ).filter( u => u !== undefined ) );
-            entries.push( { binding: bindingIndex++, resource: Shader.globalSampler } );
+
+            // Add sampler bindings
+            Object.entries( pipeline.samplerBindings ).forEach( b => {
+                const [ samplerName, index ] = b;
+                const binding = bindingIndex++;
+                console.assert( binding === index, `Sampler binding indices do not match in pipeline: ${ pipeline.label }` );
+                entries.push( { binding, resource: Shader[ samplerName ] } );
+            } );
         }
 
         if( this.type === "compute" && p.usesComputeScreenTexture )
@@ -418,16 +434,26 @@ class ShaderPass {
         // Create 2nd bind group for buffer passes to swap textures
         if( this.type === "buffer" || this.type === "compute" )
         {
-            if( channelBindings.length )
+            if( hasTextureBindings )
             {
                 baseEntries.push( ...this.channels.map( ( channelName, index ) => {
                     if( !channelName ) return;
+                    if( !pipeline.textureBindings[ channelName ] ) return;
                     let texture = this.channelTextures[ index ];
                     if( !texture ) return;
+                    const binding = baseBindingIndex++;
+                    console.assert( binding === pipeline.textureBindings[ channelName ], `Texture binding indices do not match in pipeline: ${ pipeline.label }` );
                     texture = ( texture instanceof Array ) ? texture[ Constants.BUFFER_PASS_TEXTURE_B_INDEX ] : texture;
-                    return { binding: baseBindingIndex++, resource: texture.createView() };
+                    return { binding: binding, resource: texture.createView() };
                 } ).filter( u => u !== undefined ) );
-                baseEntries.push( { binding: baseBindingIndex++, resource: Shader.globalSampler } );
+
+                // Add sampler bindings
+                Object.entries( pipeline.samplerBindings ).forEach( b => {
+                    const [ samplerName, index ] = b;
+                    const binding = baseBindingIndex++;
+                    console.assert( binding === index, `Sampler binding indices do not match in pipeline: ${ pipeline.label }` );
+                    baseEntries.push( { binding, resource: Shader[ samplerName ] } );
+                } );
             }
 
             if( this.type === "compute" && p.usesComputeScreenTexture )
@@ -625,10 +651,18 @@ class ShaderPass {
         return results;
     }
 
+    /*
+        This will detect bindings used in the code, discarding only the ones that are inside
+        single line comments.
+        TODO: Discard bindings used in BLOCK comments
+    */
     isBindingUsed( binding, entryCode )
     {
         const templateCodeLines = [ ...( this.type === "compute" ) ? Shader.COMPUTER_SHADER_TEMPLATE : Shader.RENDER_SHADER_TEMPLATE ];
-        const lines = [ ...templateCodeLines, ...( entryCode ? entryCode.split( "\n" ) : this.codeLines ) ];
+        const lines = [ ...templateCodeLines, ...( entryCode ? entryCode.split( "\n" ) : this.codeLines ) ].map( line => {
+            const lineCommentIndex = line.indexOf( "//" );
+            return line.substring( 0, lineCommentIndex === -1 ? undefined : lineCommentIndex );
+        } );
         const regex = new RegExp( `\\b${ binding }\\b` );
         return lines.some( l => regex.test( l ) );
     }
@@ -638,6 +672,8 @@ class ShaderPass {
         const templateCodeLines = [ ...( this.type === "compute" ) ? Shader.COMPUTER_SHADER_TEMPLATE : Shader.RENDER_SHADER_TEMPLATE ];
         const defaultBindings   = {};
         const customBindings    = {};
+        const textureBindings   = {};
+        const samplerBindings   = {};
 
         // Invert uv y if buffer render target
         const invertUvsIndex = templateCodeLines.indexOf( "$invert_uv_y" );
@@ -700,9 +736,24 @@ class ShaderPass {
                 console.assert( textureBindingsIndex > -1 );
                 const bindings = this.channels.map( ( channelName, index ) => {
                     if( !channelName ) return;
-                    return `@group(0) @binding(${ bindingIndex++ }) var iChannel${ index } : texture_2d<f32>;`;
+                    const channelIndexName = `iChannel${ index }`;
+                    if( !this.isBindingUsed( channelIndexName, entryCode ) ) return;
+                    const binding = bindingIndex++;
+                    textureBindings[ channelName ] = binding;
+                    return `@group(0) @binding(${ binding }) var ${ channelIndexName } : texture_2d<f32>;`;
                 } ).filter( u => u !== undefined );
-                templateCodeLines.splice( textureBindingsIndex, 1, ...(bindings.length ? [ ...bindings, `@group(0) @binding(${ bindingIndex++ }) var texSampler : sampler;` ] : []) );
+
+                templateCodeLines.splice( textureBindingsIndex, 1, ...(bindings.length ? [
+                    ...bindings,
+                    ...( [ "nearestSampler", "bilinearSampler", "trilinearSampler",
+                        "nearestRepeatSampler", "bilinearRepeatSampler", "trilinearRepeatSampler"
+                    ].map( samplerName => {
+                        if( !this.isBindingUsed( samplerName, entryCode ) ) return;
+                        const binding = bindingIndex++;
+                        samplerBindings[ samplerName ] = binding;
+                        return `@group(0) @binding(${ binding }) var ${ samplerName } : sampler;`;
+                    } ).filter( u => u !== undefined ) )
+                ] : []) );
             }
 
             if( this.type === "compute" )
@@ -712,27 +763,17 @@ class ShaderPass {
                 this.usesComputeScreenTexture = this.isBindingUsed( "screen", entryCode );
                 templateCodeLines.splice( outputBindingIndex, 1, this.usesComputeScreenTexture ? `@group(0) @binding(${ bindingIndex++ }) var screen: texture_storage_2d<rgba16float,write>;` : undefined );
             }
-
-            // Process some dummies so using them isn't mandatory
-            {
-                const textureDummiesIndex = templateCodeLines.indexOf( "$texture_dummies" );
-                console.assert( textureDummiesIndex > -1 );
-                templateCodeLines.splice( textureDummiesIndex, 1, ...this.channels.map( ( channelName, index ) => {
-                    if( !channelName ) return;
-                    return `    let channel${ index }Dummy: vec4f = textureSample(iChannel${ index }, texSampler, fragUV);`;
-                } ).filter( u => u !== undefined ) );
-            }
         }
 
         // Add shader utils depending on bind group
         {
             const features = this.shader.getFeatures();
-            const bindings = this.channels.filter( channelName => channelName !== undefined && channelName !== "" );
+            const hasTextureBindings = Object.keys( textureBindings ).length > 0;
             const wgslUtilsIndex = templateCodeLines.indexOf( "$wgsl_utils" );
             if( wgslUtilsIndex > -1 )
             {
                 const utils = [
-                    ...( bindings.length ? Shader.WGSL_TEXTURE_UTILS : [] ),
+                    ...( hasTextureBindings ? Shader.WGSL_TEXTURE_UTILS : [] ),
                     ...( features.includes( "keyboard" ) ? Shader.WGSL_KEYBOARD_UTILS : [] ),
                 ]
                 templateCodeLines.splice( wgslUtilsIndex, 1, ...utils );
@@ -779,6 +820,8 @@ class ShaderPass {
             code: templateCodeLines.join( "\n" ),
             defaultBindings,
             customBindings,
+            textureBindings,
+            samplerBindings,
             executeOnce: this.executeOnce,
             wgSizes: this.workGroupSizes,
             wgCounts: this.workGroupCounts,
@@ -1102,9 +1145,7 @@ class Shader {
     }
 }
 
-Shader.WGSL_TEXTURE_UTILS = `fn texture( texture: texture_2d<f32>, uv: vec2f ) -> vec4f {
-    return textureSample( texture, texSampler, uv );
-}`.split( "\n" );
+Shader.WGSL_TEXTURE_UTILS = ``.split( "\n" );
 
 Shader.WGSL_KEYBOARD_UTILS = `fn keyDown( texture: texture_2d<f32>, code : i32 ) -> f32 { return textureLoad( texture, vec2i(code, 0), 0 ).x; }
 fn keyPressed( texture: texture_2d<f32>, code : i32 ) -> f32 { return textureLoad( texture, vec2i(code, 1), 0 ).x; }
@@ -1144,7 +1185,6 @@ fn vert_main(@builtin(vertex_index) VertexIndex : u32) -> VertexOutput {
     output.fragUV = (output.Position.xy * 0.5) + vec2(0.5, 0.5);
 $invert_uv_y
     output.fragCoord = output.fragUV * iResolution;
-    var time_dummy : f32 = iTime;
     return output;
 }
 
@@ -1157,7 +1197,6 @@ $main_entry
 
 @fragment
 fn frag_main(@location(0) fragUV : vec2f, @location(1) fragCoord : vec2f) -> @location(0) vec4f {
-$texture_dummies
     return mainImage(fragUV, fragCoord);
 }`.split( "\n" );
 
@@ -1210,7 +1249,6 @@ $main_entry
 
 $compute_entry
 fn compute_main(@builtin(global_invocation_id) id: vec3u) {
-$texture_dummies
     mainCompute(id);
 }`.split( "\n" );
 

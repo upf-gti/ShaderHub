@@ -1201,14 +1201,14 @@ export const ui = {
         */
 
         const makeParagraph = ( text, p, extraClass ) => {
-            LX.makeContainer( ["auto", "auto"], "p-2 fg-secondary text-sm " + extraClass, text, p, { wordBreak: "break-word" } );
+            LX.makeContainer( ["auto", "auto"], "p-2 fg-secondary text-sm " + ( extraClass ?? "" ), text, p, { wordBreak: "break-word" } );
         }
 
         customTabInfoButtonsPanel.addButton( null, "OpenQuickHelp", ( name, event ) => {
 
             const dialog = new LX.Dialog( "Quick Help", ( p ) => {
 
-                p.root.classList.add( "custom-parameters-panel", "help-content" );
+                p.root.classList.add( "custom-parameters-panel", "help-content", "p-2" );
 
                 makeParagraph( `ShaderHub is a playground for both WebGPU render and compute shaders. Everything here is written in WGSL, which is WebGPU's native shader language. For up-to-date information on WGSL, please see the <a href='https://www.w3.org/TR/WGSL/'>WGSL draft specification</a>. You can also take a <a href='https://google.github.io/tour-of-wgsl/'>tour of WGSL</a>.`, p );
 
@@ -1229,15 +1229,16 @@ export const ui = {
 <span class="fg-primary">iTimeDelta: f32</span> <span class="fg-tertiary">// Delta time between frames</span><br>
 <span class="fg-primary">iFrame: i32</span> <span class="fg-tertiary">// Frame number</span>`, p );
 
-                makeParagraph( `Selectable channel textures:`, p );
+                makeParagraph( `Selectable channel textures (with support for different texture samplers):`, p );
                 makeParagraph( `<span class="fg-primary">iChannel0...3: texture_2d<f32></span><br>
-<span class="fg-primary">textureSample(iChannel0...3, texSampler, uv)</span> <span class="fg-tertiary">// texSampler is a bilinear sampler</span><br>
-<span class="fg-primary">texture(iChannel0...3, uv)</span> <span class="fg-tertiary">// Use default sampler</span>`, p );
+<span class="fg-tertiary">// where sampler can be "nearestSampler", "bilinearSampler", "trilinearSampler",</span><br>
+<span class="fg-tertiary">// "nearestRepeatSampler", "bilinearRepeatSampler" or "trilinearRepeatSampler"</span><br>
+<span class="fg-primary">textureSample(iChannel0...3, <span class="fg-error font-semibold">sampler</span>, uv)</span>`, p );
 
                 p.addTitle( "Preprocessor" );
 
                 makeParagraph( `ShaderHub also provides an experimental WGSL preprocessor. It currently allows the use of some directives in <span class="fg-error font-semibold">compute</span> shaders:`, p );
-                makeParagraph( `<ul>
+                makeParagraph( `<ul style="margin-block:0">
     <li><span class="fg-error font-semibold">#workgroup_count ENTRYPOINT X Y Z</span> for specifying how many workgroups should be dispatched for an entrypoint</li>
     <li><span class="fg-error font-semibold">#dispatch_once ENTRYPOINT</span> for initialization purposes, ensuring the entrypoint is dispatched only once</li>
     <li><span class="fg-error font-semibold">#storage NAME TYPE</span> for declaring a storage buffer</li>
