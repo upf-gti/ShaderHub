@@ -825,18 +825,6 @@ export const ui = {
             }
         }
 
-        const customSuggestions = [];
-        Constants.DEFAULT_UNIFORM_NAMES.forEach( u => {
-            if( u.startsWith( "iChannel" ) )
-            {
-                customSuggestions.push( "iChannel" );
-            }
-            else
-            {
-                customSuggestions.push( u );
-            }
-        } );
-
         const iCompileShader = async () => {
             const error = await ShaderHub.compileShader( true, null, false, true );
             if( error === 0 && !window.onbeforeunload )
@@ -856,7 +844,7 @@ export const ui = {
             statusShowEditorIndentation: false,
             statusShowEditorLanguage: false,
             statusShowEditorFilename: false,
-            customSuggestions,
+            customSuggestions: ShaderHub.getCurrentSuggestions(),
             onCreateStatusPanel: this.makeStatusBarButtons.bind( this ),
             onCtrlSpace: iCompileShader.bind( this ),
             onSave: iCompileShader.bind( this ),

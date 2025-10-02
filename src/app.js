@@ -435,6 +435,8 @@ const ShaderHub =
         await ui.updateShaderChannelsView();
 
         ui.toggleCustomUniformsButton( this.currentPass.type === "common" );
+
+        ui.editor.setCustomSuggestions( this.getCurrentSuggestions() );
     },
 
     onShaderTimePaused()
@@ -651,6 +653,35 @@ const ShaderHub =
         const needsReload = window.location.search === "";
         window.open( `${ this.getFullPath() }#help`, e?.button !== 1 ? "_self" : undefined );
         if( needsReload ) window.location.reload();
+    },
+
+    getCurrentSuggestions()
+    {
+        const customSuggestions = [];
+
+        Constants.DEFAULT_UNIFORM_NAMES.forEach( u => {
+            if( u.startsWith( "iChannel" ) )
+            {
+                customSuggestions.push( "iChannel" );
+            }
+            else
+            {
+                customSuggestions.push( u );
+            }
+        } );
+
+        // Samplers
+        customSuggestions.push( "nearestSampler", "bilinearSampler", "trilinearSampler", "nearestRepeatSampler", "bilinearRepeatSampler", "trilinearRepeatSampler" );
+
+        // Keyboard utils
+        customSuggestions.push( "keyDown", "keyPressed", "keyState" );
+
+        if( this.currentPass )
+        {
+            customSuggestions.push( ...this.currentPass.uniforms.map( u => u.name ) );
+        }
+
+        return customSuggestions;
     },
 
     async saveShaderFiles( ownShader, isRemix )
@@ -1195,6 +1226,8 @@ const ShaderHub =
         {
             await this.compileShader( true, pass );
         }
+
+        ui.editor.setCustomSuggestions( this.getCurrentSuggestions() );
     },
 
     async removeUniform( pass, uniformIdx )
@@ -1207,6 +1240,8 @@ const ShaderHub =
         {
             this.compileShader( true, pass );
         }
+
+        ui.editor.setCustomSuggestions( this.getCurrentSuggestions() );
     },
 
     async updateUniformType( pass, uniformIdx, typeName )
