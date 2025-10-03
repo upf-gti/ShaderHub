@@ -255,6 +255,9 @@ export const ui = {
         skeleton.root.classList.add( "grid", "shader-list-initial", "gap-8", "justify-center" );
         leftSide.appendChild( skeleton.root );
 
+        const previewFiles = await this.fs.listFiles( [ Query.startsWith( "name", "68" ), Query.endsWith( "name", ".png" ) ] );
+        const usersDocuments = await this.fs.listDocuments( FS.USERS_COLLECTION_ID );
+
         LX.doAsync( async () => {
 
             // Get all stored shader files (not the code, only the data)
@@ -277,8 +280,8 @@ export const ui = {
                 const authorId = document[ "author_id" ];
                 if( authorId )
                 {
-                    const r = await this.fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_id", authorId ) ] );
-                    const author = r.documents[ 0 ][ "user_name" ];
+                    const userDocument = usersDocuments.documents.find( d => d[ "user_id" ] === authorId );
+                    const author = userDocument[ "user_name" ];
                     shaderInfo.author = author;
                     shaderInfo.authorId = authorId;
                 }
@@ -288,13 +291,15 @@ export const ui = {
                     shaderInfo.anonAuthor = true;
                 }
 
+                const previewName = `${ shaderInfo.uid }.png`;
+                const previewFile = previewFiles.files.find( f => f.name === previewName );
+                if( previewFile )
                 {
-                    const previewName = `${ shaderInfo.uid }.png`;
-                    const r = await this.fs.listFiles( [ Query.equal( "name", previewName ) ] );
-                    if( r.total > 0 )
-                    {
-                        shaderInfo.preview = await this.fs.getFileUrl( r.files[ 0 ][ "$id" ] );
-                    }
+                    shaderInfo.preview = await this.fs.getFileUrl( previewFile[ "$id" ] );
+                }
+                else
+                {
+                    console.warn( `Can't find shader preview image for Shader: ${ shaderInfo.name }` );
                 }
 
                 shaderList.push( shaderInfo );
@@ -339,6 +344,8 @@ export const ui = {
 
     async makeBrowseList()
     {
+        const a = LX.getTime();
+
         const params = new URLSearchParams( document.location.search );
         const queryFeature = params.get( "feature" );
 
@@ -405,6 +412,9 @@ export const ui = {
         skeleton.root.classList.add( "grid", "shader-list", "gap-6", "justify-center" );
         topArea.attach( skeleton.root );
 
+        const previewFiles = await this.fs.listFiles( [ Query.startsWith( "name", "68" ), Query.endsWith( "name", ".png" ) ] );
+        const usersDocuments = await this.fs.listDocuments( FS.USERS_COLLECTION_ID );
+
         LX.doAsync( async () => {
 
             let shaderList = [];
@@ -430,8 +440,8 @@ export const ui = {
                 const authorId = document[ "author_id" ];
                 if( authorId )
                 {
-                    const r = await this.fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_id", authorId ) ] );
-                    const author = r.documents[ 0 ][ "user_name" ];
+                    const userDocument = usersDocuments.documents.find( d => d[ "user_id" ] === authorId );
+                    const author = userDocument[ "user_name" ];
                     shaderInfo.author = author;
                     shaderInfo.authorId = authorId;
                 }
@@ -442,10 +452,14 @@ export const ui = {
                 }
 
                 const previewName = `${ shaderInfo.uid }.png`;
-                const r = await this.fs.listFiles( [ Query.equal( "name", previewName ) ] );
-                if( r.total > 0 )
+                const previewFile = previewFiles.files.find( f => f.name === previewName );
+                if( previewFile )
                 {
-                    shaderInfo.preview = await this.fs.getFileUrl( r.files[ 0 ][ "$id" ] );
+                    shaderInfo.preview = await this.fs.getFileUrl( previewFile[ "$id" ] );
+                }
+                else
+                {
+                    console.warn( `Can't find shader preview image for Shader: ${ shaderInfo.name }` );
                 }
 
                 shaderList.push( shaderInfo );
@@ -481,6 +495,8 @@ export const ui = {
                 } );
             }
 
+            console.log( `${ (LX.getTime() - a)*0.001 }s` );
+
             this.shaderList = shaderList;
         }, 10 );
     },
@@ -509,6 +525,9 @@ export const ui = {
         // Likes are only shown for the active user, they are private!
         const ownProfile = this.fs.user && ( userID === this.fs.getUserId() );
         showLikes = JSON.parse( showLikes ) && ownProfile;
+
+        const previewFiles = await this.fs.listFiles( [ Query.startsWith( "name", "68" ), Query.endsWith( "name", ".png" ) ] );
+        const usersDocuments = await this.fs.listDocuments( FS.USERS_COLLECTION_ID );
 
         // Show profile
         if( !showLikes )
@@ -606,10 +625,10 @@ export const ui = {
                     };
 
                     const previewName = `${ shaderInfo.uid }.png`;
-                    const r = await this.fs.listFiles( [ Query.equal( "name", previewName ) ] );
-                    if( r.total > 0 )
+                    const previewFile = previewFiles.files.find( f => f.name === previewName );
+                    if( previewFile )
                     {
-                        shaderInfo.preview = await this.fs.getFileUrl( r.files[ 0 ][ "$id" ] );
+                        shaderInfo.preview = await this.fs.getFileUrl( previewFile[ "$id" ] );
                     }
 
                     const shaderItem = skeleton.root.children[ i ];
@@ -747,8 +766,8 @@ export const ui = {
                     const authorId = document[ "author_id" ];
                     if( authorId )
                     {
-                        const r = await this.fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_id", authorId ) ] );
-                        const author = r.documents[ 0 ][ "user_name" ];
+                        const userDocument = usersDocuments.documents.find( d => d[ "user_id" ] === authorId );
+                        const author = userDocument[ "user_name" ];
                         shaderInfo.author = author;
                         shaderInfo.authorId = authorId;
                     }
@@ -759,10 +778,10 @@ export const ui = {
                     }
 
                     const previewName = `${ shaderInfo.uid }.png`;
-                    const r = await this.fs.listFiles( [ Query.equal( "name", previewName ) ] );
-                    if( r.total > 0 )
+                    const previewFile = previewFiles.files.find( f => f.name === previewName );
+                    if( previewFile )
                     {
-                        shaderInfo.preview = await this.fs.getFileUrl( r.files[ 0 ][ "$id" ] );
+                        shaderInfo.preview = await this.fs.getFileUrl( previewFile[ "$id" ] );
                     }
 
                     const shaderItem = skeleton.root.children[ i ];
