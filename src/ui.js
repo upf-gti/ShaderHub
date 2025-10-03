@@ -531,6 +531,7 @@ export const ui = {
                     e.preventDefault();
                     const text = infoContainer.querySelector( ".desc-content" );
                     const input = new LX.TextArea( null, text.innerHTML, async (v) => {
+                        v = v.substring( 0, 512 ); // CAP TO 512 chars
                         text.innerHTML = v;
                         input.root.replaceWith( text );
                         await this.fs.updateDocument( FS.USERS_COLLECTION_ID, user[ "$id" ], {
@@ -915,6 +916,7 @@ export const ui = {
                 </div>
             `, shaderDataContainer );
 
+            // editable shader name
             const editButton = shaderNameAuthorOptionsContainer.querySelector( "svg" );
             if( editButton )
             {
@@ -923,9 +925,9 @@ export const ui = {
                     e.preventDefault();
                     const text = e.target.parentElement.children[ 1 ]; // get non-editable text
                     const input = new LX.TextInput( null, text.textContent, async (v) => {
-                        text.innerText = v;
+                        shader.name = v.substring( 0, 64 ); // CAP TO 64 chars
+                        text.innerText = shader.name;
                         input.root.replaceWith( text );
-                        shader.name = v;
                         this._editingName = false;
                     }, { inputClass: "fg-primary text-xxl font-semibold", pattern: LX.buildTextPattern( { minLength: 3 } ) } );
                     text.replaceWith( input.root );
@@ -1015,9 +1017,9 @@ export const ui = {
                         e.preventDefault();
                         const text = descContainer.querySelector( ".desc-content" );
                         const input = new LX.TextArea( null, text.innerHTML, async (v) => {
-                            text.innerHTML = v;
+                            shader.description = v.substring( 0, 512 ); // CAP TO 512 chars
+                            text.innerHTML = shader.description;
                             input.root.replaceWith( text );
-                            shader.description = v;
                             this._editingDescription = false;
                         }, { xwidth: "100%", resize: false, placeholder: "Enter your shader description here", className: "h-full", inputClass: "bg-tertiary h-full" , fitHeight: true } );
                         text.replaceWith( input.root );
