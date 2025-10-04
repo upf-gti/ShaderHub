@@ -1882,23 +1882,41 @@ export const ui = {
         const area = new LX.Area( { skipAppend: true } );
         const tabs = area.addTabs( { parentClass: "bg-secondary p-4", sizes: [ "auto", "auto" ], contentClass: "bg-secondary p-4 pt-0" } );
 
-        if( !this.texturesContainer )
         {
-            this.texturesContainer = LX.makeContainer( [ "100%", "100%" ], "grid channel-server-list gap-4 p-4 border rounded-lg justify-center overflow-scroll" );
-        }
-        this.texturesContainer.innerHTML = "";
-        await _createChannelItems( "texture", this.texturesContainer );
-        this.texturesContainer.style.display = "grid";
-        tabs.add( "Textures", this.texturesContainer, { selected: true } );
+            if( !this.texturesContainer )
+            {
+                this.texturesContainer = LX.makeContainer( [ "100%", "100%" ], "grid channel-server-list gap-4 p-4 border rounded-lg justify-center overflow-scroll" );
+            }
 
-        if( !this.miscContainer )
-        {
-            this.miscContainer = LX.makeContainer( [ "100%", "100%" ], "grid channel-server-list gap-4 p-4 border rounded-lg justify-center overflow-scroll" );
+            this.texturesContainer.innerHTML = "";
+            await _createChannelItems( "texture", this.texturesContainer );
+            this.texturesContainer.style.display = "grid";
+            tabs.add( "Textures", this.texturesContainer, { selected: true } );
         }
-        this.miscContainer.innerHTML = "";
-        await _createChannelItems( "misc", this.miscContainer );
-        this.miscContainer.style.display = "grid";
-        tabs.add( "Misc", this.miscContainer, { xselected: true } );
+
+        {
+            if( !this.miscContainer )
+            {
+                this.miscContainer = LX.makeContainer( [ "100%", "100%" ], "grid channel-server-list gap-4 p-4 border rounded-lg justify-center overflow-scroll" );
+            }
+
+            this.miscContainer.innerHTML = "";
+            await _createChannelItems( "misc", this.miscContainer );
+            this.miscContainer.style.display = "grid";
+            tabs.add( "Misc", this.miscContainer );
+        }
+
+        {
+            if( !this.cubemapsContainer )
+            {
+                this.cubemapsContainer = LX.makeContainer( [ "100%", "100%" ], "grid channel-server-list gap-4 p-4 border rounded-lg justify-center overflow-scroll" );
+            }
+
+            this.cubemapsContainer.innerHTML = "";
+            await _createChannelItems( "cubemap", this.cubemapsContainer );
+            this.cubemapsContainer.style.display = "grid";
+            tabs.add( "Cubemaps", this.cubemapsContainer );
+        }
 
         this._currentChannelIndex = channelIndex;
 

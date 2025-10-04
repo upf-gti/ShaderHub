@@ -125,10 +125,9 @@ const ShaderHub =
                     {
                         await this.loadBufferChannel( pass, channelName, c )
                     }
-                    else // Texture from file
+                    else // Texture or cubemap
                     {
-                        // Only update preview in case that's the current pass
-                        await this.createTexture( channelName, c );
+                        await this.createTextureFromFile( channelName, c );
                     }
                 }
 
@@ -575,9 +574,18 @@ const ShaderHub =
             {
                 const result = await fs.listDocuments( FS.ASSETS_COLLECTION_ID, [ Query.equal( "file_id", assetFileId ) ] );
                 console.assert( result.total == 1, `Inconsistent asset list for file id ${ assetFileId }` );
-                const preview = result.documents[ 0 ][ "preview" ];
-                url = preview ? await fs.getFileUrl( preview ) : await fs.getFileUrl( assetFileId );
-                name = result.documents[ 0 ].name;
+                const d = result.documents[ 0 ];
+                const preview = d[ "preview" ];
+                if( preview )
+                {
+                    url = await fs.getFileUrl( preview );
+                }
+                else
+                {
+                    url = ( d[ "category" ] === "cubemap" ) ? Constants.IMAGE_EMPTY_SRC : await fs.getFileUrl( assetFileId );
+                }
+
+                name = d.name;
             }
         }
 
@@ -975,6 +983,22 @@ const ShaderHub =
         requestAnimationFrame( this.onFrame.bind( this) );
     },
 
+    async createTextureFromFile( channelName, c )
+    {
+        const result = await fs.listDocuments( FS.ASSETS_COLLECTION_ID, [ Query.equal( "file_id", channelName ) ] );
+        console.assert( result.total == 1, `Inconsistent asset list for file id ${ channelName }` );
+
+        const d = result.documents[ 0 ];
+        if( d[ "category" ] === "cubemap" )
+        {
+            return await this.createCubemapTexture( channelName, c );
+        }
+        else
+        {
+            return await this.createTexture( channelName, c );
+        }
+    },
+
     async createTexture( fileId, channel, updatePreview = false, options = { } )
     {
         if( !fileId )
@@ -1012,6 +1036,55 @@ const ShaderHub =
         }
 
         return imageTexture;
+    },
+
+    async createCubemapTexture( fileId, channel, updatePreview = false )
+    {
+        const url = await fs.getFileUrl( fileId );
+        const arrayBuffer = await fs.requestFile( url );
+        const zip = await JSZip.loadAsync( arrayBuffer );
+
+        const faceNames = [ "px", "nx", "py", "ny", "pz", "nz" ];
+        const faceImages = [];
+
+        for( const face of faceNames )
+        {
+            const file = zip.file( `${ face }.png` ) || zip.file( `${ face }.jpg` );
+            if( !file ) throw new Error( `Missing cubemap face: ${ face }` );
+            const blob = await file.async( "blob" );
+            const imageBitmap = await createImageBitmap( blob );
+            faceImages.push( imageBitmap );
+        }
+
+        const { width, height } = faceImages[ 0 ];
+
+        const texture = this.device.createTexture({
+            size: [ width, height, 6 ],
+            format: "rgba8unorm",
+            usage:
+                GPUTextureUsage.TEXTURE_BINDING |
+                GPUTextureUsage.COPY_DST |
+                GPUTextureUsage.RENDER_ATTACHMENT,
+            dimension: "2d",
+        });
+
+        for( let i = 0; i < 6; i++ )
+        {
+            this.device.queue.copyExternalImageToTexture(
+                { source: faceImages[ i ] },
+                { texture, origin: [ 0, 0, i ] },
+                [ width, height ]
+            );
+        }
+
+        this.gpuTextures[ fileId ] = texture;
+
+        if( updatePreview )
+        {
+            await ui.updateShaderChannelsView( null, channel );
+        }
+
+        return texture;
     },
 
     async createKeyboardTexture( channel, updatePreview = false )
@@ -1181,21 +1254,6 @@ const ShaderHub =
         {
             await ui.updateShaderChannelsView( pass );
         }
-    },
-
-    async loadTextureChannelFromFile( file, channel )
-    {
-        const pass = this.currentPass;
-        if( pass.name === "Common" )
-        {
-            return;
-        }
-
-        pass.channels[ channel ] = file;
-
-        await this.createTexture( file, channel, true );
-
-        await this.compileShader( true, pass );
     },
 
     async removeUniformChannel( channel )

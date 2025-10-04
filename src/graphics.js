@@ -408,7 +408,8 @@ class ShaderPass {
                 const binding = bindingIndex++;
                 console.assert( binding === pipeline.textureBindings[ channelName ], `Texture binding indices do not match in pipeline: ${ pipeline.label }` );
                 texture = ( texture instanceof Array ) ? texture[ Constants.BUFFER_PASS_TEXTURE_A_INDEX ] : texture;
-                return { binding: binding, resource: texture.createView() };
+                const resource = texture.depthOrArrayLayers > 1 ? texture.createView( { dimension: 'cube' } ) : texture.createView();
+                return { binding, resource };
             } ).filter( u => u !== undefined ) );
 
             // Add sampler bindings
@@ -444,7 +445,8 @@ class ShaderPass {
                     const binding = baseBindingIndex++;
                     console.assert( binding === pipeline.textureBindings[ channelName ], `Texture binding indices do not match in pipeline: ${ pipeline.label }` );
                     texture = ( texture instanceof Array ) ? texture[ Constants.BUFFER_PASS_TEXTURE_B_INDEX ] : texture;
-                    return { binding: binding, resource: texture.createView() };
+                    const resource = texture.depthOrArrayLayers > 1 ? texture.createView( { dimension: 'cube' } ) : texture.createView();
+                    return { binding, resource };
                 } ).filter( u => u !== undefined ) );
 
                 // Add sampler bindings
@@ -735,7 +737,8 @@ class ShaderPass {
                     if( !this.isBindingUsed( channelIndexName, entryCode ) ) return;
                     const binding = bindingIndex++;
                     textureBindings[ channelName ] = binding;
-                    return `@group(0) @binding(${ binding }) var ${ channelIndexName } : texture_2d<f32>;`;
+                    const texture = this.channelTextures[ index ];
+                    return `@group(0) @binding(${ binding }) var ${ channelIndexName } : ${ texture.depthOrArrayLayers > 1 ? "texture_cube" : "texture_2d" }<f32>;`;
                 } ).filter( u => u !== undefined );
 
                 templateCodeLines.splice( textureBindingsIndex, 1, ...(bindings.length ? [
