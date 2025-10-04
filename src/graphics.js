@@ -49,12 +49,14 @@ class ShaderPass {
         this.name   = data.name;
         this.device = device;
         this.type   = data.type ?? "image";
+
         // Make sure we copy everything to avoid references
         this.codeLines  = [ ...( data.codeLines ?? this.shader.getDefaultCode( this ) ) ];
         this.channels   = [ ...( data.channels ?? [] ) ];
         this.uniforms   = [ ...( data.uniforms ?? [] ) ];
         this.channelTextures    = [];
         this.uniformBuffers     = [];
+        this.defines            = {};
 
         this.pipeline   = null;
         this.bindGroup  = null;
@@ -511,6 +513,8 @@ class ShaderPass {
 
     async compile( format, buffers )
     {
+        this.defines = {};
+
         // Clean prev storage
         if( this.type === "compute" )
         {
@@ -683,6 +687,7 @@ class ShaderPass {
     getShaderCode( includeBindings = true, entryName, entryCode )
     {
         const templateCodeLines = [ ...( this.type === "compute" ) ? Shader.COMPUTER_SHADER_TEMPLATE : Shader.RENDER_SHADER_TEMPLATE ];
+        const shaderLines       = [ ...( entryCode ? entryCode.split( "\n" ) : this.codeLines ) ];
         const defaultBindings   = {};
         const customBindings    = {};
         const textureBindings   = {};
@@ -799,18 +804,16 @@ class ShaderPass {
 
         // Add main lines
         {
-            const lines = [ ...( entryCode ? entryCode.split( "\n" ) : this.codeLines ) ];
-
             if( this.type === "compute" )
             {
-                this.structs            = this.parseStructs( lines.join( "\n" ) );
+                this.structs            = this.parseStructs( shaderLines.join( "\n" ) );
                 this.workGroupSizes     = {};
                 this.workGroupCounts    = {};
                 this.executeOnce        = {};
 
-                for( let i = 0; i < lines.length; ++i )
+                for( let i = 0; i < shaderLines.length; ++i )
                 {
-                    lines[ i ] = this.parseComputeLine( lines[ i ], entryName, entryCode, storageBindings );
+                    shaderLines[ i ] = this.parseComputeLine( shaderLines[ i ], entryName, entryCode, storageBindings );
                 }
 
                 const computeEntryIndex = templateCodeLines.indexOf( "$compute_entry" );
@@ -820,7 +823,16 @@ class ShaderPass {
 
             const mainImageIndex = templateCodeLines.indexOf( "$main_entry" );
             console.assert( mainImageIndex > -1 );
-            templateCodeLines.splice( mainImageIndex, 1, ...lines );
+            templateCodeLines.splice( mainImageIndex, 1, ...shaderLines );
+        }
+
+        // Parse general preprocessor lines
+        // This has to be the last step, to replace every define appearance!
+        {
+            for( let i = 0; i < templateCodeLines.length; ++i )
+            {
+                templateCodeLines[ i ] = this.parseShaderLine( i, templateCodeLines );
+            }
         }
 
         const shaderResult = {
@@ -930,6 +942,30 @@ class ShaderPass {
         }
 
         return structs;
+    }
+
+    parseShaderLine( index, lines )
+    {
+        const line = lines[ index ];
+        const tokens = line.split( " " );
+
+        if( line.startsWith( "#define" ) )
+        {
+            const defineName = tokens[ 1 ];
+            const defineValue = tokens.slice( 2 ).join( " " ); // All starting from the 2nd index
+            this.defines[ defineName ] = defineValue;
+            return "";
+        }
+
+        // Replace defines
+        let newLine = line;
+
+        for( const [ name, value ] of Object.entries( this.defines ) )
+        {
+            newLine = newLine.replaceAll( name, value );
+        }
+
+        return newLine;
     }
 
     parseComputeLine( line, entryName, entryCode, storageBindings )
