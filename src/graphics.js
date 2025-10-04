@@ -944,9 +944,137 @@ class ShaderPass {
         return structs;
     }
 
+    _replaceDefines( line )
+    {
+        for( const [ name, value ] of Object.entries( this.defines ) )
+        {
+            line = line.replaceAll( name, value );
+        }
+
+        return line;
+    }
+
+    _parseIfDirective( line )
+    {
+        const m = line.match( /^\s*#\s*IF\s+(.+?)\s*$/i );
+        if( !m ) return null;
+
+        const cond = m[ 1 ].trim();
+
+        // helpers
+        const isNumber = s => /^[-+]?\d+(\.\d+)?$/.test(s);
+        const isBoolean = s => /^(true|false)$/i.test(s);
+        const isIdentifier = s => /^[A-Za-z_]\w*$/.test(s);
+
+        // single token cases
+        if( isNumber( cond ) )
+        {
+            return { raw: cond, type: 'literal', kind: 'number', value: Number(cond) };
+        }
+        if( isBoolean( cond ) )
+        {
+            return { raw: cond, type: 'literal', kind: 'boolean', value: cond.toLowerCase() === 'true' };
+        }
+        if( isIdentifier( cond ) )
+        {
+            return { raw: cond, type: 'identifier', name: cond };
+        }
+
+        // comparison: left <op> right  (operators: == != <= >= < >)
+        // allow identifiers or numbers on each side, with optional whitespace
+        const compRE = /^(.+?)\s*(==|!=|<=|>=|<|>)\s*(.+)$/;
+        const cm = cond.match( compRE );
+        if( cm )
+        {
+            const leftRaw = cm[ 1 ].trim();
+            const op = cm[ 2 ];
+            const rightRaw = cm[ 3 ].trim();
+
+            // parse operands (number | boolean | identifier)
+            function parseOperand( t )
+            {
+                if (isNumber(t)) return { raw: t, type: 'literal', kind: 'number', value: Number( t ) };
+                if (isBoolean(t)) return { raw: t, type: 'literal', kind: 'boolean', value: t.toLowerCase() === 'true' };
+                if (isIdentifier(t)) return { raw: t, type: 'identifier', name: t };
+                return { raw: t, type: 'unknown' };
+            }
+
+            return { raw: cond, type: 'comparison', op, left: parseOperand( leftRaw ), right: parseOperand( rightRaw ) };
+        }
+
+        // unknown if directive..
+        return { raw: cond, type: 'unknown' };
+    }
+
+    _evaluateParsedCondition( parsed )
+    {
+        if( !parsed )
+        {
+            return false;
+        }
+
+        if( parsed.type === 'literal' )
+        {
+            if( parsed.kind === 'number' ) return parsed.value !== 0;
+            if( parsed.kind === 'boolean' ) return Boolean( parsed.value );
+            return Boolean( parsed.value );
+        }
+
+        if( parsed.type === 'identifier' )
+        {
+            const v = this.defines[ parsed.name ];
+            if( typeof v === 'boolean' ) return v;
+            return Number( v ) !== 0;
+        }
+
+        if( parsed.type === 'comparison' )
+        {
+            const resolve = ( op ) =>
+            {
+                if( op.type === 'literal' ) return op.value;
+                if( op.type === 'identifier' ) return this.defines[ op.name ]
+                if( op.type === 'raw' )
+                {
+                    const n = Number( op.raw );
+                    return Number.isFinite( n ) ? n : op.raw;
+                }
+                return undefined;
+            }
+
+            const L = resolve( parsed.left );
+            const R = resolve( parsed.right );
+
+            switch( parsed.op )
+            {
+                case '==': return L == R;
+                case '!=': return L != R;
+                case '<=': return Number( L ) <= Number( R );
+                case '>=': return Number( L ) >= Number( R );
+                case '<': return Number( L ) < Number( R );
+                case '>': return Number( L ) > Number( R );
+                default: throw new Error( `Unsupported operator ${ parsed.op }` );
+            }
+        }
+
+        return false;
+    }
+
     parseShaderLine( index, lines )
     {
         const line = lines[ index ];
+
+        if( line.startsWith( "#endif" ) )
+        {
+            delete this.activeIf;
+            return "";
+        }
+
+        // Early discard if inside an inactive IF directive
+        if( this.activeIf === false )
+        {
+            return "";
+        }
+
         const tokens = line.split( " " );
 
         if( line.startsWith( "#define" ) )
@@ -956,16 +1084,15 @@ class ShaderPass {
             this.defines[ defineName ] = defineValue;
             return "";
         }
-
-        // Replace defines
-        let newLine = line;
-
-        for( const [ name, value ] of Object.entries( this.defines ) )
+        else if( line.startsWith( "#if" ) )
         {
-            newLine = newLine.replaceAll( name, value );
+            const p = this._parseIfDirective( line );
+            this.activeIf = this._evaluateParsedCondition( p )
+            return "";
         }
 
-        return newLine;
+        // Replace defines
+        return this._replaceDefines( line );
     }
 
     parseComputeLine( line, entryName, entryCode, storageBindings )
