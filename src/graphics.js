@@ -326,6 +326,7 @@ class ShaderPass {
                 p.customBindings = result.customBindings;
                 p.textureBindings = result.textureBindings;
                 p.samplerBindings = result.samplerBindings;
+                p.storageBindings = result.storageBindings;
 
                 fullCode += result.code;
 
@@ -482,17 +483,18 @@ class ShaderPass {
             return;
         }
 
-        const entries       = [];
+        const entries = [];
 
-        let bindingIndex    = 0;
-
-        this.storageBuffers.map( ( u, index ) => {
-            const buffer = useSecondary ? this.storageBuffers[ index ].resourceB : this.storageBuffers[ index ].resource;
+        for( const [ bufferName, bufferIndex ] of Object.entries( pipeline.storageBindings ) )
+        {
+            const gpuBuffer = this.storageBuffers[ bufferName ];
+            console.assert( gpuBuffer, `Storage buffer '${ bufferName }' not created!` );
+            const resourceBuffer = useSecondary ? gpuBuffer.resourceB : gpuBuffer.resource;
             entries.push( {
-                binding: bindingIndex++,
-                resource: { buffer }
+                binding: bufferIndex,
+                resource: { buffer: resourceBuffer }
             } );
-        } );
+        }
 
         const storageBindGroup = await this.device.createBindGroup({
             label: `Storage Bind Group ${ useSecondary ? "B" : "A" }`,
@@ -509,6 +511,12 @@ class ShaderPass {
 
     async compile( format, buffers )
     {
+        // Clean prev storage
+        if( this.type === "compute" )
+        {
+            this.storageBuffers = {};
+        }
+
         const pipeline = await this.createPipeline( format );
         if( pipeline?.constructor !== GPURenderPipeline
             && pipeline?.constructor !== GPUComputePipeline )
@@ -550,7 +558,8 @@ class ShaderPass {
             }
         }
 
-        this.mustCompile = false;
+        this.frameCount     = 0;
+        this.mustCompile    = false;
 
         return WEBGPU_OK;
     }
@@ -678,6 +687,7 @@ class ShaderPass {
         const customBindings    = {};
         const textureBindings   = {};
         const samplerBindings   = {};
+        const storageBindings   = {};
 
         if( includeBindings )
         {
@@ -794,14 +804,13 @@ class ShaderPass {
             if( this.type === "compute" )
             {
                 this.structs            = this.parseStructs( lines.join( "\n" ) );
-                this.storageBuffers     = [];
                 this.workGroupSizes     = {};
                 this.workGroupCounts    = {};
                 this.executeOnce        = {};
 
                 for( let i = 0; i < lines.length; ++i )
                 {
-                    lines[ i ] = this.parseComputeLine( lines[ i ], entryName );
+                    lines[ i ] = this.parseComputeLine( lines[ i ], entryName, entryCode, storageBindings );
                 }
 
                 const computeEntryIndex = templateCodeLines.indexOf( "$compute_entry" );
@@ -820,6 +829,7 @@ class ShaderPass {
             customBindings,
             textureBindings,
             samplerBindings,
+            storageBindings,
             executeOnce: this.executeOnce,
             wgSizes: this.workGroupSizes,
             wgCounts: this.workGroupCounts,
@@ -922,7 +932,7 @@ class ShaderPass {
         return structs;
     }
 
-    parseComputeLine( line, entryName )
+    parseComputeLine( line, entryName, entryCode, storageBindings )
     {
         const tokens = line.split( " " );
 
@@ -951,24 +961,38 @@ class ShaderPass {
         {
             // Parse name and type and create storage buffer
             const bufferName = tokens[ 1 ];
+            const entryCodeExceptLine = entryCode.replace( line, "" );
+
+            if( !this.isBindingUsed( bufferName, entryCodeExceptLine ) )
+            {
+                return "";
+            }
+
             const bufferType = tokens.slice( 2 ).join( " " ); // All starting from the 2nd index
-            const bufferSize = this.getStorageTypeSize( bufferType );
 
-            const storageBuffer = this.device.createBuffer({
-                label: `${ bufferName} (storage)`,
-                size: bufferSize,
-                usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-            });
+            if( !this.storageBuffers[ bufferName ] )
+            {
+                const bufferSize = this.getStorageTypeSize( bufferType );
 
-            const storageBufferB = this.device.createBuffer({
-                label: `${ bufferName} (storage B)`,
-                size: bufferSize,
-                usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-            });
+                const storageBuffer = this.device.createBuffer({
+                    label: `${ bufferName} (storage)`,
+                    size: bufferSize,
+                    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+                });
 
-            const index = this.storageBuffers.length;
-            this.storageBuffers.push( { name: bufferName, size: bufferSize, resource: storageBuffer, resourceB: storageBufferB } );
-            return `@group(1) @binding(${ index }) var<storage, read_write> ${ bufferName }: ${ bufferType };`;
+                const storageBufferB = this.device.createBuffer({
+                    label: `${ bufferName} (storage B)`,
+                    size: bufferSize,
+                    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+                });
+
+                this.storageBuffers[ bufferName ] = { name: bufferName, size: bufferSize, resource: storageBuffer, resourceB: storageBufferB };
+            }
+
+            const bufferIndex = Object.keys( storageBindings ).length;
+            storageBindings[ bufferName ] = bufferIndex;
+
+            return `@group(1) @binding(${ bufferIndex }) var<storage, read_write> ${ bufferName }: ${ bufferType };`;
         }
 
         return line;
