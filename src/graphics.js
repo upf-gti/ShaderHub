@@ -1183,9 +1183,6 @@ fn vert_main(@builtin(vertex_index) VertexIndex : u32) -> VertexOutput {
     return output;
 }
 
-// Constants
-const PI : f32 = 3.14159265359;
-
 $wgsl_utils
 $common
 $main_entry
@@ -1235,9 +1232,6 @@ $output_binding
 // fn passLoad(pass_index: int, coord: int2, lod: int) -> float4 {
 //     return textureLoad(pass_in, coord, pass_index, lod);
 // }
-
-// Constants
-const PI : f32 = 3.14159265359;
 
 $common
 $main_entry
