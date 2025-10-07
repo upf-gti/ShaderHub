@@ -2,7 +2,7 @@ import { LX } from 'lexgui';
 import * as Constants from "../src/constants.js";
 import * as Utils from '../src/utils.js';
 import { FS } from '../src/fs.js';
-import { Renderer, FPSCounter, Shader, ShaderPass } from './graphics.js';
+import { Renderer, FPSCounter, Shader, ShaderPass } from '../src/graphics.js';
 
 const fs = new FS();
 const fps = new FPSCounter();
@@ -196,7 +196,7 @@ const ShaderHub =
                 const channelName = pass.channels[ c ];
                 if( !channelName ) continue;
 
-                if( !this.gpuTextures[ channelName ] )
+                if( !this.renderer.gpuTextures[ channelName ] )
                 {
                     if( channelName === "Keyboard" )
                     {
@@ -212,7 +212,7 @@ const ShaderHub =
                     }
                 }
 
-                pass.setChannelTexture( c, this.gpuTextures[ channelName ] );
+                pass.setChannelTexture( c, this.renderer.gpuTextures[ channelName ] );
             }
 
             if( pass.uniformsDirty )
@@ -324,7 +324,7 @@ const ShaderHub =
                 const pass = this.shader.passes[ passIndex ];
                 if( pass.type === "buffer" )
                 {
-                    delete this.gpuTextures[ pass.name ];
+                    delete this.renderer.gpuTextures[ pass.name ];
                 }
 
                 this.shader.passes.splice( passIndex, 1 );
@@ -344,7 +344,7 @@ const ShaderHub =
                 resolutionY: this.resolutionY
             }
 
-            const shaderPass = new ShaderPass( shader, this.device, pass );
+            const shaderPass = new ShaderPass( shader, this.renderer.device, pass );
             this.shader.passes.push( shaderPass );
             this.shader.likes = [];
         }
@@ -365,11 +365,11 @@ const ShaderHub =
                 pass.uniforms.forEach( u => u.type = u.type ?? "f32");
 
                 // Push passes to the shader
-                const shaderPass = new ShaderPass( shader, this.device, pass );
+                const shaderPass = new ShaderPass( shader, this.renderer.device, pass );
                 if( pass.type === "buffer" || pass.type === "compute" )
                 {
                     console.assert( shaderPass.textures, "Buffer does not have render target textures" );
-                    this.gpuTextures[ pass.name ] = shaderPass.textures;
+                    this.renderer.gpuTextures[ pass.name ] = shaderPass.textures;
                 }
                 this.shader.passes.push( shaderPass );
 
@@ -508,6 +508,29 @@ const ShaderHub =
         requestAnimationFrame( this.onFrame.bind( this) );
     },
 
+    async createTextureFromFile( channelName )
+    {
+        const result = await fs.listDocuments( FS.ASSETS_COLLECTION_ID, [ Query.equal( "file_id", channelName ) ] );
+        console.assert( result.total == 1, `Inconsistent asset list for file id ${ channelName }` );
+
+        const url = await fs.getFileUrl( channelName );
+        const data = await fs.requestFile( url );
+        const asset = result.documents[ 0 ];
+
+        let texture = null;
+
+        if( asset.category === "cubemap" )
+        {
+            texture = await this.renderer.createCubemapTexture( data, channelName, asset.name );
+        }
+        else
+        {
+            texture = await this.renderer.createTexture( data, channelName, asset.name );
+        }
+
+        return texture;
+    },
+
     async createKeyboardTexture( channel, updatePreview = false )
     {
         const dimensions = [ 256, 3 ];
@@ -534,7 +557,7 @@ const ShaderHub =
         const imageName = "Keyboard";
         const imageData = new ImageData( new Uint8ClampedArray( data ), dimensions[ 0 ], dimensions[ 1 ] );
         const imageBitmap = await createImageBitmap( imageData );
-        const imageTexture = this.gpuTextures[ imageName ] ?? this.device.createTexture({
+        const imageTexture = this.renderer.gpuTextures[ imageName ] ?? this.renderer.device.createTexture({
             label: "KeyboardTexture",
             size: [ imageBitmap.width, imageBitmap.height, 1 ],
             format: 'rgba8unorm',
@@ -544,7 +567,7 @@ const ShaderHub =
                 GPUTextureUsage.RENDER_ATTACHMENT,
         });
 
-        this.device.queue.copyExternalImageToTexture(
+        this.renderer.device.queue.copyExternalImageToTexture(
             { source: imageBitmap },
             { texture: imageTexture },
             dimensions
@@ -552,7 +575,7 @@ const ShaderHub =
 
         // Recreate stuff if we update the texture and
         // a shader pass is using it
-        this.gpuTextures[ imageName ] = imageTexture;
+        this.renderer.gpuTextures[ imageName ] = imageTexture;
 
         const pass = this.currentPass;
         const usedChannel = pass.channels.indexOf( imageName );
@@ -585,7 +608,7 @@ const ShaderHub =
             const pass = compilePasses[ i ];
             if( pass.type === "common" ) continue;
 
-            const result = await pass.compile( this.presentationFormat, this.gpuBuffers );
+            const result = await pass.compile( this.renderer );
             if( result !== WEBGPU_OK ) // error object
             {
                 this._lastShaderCompilationWithErrors = true;

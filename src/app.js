@@ -996,8 +996,8 @@ const ShaderHub =
             console.assert( pass.codeLines, `No tab with name ${ pass.name }` );
             if( pass.type === "common" ) continue;
 
-            const result = await pass.compile( this.presentationFormat, this.gpuBuffers );
-            if( result !== WEBGPU_OK ) // error object
+            const result = await pass.compile( this.renderer );
+            if( result !== Constants.WEBGPU_OK ) // error object
             {
                 ui.editor.loadTab( pass.name ); // Open the tab with the error
 
@@ -1022,7 +1022,7 @@ const ShaderHub =
 
                 this._lastShaderCompilationWithErrors = true;
 
-                return WEBGPU_ERROR; // Stop at first error
+                return Constants.WEBGPU_ERROR; // Stop at first error
             }
         }
 
@@ -1039,7 +1039,7 @@ const ShaderHub =
         this.manualCompile |= ( manualCompile ?? false );
         this._compilingShader = false;
 
-        return WEBGPU_OK;
+        return Constants.WEBGPU_OK;
     },
 
     async shaderExists( uid )

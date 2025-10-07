@@ -317,13 +317,9 @@ class ShaderPass
             return;
         }
 
-        const format = renderer.presentationFormat;
-        const ctx = renderer.webGPUContext;
-        const buffers = renderer.gpuBuffers;
-
         if( this.mustCompile || ( !this.pipeline && !( this.computePipelines ?? [] ).length ) || !this.bindGroup )
         {
-            const r = await this.compile( format, buffers );
+            const r = await this.compile( renderer );
             if( r !== Constants.WEBGPU_OK )
             {
                 return;
@@ -333,7 +329,7 @@ class ShaderPass
         if( this.type === "image" )
         {
             const commandEncoder = this.device.createCommandEncoder();
-            const textureView = ctx.getCurrentTexture().createView();
+            const textureView = renderer.webGPUContext.getCurrentTexture().createView();
 
             const renderPassDescriptor = {
                 colorAttachments: [
@@ -718,8 +714,11 @@ class ShaderPass
         return storageBindGroup;
     }
 
-    async compile( format, buffers )
+    async compile( renderer )
     {
+        const format = renderer.presentationFormat;
+        const buffers = renderer.gpuBuffers;
+
         this.defines = {
             "SCREEN_WIDTH": this.resolution[ 0 ],
             "SCREEN_HEIGHT": this.resolution[ 1 ],

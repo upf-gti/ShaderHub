@@ -983,7 +983,6 @@ export const ui = {
                     {
                         dmOptions.push(
                             mobile ? 0 : { name: "Save Shader", icon: "Save", callback: () => ShaderHub.saveShader( result ) },
-                            isNewShader ? 0 : { name: "Share", icon: "Share2", callback: () => this.openShareiFrameDialog( result ) },
                             (isNewShader || mobile) ? 0 : { name: "Settings", icon: "Settings", callback: () => this.openShaderSettingsDialog( result ) }
                         );
 
@@ -1000,6 +999,10 @@ export const ui = {
                     {
                         dmOptions.push( mobile ? 0 : { name: "Remix Shader", icon: "GitFork", disabled: !( result.remixable ?? true ), callback: () => ShaderHub.remixShader() } );
                     }
+
+                    dmOptions.push(
+                        !result ? 0 : { name: "Share", icon: "Share2", callback: () => this.openShareiFrameDialog( result ) }
+                    );
 
                     dmOptions = dmOptions.filter( o => o !== 0 );
 
@@ -1809,11 +1812,11 @@ export const ui = {
                 p.addTextArea( null, `Direct link: Copy the code below to embed this shader in your website or blog:`, null, { inputClass: "fg-secondary", disabled: true, fitHeight: true } );
                 p.addCheckbox( "Show UI", showUI, ( v ) => {
                     showUI = v;
-                    const newUrl = `<iframe src="${ window.location.origin }${ window.location.pathname }embed/?shader=${ r[ "$id" ] }${ showUI ? "" : "&ui=false" }" frameborder="0" width="640" height="360" class="rounded-lg" allowfullscreen></iframe>`;
+                    const newUrl = `<iframe src="${ window.location.origin }${ window.location.pathname }embed/?shader=${ r[ "$id" ] }${ showUI ? "" : "&ui=false" }" frameborder="0" width="640" height="405" class="rounded-lg" allowfullscreen></iframe>`;
                     iframeText.set( newUrl );
                 }, { className: "contrast" } );
 
-                const iframeUrl = `<iframe src="${ window.location.origin }${ window.location.pathname }embed/?shader=${ r[ "$id" ] }${ showUI ? "" : "&ui=false" }" frameborder="0" width="640" height="360" class="rounded-lg" allowfullscreen></iframe>`;
+                const iframeUrl = `<iframe src="${ window.location.origin }${ window.location.pathname }embed/?shader=${ r[ "$id" ] }${ showUI ? "" : "&ui=false" }" frameborder="0" width="640" height="405" class="rounded-lg" allowfullscreen></iframe>`;
 
                 const iframeText = p.addTextArea( null, iframeUrl, null,
                     { disabled: true, fitHeight: true } );
