@@ -720,23 +720,6 @@ class ShaderPass {
 
         // Add main lines
         {
-            if( this.type === "compute" )
-            {
-                this.structs            = this.parseStructs( shaderLines.join( "\n" ) );
-                this.workGroupSizes     = {};
-                this.workGroupCounts    = {};
-                this.executeOnce        = {};
-
-                for( let i = 0; i < shaderLines.length; ++i )
-                {
-                    shaderLines[ i ] = this.parseComputeLine( shaderLines[ i ], entryName, entryCode, storageBindings );
-                }
-
-                const computeEntryIndex = templateCodeLines.indexOf( "$compute_entry" );
-                console.assert( computeEntryIndex > -1 );
-                templateCodeLines.splice( computeEntryIndex, 1, `@compute @workgroup_size(${ this.workGroupSizes[ entryName ] ?? [ 16, 16, 1 ] })` );
-            }
-
             const mainImageIndex = templateCodeLines.indexOf( "$main_entry" );
             console.assert( mainImageIndex > -1 );
             templateCodeLines.splice( mainImageIndex, 1, ...shaderLines );
@@ -749,10 +732,27 @@ class ShaderPass {
 
             while( this._pLine < templateCodeLines.length )
             {
-                this.parseShaderLine( templateCodeLines );
+                this._parseShaderLine( templateCodeLines );
             }
 
             delete this._pLine;
+
+            if( this.type === "compute" )
+            {
+                this.structs            = this._parseStructs( templateCodeLines.join( "\n" ) );
+                this.workGroupSizes     = {};
+                this.workGroupCounts    = {};
+                this.executeOnce        = {};
+
+                for( let i = 0; i < templateCodeLines.length; ++i )
+                {
+                    templateCodeLines[ i ] = this._parseComputeLine( templateCodeLines[ i ], entryName, entryCode, storageBindings );
+                }
+
+                const computeEntryIndex = templateCodeLines.indexOf( "$compute_entry" );
+                console.assert( computeEntryIndex > -1 );
+                templateCodeLines.splice( computeEntryIndex, 1, `@compute @workgroup_size(${ this.workGroupSizes[ entryName ] ?? [ 16, 16, 1 ] })` );
+            }
         }
 
         const noBindingsShaderCode = templateCodeLines.join( "\n" );
@@ -864,38 +864,7 @@ class ShaderPass {
         return shaderResult;
     }
 
-    getStorageTypeSize( type )
-    {
-        // for now only support arrays and native types
-        if( type.startsWith( "array" ) )
-        {
-            const matches = [...type.matchAll(/<([^>]+)>/g)].map(m => m[1]);
-            type = matches[ 0 ];
-            const ts = type.split( "," );
-            let size = Shader.GetUniformSize( ts[ 0 ] );
-            // unknown type, must be a custom type
-            if( size === 0 )
-            {
-                size = this.structs[ ts[ 0 ] ]?.size ?? 0;
-            }
-
-            if( ts.length === 1 )
-            {
-                return size;
-            }
-            else
-            {
-                const count = parseInt( ts[ 1 ] );
-                return size * count;
-            }
-        }
-        else
-        {
-            return Shader.GetUniformSize( type );
-        }
-    }
-
-    computeStructSize( members )
+    _computeStructSize( members )
     {
         let offset      = 0;
         let maxAlign    = 1;
@@ -922,7 +891,7 @@ class ShaderPass {
         return { size, stride };
     }
 
-    parseStructs( code )
+    _parseStructs( code )
     {
         const structs = {};
         const structRegex = /struct\s+(\w+)\s*{([^}]*)}/g;
@@ -943,11 +912,51 @@ class ShaderPass {
             }
 
             // compute struct size
-            const { size, stride } = this.computeStructSize( members );
+            const { size, stride } = this._computeStructSize( members );
             structs[ name ] = { name, members, size, stride };
         }
 
         return structs;
+    }
+
+    _parseStorageType( str )
+    {
+        const arrayRE = /^array\s*<\s*(.+)\s*,\s*([A-Za-z0-9_]+)\s*>\s*$/i;
+
+        const match = str.match( arrayRE );
+        if( match )
+        {
+            const elemType = this._parseStorageType( match[ 1 ] );
+            const countName = match[ 2 ];
+            const count = isNaN( countName )
+                ? this.defines[ countName ] ?? 0
+                : parseInt( countName );
+            return {
+                kind: "array",
+                elem: elemType,
+                count,
+            };
+        }
+
+        let type = str;
+        let size = Shader.GetUniformSize( type );
+        if( size === 0 )
+        {
+            size = this.structs[ type ]?.size ?? 0;
+        }
+
+        return { kind: "base", type, size };
+    }
+
+    _getBufferSize( node )
+    {
+        if( node.kind === "base" ) return node.size;
+        if( node.kind === "array" )
+        {
+            const elemSize = this._getBufferSize( node.elem );
+            return elemSize * ( node.count ?? 1 );
+        }
+        return 0;
     }
 
     _replaceDefines( line )
@@ -1065,7 +1074,7 @@ class ShaderPass {
         return false;
     }
 
-    parseShaderLine( lines )
+    _parseShaderLine( lines )
     {
         const line = lines[ this._pLine ];
         const tokens = line.split( " " );
@@ -1153,7 +1162,48 @@ class ShaderPass {
         lines[ this._pLine++ ] = this._replaceDefines( line );
     }
 
-    parseComputeLine( line, entryName, entryCode, storageBindings )
+    _parseComputeStorageLine( line, entryName, entryCode, storageBindings )
+    {
+        const m = line.match( /^\s*#\s*storage\s+([A-Za-z_]\w*)\s+(.+)\s*$/i );
+        if( !m ) return "";
+
+        // Parse name and type and create storage buffer
+        const bufferName = m[ 1 ];
+        const typeExpr = m[ 2 ].trim();
+        const bufferType = this._parseStorageType( typeExpr );
+
+        const entryCodeExceptLine = entryCode.replace( line, "" );
+        if( !this.isBindingUsed( bufferName, entryCodeExceptLine ) )
+        {
+            return "";
+        }
+
+        if( !this.storageBuffers[ bufferName ] )
+        {
+            const bufferSize = this._getBufferSize( bufferType );
+
+            const storageBuffer = this.device.createBuffer({
+                label: `${ bufferName} (storage)`,
+                size: bufferSize,
+                usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+            });
+
+            const storageBufferB = this.device.createBuffer({
+                label: `${ bufferName} (storage B)`,
+                size: bufferSize,
+                usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+            });
+
+            this.storageBuffers[ bufferName ] = { name: bufferName, size: bufferSize, resource: storageBuffer, resourceB: storageBufferB };
+        }
+
+        const bufferIndex = Object.keys( storageBindings ).length;
+        storageBindings[ bufferName ] = bufferIndex;
+
+        return `@group(1) @binding(${ bufferIndex }) var<storage, read_write> ${ bufferName }: ${ typeExpr };`;
+    }
+
+    _parseComputeLine( line, entryName, entryCode, storageBindings )
     {
         const tokens = line.split( " " );
 
@@ -1180,40 +1230,7 @@ class ShaderPass {
         }
         else if( line.startsWith( "#storage" ) )
         {
-            // Parse name and type and create storage buffer
-            const bufferName = tokens[ 1 ];
-            const entryCodeExceptLine = entryCode.replace( line, "" );
-
-            if( !this.isBindingUsed( bufferName, entryCodeExceptLine ) )
-            {
-                return "";
-            }
-
-            const bufferType = tokens.slice( 2 ).join( " " ); // All starting from the 2nd index
-
-            if( !this.storageBuffers[ bufferName ] )
-            {
-                const bufferSize = this.getStorageTypeSize( bufferType );
-
-                const storageBuffer = this.device.createBuffer({
-                    label: `${ bufferName} (storage)`,
-                    size: bufferSize,
-                    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-                });
-
-                const storageBufferB = this.device.createBuffer({
-                    label: `${ bufferName} (storage B)`,
-                    size: bufferSize,
-                    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-                });
-
-                this.storageBuffers[ bufferName ] = { name: bufferName, size: bufferSize, resource: storageBuffer, resourceB: storageBufferB };
-            }
-
-            const bufferIndex = Object.keys( storageBindings ).length;
-            storageBindings[ bufferName ] = bufferIndex;
-
-            return `@group(1) @binding(${ bufferIndex }) var<storage, read_write> ${ bufferName }: ${ bufferType };`;
+            return this._parseComputeStorageLine( line, entryName, entryCode, storageBindings );
         }
 
         return line;
@@ -1334,6 +1351,8 @@ class Shader {
             case "vec4i":
             case "vec4u":
             return 16;
+            case "mat4x4f":
+            return 64;
         }
         return 0;
     }

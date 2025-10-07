@@ -495,7 +495,7 @@ export const ui = {
                 } );
             }
 
-            console.log( `${ (LX.getTime() - a)*0.001 }s` );
+            // console.log( `${ (LX.getTime() - a)*0.001 }s` );
 
             this.shaderList = shaderList;
         }, 10 );
