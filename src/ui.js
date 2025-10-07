@@ -1029,24 +1029,38 @@ export const ui = {
             // Editable description
             {
                 const descContainer = LX.makeContainer( [`auto`, "auto"], "fg-primary mt-2 flex flex-row items-center", `
-                    <div class="w-auto self-start mt-1">${ ( ownProfile || ( shaderUid === "new" ) ) ? LX.makeIcon("Edit", { svgClass: "mr-3 cursor-pointer hover:fg-primary" } ).innerHTML : "" }</div>
+                    <div class="w-auto self-start">${ ( ownProfile || ( shaderUid === "new" ) ) ? LX.makeIcon("Edit", { svgClass: "mr-3 cursor-pointer hover:fg-primary" } ).innerHTML : "" }</div>
                     <div class="desc-content w-full text-md break-words">${ shader.description }</div>
                     `, shaderDataContainer );
 
                 const editButton = descContainer.querySelector( "svg" );
                 if( editButton )
                 {
+                    const iSaveDescription = async ( text, textDiv, input ) =>
+                    {
+                        shader.description = Utils.formatMD( text );
+                        textDiv.innerHTML = shader.description;
+                        input.root.replaceWith( textDiv );
+                        this._editingDescription = false;
+
+                        let r = await ShaderHub.shaderExists();
+                        if( r && r.description !== shader.description )
+                        {
+                            await this.fs.updateDocument( FS.SHADERS_COLLECTION_ID, r[ "$id" ], {
+                                "description": shader.description
+                            } );
+                            Utils.toast( `✅ Shader updated`, `Shader: ${ r.name } by ${ this.fs.user.name }` );
+                        }
+                    };
+
                     editButton.addEventListener( "click", (e) => {
                         if( this._editingDescription ) return;
                         e.preventDefault();
-                        const text = descContainer.querySelector( ".desc-content" );
-                        const input = new LX.TextArea( null, text.innerHTML, async (v) => {
-                            shader.description = v.substring( 0, 512 ); // CAP TO 512 chars
-                            text.innerHTML = shader.description;
-                            input.root.replaceWith( text );
-                            this._editingDescription = false;
-                        }, { xwidth: "100%", resize: false, placeholder: "Enter your shader description here", className: "h-full", inputClass: "bg-tertiary h-full" , fitHeight: true } );
-                        text.replaceWith( input.root );
+                        const textDiv = descContainer.querySelector( ".desc-content" );
+                        const input = new LX.TextArea( null, Utils.unformatMD( textDiv.innerHTML ), async (v) => {
+                            iSaveDescription( v, textDiv, input );
+                        }, { resize: false, placeholder: "Enter your shader description here", className: "w-full h-full", inputClass: "bg-tertiary h-full" , fitHeight: true } );
+                        textDiv.replaceWith( input.root );
                         LX.doAsync( () => input.root.focus() );
                         this._editingDescription = true;
                     } );

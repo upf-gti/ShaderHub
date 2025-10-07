@@ -1,4 +1,5 @@
-function isMobile() {
+function isMobile()
+{
     return ( navigator.userAgent.match(/Android/i) ||
             navigator.userAgent.match(/webOS/i) ||
             navigator.userAgent.match(/iPhone/i) ||
@@ -8,16 +9,19 @@ function isMobile() {
             navigator.userAgent.match(/Windows Phone/i) );
 }
 
-function capitalizeFirstLetter(val) {
+function capitalizeFirstLetter( val )
+{
     return String(val).charAt(0).toUpperCase() + String(val).slice(1);
 }
 
-function toESDate( date ) {
+function toESDate( date )
+{
     const ts = date.substring( 0, 10 ).split("-");
     return [ ts[ 2 ], ts[ 1 ], ts[ 0 ] ].join("-");
 }
 
-async function imageToDataURL( fs, url ) {
+async function imageToDataURL( fs, url )
+{
     const r = await fs.requestFile( url );
     const blob = new Blob( [ r ], { type: "image/png" } );
     return new Promise((resolve, reject) => {
@@ -28,13 +32,37 @@ async function imageToDataURL( fs, url ) {
     });
 }
 
-function getDate() {
+function getDate()
+{
     const date = new Date();
     const day = `${ date.getDate() }`;
     const month = `${ date.getMonth() + 1 }`;
     const year = `${ date.getFullYear() }`;
     return `${ "0".repeat( 2 - day.length ) }${ day }-${ "0".repeat( 2 - month.length ) }${ month }-${ year }`;
 }
+
+const formatMD = ( text ) =>
+{
+    text = text.substring( 0, 512 ); // CAP TO 512 chars
+    text = text.replace(/&/g, "&amp;") .replace(/</g, "&lt;") .replace(/>/g, "&gt;");
+    text = text.replace( /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>' ); // Links: [text](url)
+    text = text.replace(/\*\*(.*?)\*\*/g, "<b>$1</b>"); // Bold: **text**
+    text = text.replace(/(^|[^*])\*(?!\*)([^*]+)\*(?!\*)/g, '$1<i>$2</i>'); // Italic: *text*
+    text = text.replace(/~~(.*?)~~/g, "<u>$1</u>"); // Underline: ~~text~~
+    text = text.replace(/\n/g, "<br>"); // Line breaks: \n
+    return text.trim();
+};
+
+const unformatMD = ( html ) =>
+{
+    html = html.replace(/<br\s*\/?>/gi, "\n");  // Line breaks
+    html = html.replace( /<a\s+[^>]*href=["']([^"']+)["'][^>]*>(.*?)<\/a>/gi, "[$2]($1)" ); // Links
+    html = html.replace(/<b>(.*?)<\/b>/gi, "**$1**"); // Bold
+    html = html.replace(/<i>(.*?)<\/i>/gi, "*$1*"); // Italic
+    html = html.replace(/<u>(.*?)<\/u>/gi, "~~$1~~"); // Underline
+    html = html.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&"); // Decode HTML chars
+    return html.trim();
+};
 
 const CODE2ASCII = {};
 
@@ -56,4 +84,4 @@ function toast( title, text, timeout ) {
     LX.toast( title, text, { position: "top-right", timeout } );
 }
 
-export { toast, code2ascii, getDate, toESDate, capitalizeFirstLetter, imageToDataURL, isMobile };
+export { toast, code2ascii, getDate, toESDate, capitalizeFirstLetter, imageToDataURL, isMobile, formatMD, unformatMD };
