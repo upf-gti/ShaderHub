@@ -149,6 +149,7 @@ export const ui = {
         } );
 
         menubar.root.classList.add( "hub-background-blur-md" );
+        menubar.siblingArea.root.classList.add( "content-area" );
 
         const params = new URLSearchParams( document.location.search );
         const queryShader = params.get( "shader" );
@@ -961,9 +962,8 @@ export const ui = {
             {
                 const shaderOptionsButton = new LX.Button( null, "ShaderOptions", async () => {
 
-                    const dmOptions = [ ]
-
-                    let result = await ShaderHub.shaderExists();
+                    let dmOptions   = [];
+                    let result      = await ShaderHub.shaderExists();
 
                     if( ownProfile || isNewShader )
                     {
@@ -987,7 +987,12 @@ export const ui = {
                         dmOptions.push( mobile ? 0 : { name: "Remix Shader", icon: "GitFork", disabled: !( result.remixable ?? true ), callback: () => ShaderHub.remixShader() } );
                     }
 
-                    new LX.DropdownMenu( shaderOptionsButton.root, dmOptions.filter( o => o !== 0 ), { side: "bottom", align: "end" });
+                    dmOptions = dmOptions.filter( o => o !== 0 );
+
+                    if( dmOptions.length )
+                    {
+                        LX.addDropdownMenu( shaderOptionsButton.root, dmOptions, { side: "bottom", align: "end" });
+                    }
 
                 }, { icon: "Menu" } );
                 shaderOptions.appendChild( shaderOptionsButton.root );
