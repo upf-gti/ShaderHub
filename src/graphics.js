@@ -676,7 +676,7 @@ class ShaderPass {
     isBindingUsed( binding, entryCode )
     {
         const templateCodeLines = [ ...( this.type === "compute" ) ? Shader.COMPUTER_SHADER_TEMPLATE : Shader.RENDER_SHADER_TEMPLATE ];
-        const lines = [ ...templateCodeLines, ...( entryCode ? entryCode.split( "\n" ) : this.codeLines ) ].map( line => {
+        const lines = [ ...templateCodeLines, ...entryCode.split( "\n" ) ].map( line => {
             const lineCommentIndex = line.indexOf( "//" );
             return line.substring( 0, lineCommentIndex === -1 ? undefined : lineCommentIndex );
         } );
@@ -693,90 +693,6 @@ class ShaderPass {
         const textureBindings   = {};
         const samplerBindings   = {};
         const storageBindings   = {};
-
-        if( includeBindings )
-        {
-            let bindingIndex = 0;
-
-            // Default Uniform bindings
-            {
-                const defaultBindingsIndex = templateCodeLines.indexOf( "$default_bindings" );
-                console.assert( defaultBindingsIndex > -1 );
-                templateCodeLines.splice( defaultBindingsIndex, 1, ...Constants.DEFAULT_UNIFORMS_LIST.map( ( u, index ) => {
-                    if( u.skipBindings ?? false ) return;
-                    if( !this.isBindingUsed( u.name, entryCode ) ) return;
-                    const binding = bindingIndex++;
-                    defaultBindings[ u.name ] = binding;
-                    return `@group(0) @binding(${ binding }) var<uniform> ${ u.name } : ${ u.type ?? "f32" };`;
-                } ).filter( u => u !== undefined ) );
-            }
-
-            // Custom Uniform bindings
-            {
-                if( this.uniforms.length !== this.uniformBuffers.length )
-                {
-                    this.uniformBuffers.length = this.uniforms.length; // Set new length
-
-                    for( let i = 0; i < this.uniformBuffers.length; ++i )
-                    {
-                        const u = this.uniforms[ i ];
-                        const buffer = this.uniformBuffers[ i ];
-                        if( !buffer )
-                        {
-                            this.uniformBuffers[ i ] = this.device.createBuffer({
-                                size: Shader.GetUniformSize( u.type ?? "f32" ),
-                                usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
-                            });
-                        }
-                    }
-                }
-
-                const customBindingsIndex = templateCodeLines.indexOf( "$custom_bindings" );
-                console.assert( customBindingsIndex > -1 );
-                templateCodeLines.splice( customBindingsIndex, 1, ...this.uniforms.map( ( u, index ) => {
-                    if( !u ) return;
-                    if( !this.isBindingUsed( u.name, entryCode ) ) return;
-                    const binding = bindingIndex++;
-                    customBindings[ u.name ] = binding;
-                    return `@group(0) @binding(${ binding }) var<uniform> ${ u.name } : ${ u.type };`;
-                } ).filter( u => u !== undefined ) );
-            }
-
-            // Process texture bindings
-            {
-                const textureBindingsIndex = templateCodeLines.indexOf( "$texture_bindings" );
-                console.assert( textureBindingsIndex > -1 );
-                const bindings = this.channels.map( ( channelName, index ) => {
-                    if( !channelName ) return;
-                    const channelIndexName = `iChannel${ index }`;
-                    if( !this.isBindingUsed( channelIndexName, entryCode ) ) return;
-                    const binding = bindingIndex++;
-                    textureBindings[ channelName ] = binding;
-                    const texture = this.channelTextures[ index ];
-                    return `@group(0) @binding(${ binding }) var ${ channelIndexName } : ${ texture.depthOrArrayLayers > 1 ? "texture_cube" : "texture_2d" }<f32>;`;
-                } ).filter( u => u !== undefined );
-
-                templateCodeLines.splice( textureBindingsIndex, 1, ...(bindings.length ? [
-                    ...bindings,
-                    ...( [ "nearestSampler", "bilinearSampler", "trilinearSampler",
-                        "nearestRepeatSampler", "bilinearRepeatSampler", "trilinearRepeatSampler"
-                    ].map( samplerName => {
-                        if( !this.isBindingUsed( samplerName, entryCode ) ) return;
-                        const binding = bindingIndex++;
-                        samplerBindings[ samplerName ] = binding;
-                        return `@group(0) @binding(${ binding }) var ${ samplerName } : sampler;`;
-                    } ).filter( u => u !== undefined ) )
-                ] : []) );
-            }
-
-            if( this.type === "compute" )
-            {
-                const outputBindingIndex = templateCodeLines.indexOf( "$output_binding" );
-                console.assert( outputBindingIndex > -1 );
-                this.usesComputeScreenTexture = this.isBindingUsed( "screen", entryCode );
-                templateCodeLines.splice( outputBindingIndex, 1, this.usesComputeScreenTexture ? `@group(0) @binding(${ bindingIndex++ }) var screen: texture_storage_2d<rgba16float,write>;` : undefined );
-            }
-        }
 
         // Add shader utils depending on bind group
         {
@@ -827,11 +743,101 @@ class ShaderPass {
         }
 
         // Parse general preprocessor lines
-        // This has to be the last step, to replace every define appearance!
+        // This has to be the last step before the bindings, to replace every define appearance!
         {
-            for( let i = 0; i < templateCodeLines.length; ++i )
+            this._pLine = 0;
+
+            while( this._pLine < templateCodeLines.length )
             {
-                templateCodeLines[ i ] = this.parseShaderLine( i, templateCodeLines );
+                this.parseShaderLine( templateCodeLines );
+            }
+
+            delete this._pLine;
+        }
+
+        const noBindingsShaderCode = templateCodeLines.join( "\n" );
+
+        if( includeBindings )
+        {
+            let bindingIndex = 0;
+
+            // Default Uniform bindings
+            {
+                const defaultBindingsIndex = templateCodeLines.indexOf( "$default_bindings" );
+                console.assert( defaultBindingsIndex > -1 );
+                templateCodeLines.splice( defaultBindingsIndex, 1, ...Constants.DEFAULT_UNIFORMS_LIST.map( ( u, index ) => {
+                    if( u.skipBindings ?? false ) return;
+                    if( !this.isBindingUsed( u.name, noBindingsShaderCode ) ) return;
+                    const binding = bindingIndex++;
+                    defaultBindings[ u.name ] = binding;
+                    return `@group(0) @binding(${ binding }) var<uniform> ${ u.name } : ${ u.type ?? "f32" };`;
+                } ).filter( u => u !== undefined ) );
+            }
+
+            // Custom Uniform bindings
+            {
+                if( this.uniforms.length !== this.uniformBuffers.length )
+                {
+                    this.uniformBuffers.length = this.uniforms.length; // Set new length
+
+                    for( let i = 0; i < this.uniformBuffers.length; ++i )
+                    {
+                        const u = this.uniforms[ i ];
+                        const buffer = this.uniformBuffers[ i ];
+                        if( !buffer )
+                        {
+                            this.uniformBuffers[ i ] = this.device.createBuffer({
+                                size: Shader.GetUniformSize( u.type ?? "f32" ),
+                                usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
+                            });
+                        }
+                    }
+                }
+
+                const customBindingsIndex = templateCodeLines.indexOf( "$custom_bindings" );
+                console.assert( customBindingsIndex > -1 );
+                templateCodeLines.splice( customBindingsIndex, 1, ...this.uniforms.map( ( u, index ) => {
+                    if( !u ) return;
+                    if( !this.isBindingUsed( u.name, noBindingsShaderCode ) ) return;
+                    const binding = bindingIndex++;
+                    customBindings[ u.name ] = binding;
+                    return `@group(0) @binding(${ binding }) var<uniform> ${ u.name } : ${ u.type };`;
+                } ).filter( u => u !== undefined ) );
+            }
+
+            // Process texture bindings
+            {
+                const textureBindingsIndex = templateCodeLines.indexOf( "$texture_bindings" );
+                console.assert( textureBindingsIndex > -1 );
+                const bindings = this.channels.map( ( channelName, index ) => {
+                    if( !channelName ) return;
+                    const channelIndexName = `iChannel${ index }`;
+                    if( !this.isBindingUsed( channelIndexName, noBindingsShaderCode ) ) return;
+                    const binding = bindingIndex++;
+                    textureBindings[ channelName ] = binding;
+                    const texture = this.channelTextures[ index ];
+                    return `@group(0) @binding(${ binding }) var ${ channelIndexName } : ${ texture.depthOrArrayLayers > 1 ? "texture_cube" : "texture_2d" }<f32>;`;
+                } ).filter( u => u !== undefined );
+
+                templateCodeLines.splice( textureBindingsIndex, 1, ...(bindings.length ? [
+                    ...bindings,
+                    ...( [ "nearestSampler", "bilinearSampler", "trilinearSampler",
+                        "nearestRepeatSampler", "bilinearRepeatSampler", "trilinearRepeatSampler"
+                    ].map( samplerName => {
+                        if( !this.isBindingUsed( samplerName, noBindingsShaderCode ) ) return;
+                        const binding = bindingIndex++;
+                        samplerBindings[ samplerName ] = binding;
+                        return `@group(0) @binding(${ binding }) var ${ samplerName } : sampler;`;
+                    } ).filter( u => u !== undefined ) )
+                ] : []) );
+            }
+
+            if( this.type === "compute" )
+            {
+                const outputBindingIndex = templateCodeLines.indexOf( "$output_binding" );
+                console.assert( outputBindingIndex > -1 );
+                this.usesComputeScreenTexture = this.isBindingUsed( "screen", noBindingsShaderCode );
+                templateCodeLines.splice( outputBindingIndex, 1, this.usesComputeScreenTexture ? `@group(0) @binding(${ bindingIndex++ }) var screen: texture_storage_2d<rgba16float,write>;` : undefined );
             }
         }
 
@@ -956,7 +962,7 @@ class ShaderPass {
 
     _parseIfDirective( line )
     {
-        const m = line.match( /^\s*#\s*IF\s+(.+?)\s*$/i );
+        const m = line.match(/^\s*#\s*(?:ELSE)?IF\s+(.+?)\s*$/i);
         if( !m ) return null;
 
         const cond = m[ 1 ].trim();
@@ -1059,40 +1065,92 @@ class ShaderPass {
         return false;
     }
 
-    parseShaderLine( index, lines )
+    parseShaderLine( lines )
     {
-        const line = lines[ index ];
-
-        if( line.startsWith( "#endif" ) )
-        {
-            delete this.activeIf;
-            return "";
-        }
-
-        // Early discard if inside an inactive IF directive
-        if( this.activeIf === false )
-        {
-            return "";
-        }
-
+        const line = lines[ this._pLine ];
         const tokens = line.split( " " );
 
+        const iContinueUntilTags = ( ...tags ) =>
+        {
+            while( this._pLine < lines.length )
+            {
+                const line = lines[ this._pLine ];
+                let tagFound = tags.filter( t => line.startsWith( t ) )[ 0 ];
+                if( tagFound )
+                {
+                    lines[ this._pLine++ ] = "";
+                    return [ tagFound, line ];
+                }
+
+                this._pLine++;
+            }
+        };
+        const iDeleteUntilTags = ( ...tags ) =>
+        {
+            while( this._pLine < lines.length )
+            {
+                const line = lines[ this._pLine ];
+                let tagFound = tags.filter( t => line.startsWith( t ) )[ 0 ];
+                if( tagFound )
+                {
+                    lines[ this._pLine++ ] = "";
+                    return [ tagFound, line ];
+                }
+
+                lines[ this._pLine++ ] = "";
+            }
+        };
+        const iStartIf = ( line ) =>
+        {
+            lines[ this._pLine++ ] = ""; // remove "if"/"elseif" lines
+
+            const p = this._parseIfDirective( line );
+            console.assert( p, `No If directive in line: ${ line }` );
+            if( this._evaluateParsedCondition( p ) )
+            {
+                const [ tag, ln ] = iContinueUntilTags( "#elseif", "#else", "#endif" );
+                if( tag == "#else" || tag == "#elseif" )
+                {
+                    iDeleteUntilTags( "#endif" );
+                }
+            }
+            else
+            {
+                const [ tag, ln ] = iDeleteUntilTags( "#elseif", "#else", "#endif" );
+                if( tag == "#else" )
+                {
+                    iContinueUntilTags( "#endif" );
+                }
+                else if( tag == "#elseif" )
+                {
+                    this._pLine--; // We have to evaluate prev line here
+                    iStartIf( ln );
+                }
+            }
+        };
+
+        if( line.startsWith( "#include" ) )
+        {
+            // TODO
+            lines[ this._pLine++ ] = "";
+            return;
+        }
         if( line.startsWith( "#define" ) )
         {
             const defineName = tokens[ 1 ];
             const defineValue = tokens.slice( 2 ).join( " " ); // All starting from the 2nd index
             this.defines[ defineName ] = defineValue;
-            return "";
+            lines[ this._pLine++ ] = "";
+            return;
         }
-        else if( line.startsWith( "#if" ) )
+        if( line.startsWith( "#if" ) || line.startsWith( "#elseif" ) )
         {
-            const p = this._parseIfDirective( line );
-            this.activeIf = this._evaluateParsedCondition( p )
-            return "";
+            iStartIf( line );
+            return;
         }
 
         // Replace defines
-        return this._replaceDefines( line );
+        lines[ this._pLine++ ] = this._replaceDefines( line );
     }
 
     parseComputeLine( line, entryName, entryCode, storageBindings )
