@@ -940,17 +940,31 @@ export const ui = {
             const editButton = shaderNameAuthorOptionsContainer.querySelector( "svg" );
             if( editButton )
             {
+                const iSaveName = async ( text, textDiv, input ) =>
+                {
+                    shader.name = text.substring( 0, 64 ); // CAP TO 64 chars
+                    textDiv.innerText = shader.name;
+                    input.root.replaceWith( textDiv );
+                    this._editingName = false;
+
+                    let r = await ShaderHub.shaderExists();
+                    if( r && r.name !== shader.name )
+                    {
+                        await this.fs.updateDocument( FS.SHADERS_COLLECTION_ID, r[ "$id" ], {
+                            "name": shader.name
+                        } );
+                        Utils.toast( `✅ Shader updated`, `Shader: ${ r.name } by ${ this.fs.user.name }` );
+                    }
+                };
+
                 editButton.addEventListener( "click", (e) => {
                     if( this._editingName ) return;
                     e.preventDefault();
-                    const text = e.target.parentElement.children[ 1 ]; // get non-editable text
-                    const input = new LX.TextInput( null, text.textContent, async (v) => {
-                        shader.name = v.substring( 0, 64 ); // CAP TO 64 chars
-                        text.innerText = shader.name;
-                        input.root.replaceWith( text );
-                        this._editingName = false;
+                    const textDiv = e.target.parentElement.children[ 1 ]; // get non-editable text
+                    const input = new LX.TextInput( null, textDiv.textContent, async ( v ) => {
+                        iSaveName( v, textDiv, input );
                     }, { inputClass: "fg-primary text-xxl font-semibold", pattern: LX.buildTextPattern( { minLength: 3 } ) } );
-                    text.replaceWith( input.root );
+                    textDiv.replaceWith( input.root );
                     LX.doAsync( () => input.root.focus() );
                     this._editingName = true;
                 } )

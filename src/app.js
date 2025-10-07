@@ -699,7 +699,6 @@ const ShaderHub =
 
         // Upload file and get id
         const json = {
-            name: this.shader.name, // only updated by user
             likes: likes,
             // use json data or updated data depending on who's saving
             passes: passes.map( p => {
