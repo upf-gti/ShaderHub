@@ -1250,7 +1250,14 @@ export const ui = {
 
                 p.addTitle( "Preprocessor" );
 
-                makeParagraph( `ShaderHub also provides an experimental WGSL preprocessor. It currently allows the use of some directives in <span class="fg-error font-semibold">compute</span> shaders:`, p );
+                makeParagraph( `ShaderHub also provides an experimental WGSL preprocessor. It currently allows the use of some directives:`, p );
+                makeParagraph( `<ul style="margin-block:0">
+    <li><span class="fg-error font-semibold">#define NAME VALUE</span> for simple macros (function-like substitution not supported)</li>
+    <li><span class="fg-error font-semibold">#if #elseif #else #endif</span> for conditional compilation</li>
+    <li><span class="fg-error font-semibold">SCREEN_WIDTH</span> and <span class="fg-error font-semibold">SCREEN_HEIGHT</span> are predefined variables for accessing canvas dimensions</li>
+</ul>`, p );
+
+                makeParagraph( `For <span class="fg-error font-semibold">compute</span> shaders:`, p );
                 makeParagraph( `<ul style="margin-block:0">
     <li><span class="fg-error font-semibold">#workgroup_count ENTRYPOINT X Y Z</span> for specifying how many workgroups should be dispatched for an entrypoint</li>
     <li><span class="fg-error font-semibold">#dispatch_once ENTRYPOINT</span> for initialization purposes, ensuring the entrypoint is dispatched only once</li>
@@ -1258,10 +1265,10 @@ export const ui = {
 </ul>`, p );
 
                 p.addTitle( "Examples" );
-                makeParagraph( `<span class="fg-primary font-semibold hover:fg-secondary hover:text-underline cursor-pointer">Custom Uniforms</span>`, p);
-                makeParagraph( `<span class="fg-primary font-semibold hover:fg-secondary hover:text-underline cursor-pointer">Texture Buffer pass</span>`, p);
-                makeParagraph( `<span class="fg-primary font-semibold hover:fg-secondary hover:text-underline cursor-pointer">Simple Compute Pass</span>`, p);
-                makeParagraph( `<span class="fg-primary font-semibold hover:fg-secondary hover:text-underline cursor-pointer">Compute Storage usage</span>`, p);
+                makeParagraph( `<a href="/?shader=68b8931090e336e8a1ad" class="fg-primary decoration-none font-semibold hover:fg-secondary hover:text-underline cursor-pointer">Custom Uniforms</a>`, p);
+                makeParagraph( `<a href="/?shader=68c449875d3a5535bba0" class="fg-primary decoration-none font-semibold hover:fg-secondary hover:text-underline cursor-pointer">Texture Buffer pass</a>`, p);
+                makeParagraph( `<a href="/?shader=68dac43a64cff0f5fa9d" class="fg-primary decoration-none font-semibold hover:fg-secondary hover:text-underline cursor-pointer">Simple Compute Pass</a>`, p);
+                makeParagraph( `<a href="/?shader=68da7c00ef76c57eb056" class="fg-primary decoration-none font-semibold hover:fg-secondary hover:text-underline cursor-pointer">Compute Storage usage</a>`, p);
 
                 const pass = ShaderHub.currentPass;
                 if( pass )

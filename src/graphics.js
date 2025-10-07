@@ -51,6 +51,7 @@ class ShaderPass {
         this.type   = data.type ?? "image";
 
         // Make sure we copy everything to avoid references
+        this.resolution = [ data.resolutionX ?? 0, data.resolutionY ?? 0 ];
         this.codeLines  = [ ...( data.codeLines ?? this.shader.getDefaultCode( this ) ) ];
         this.channels   = [ ...( data.channels ?? [] ) ];
         this.uniforms   = [ ...( data.uniforms ?? [] ) ];
@@ -67,8 +68,6 @@ class ShaderPass {
 
         if( this.type === "buffer" )
         {
-            this.resolution = [ data.resolutionX ?? 0, data.resolutionY ?? 0 ];
-
             this.textures = [
                 device.createTexture({
                     label: "Buffer Pass Texture A",
@@ -86,7 +85,6 @@ class ShaderPass {
         }
         else if( this.type === "compute" )
         {
-            this.resolution         = [ data.resolutionX ?? 0, data.resolutionY ?? 0 ];
             this.computePipelines   = [ ];
             this.storageBuffers     = { };
 
@@ -513,7 +511,10 @@ class ShaderPass {
 
     async compile( format, buffers )
     {
-        this.defines = {};
+        this.defines = {
+            "SCREEN_WIDTH": this.resolution[ 0 ],
+            "SCREEN_HEIGHT": this.resolution[ 1 ],
+        };
 
         // Clean prev storage
         if( this.type === "compute" )
