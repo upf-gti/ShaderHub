@@ -2,14 +2,7 @@ import { LX } from 'lexgui';
 import * as Constants from "../src/constants.js";
 import * as Utils from '../src/utils.js';
 import { FS } from '../src/fs.js';
-import { FPSCounter, Shader, ShaderPass } from '../src/graphics.js';
-
-const WEBGPU_OK     = 0;
-const WEBGPU_ERROR  = 1;
-
-const ERROR_CODE_DEFAULT    = 0;
-const ERROR_CODE_SUCCESS    = 1;
-const ERROR_CODE_ERROR      = 2;
+import { Renderer, FPSCounter, Shader, ShaderPass } from './graphics.js';
 
 const fs = new FS();
 const fps = new FPSCounter();
@@ -17,9 +10,6 @@ const Query = Appwrite.Query;
 
 const ShaderHub =
 {
-    gpuTextures: {},
-    gpuBuffers: {},
-
     keyState: new Map(),
     keyToggleState: new Map(),
     keyPressed: new Map(),
@@ -166,25 +156,9 @@ const ShaderHub =
 
         if( !this.timePaused )
         {
-            this.device.queue.writeBuffer(
-                this.gpuBuffers[ "iTimeDelta" ],
-                0,
-                new Float32Array([ this.timeDelta ])
-            );
-
-            this.device.queue.writeBuffer(
-                this.gpuBuffers[ "iTime" ],
-                0,
-                new Float32Array([ this.elapsedTime ])
-            );
+            this.renderer.updateFrame( this.timeDelta, this.elapsedTime, this.frameCount );
 
             this.elapsedTime += this.timeDelta;
-
-            this.device.queue.writeBuffer(
-                this.gpuBuffers[ "iFrame" ],
-                0,
-                new Int32Array([ this.frameCount ])
-            );
 
             this.frameCount++;
 
@@ -192,11 +166,7 @@ const ShaderHub =
             LX.emit( "@fps", `${ fps.get() } FPS` );
         }
 
-        this.device.queue.writeBuffer(
-            this.gpuBuffers[ "iResolution" ],
-            0,
-            new Float32Array([ this.resolutionX ?? this.gpuCanvas.offsetWidth, this.resolutionY ?? this.gpuCanvas.offsetHeight ])
-        );
+        this.renderer.updateResolution( this.resolutionX, this.resolutionY );
 
         // Write mouse data
         {
@@ -209,11 +179,7 @@ const ShaderHub =
                 this._mouseDown ?? -1, this._mousePressed ?? -1.0      // button clicks
             ];
 
-            this.device.queue.writeBuffer(
-                this.gpuBuffers[ "iMouse" ],
-                0,
-                new Float32Array( data )
-            );
+            this.renderer.updateMouse( data );
         }
 
         this.lastTime = now;
@@ -242,12 +208,11 @@ const ShaderHub =
                     }
                     else // Texture from file
                     {
-                        // Only update preview in case that's the current pass
-                        await this.createTexture( channelName, c );
+                        await this.createTextureFromFile( channelName );
                     }
                 }
 
-                pass.setChannelTexture(  c, this.gpuTextures[ channelName ] );
+                pass.setChannelTexture( c, this.gpuTextures[ channelName ] );
             }
 
             if( pass.uniformsDirty )
@@ -257,11 +222,7 @@ const ShaderHub =
 
             if( !this._lastShaderCompilationWithErrors && !this._compilingShader )
             {
-                await pass.execute(
-                    this.presentationFormat,
-                    this.webGPUContext,
-                    this.gpuBuffers
-                );
+                await pass.execute( this.renderer );
             }
         }
 
@@ -336,9 +297,13 @@ const ShaderHub =
     async onShaderCanvasResized( xResolution, yResolution )
     {
         this.resizeBuffers( xResolution, yResolution );
+
+        this.renderer.updateResolution( xResolution, yResolution );
+
+        LX.emit( '@resolution', `${ xResolution }x${ yResolution }` );
+
         this.resolutionX = xResolution;
         this.resolutionY = yResolution;
-        LX.emit( "@resolution", `${ xResolution }x${ yResolution }` );
     },
 
     async onShaderEditorCreated( shader, canvas )
@@ -436,23 +401,7 @@ const ShaderHub =
         this.elapsedTime = 0;
         this.timeDelta = 0;
 
-        this.device.queue.writeBuffer(
-            this.gpuBuffers[ "iTimeDelta" ],
-            0,
-            new Float32Array([ this.timeDelta ])
-        );
-
-        this.device.queue.writeBuffer(
-            this.gpuBuffers[ "iTime" ],
-            0,
-            new Float32Array([ this.elapsedTime ])
-        );
-
-        this.device.queue.writeBuffer(
-            this.gpuBuffers[ "iFrame" ],
-            0,
-            new Int32Array([ this.frameCount ])
-        );
+        this.renderer.updateFrame( 0, 0, 0 );
 
         // Reset mouse data
         {
@@ -474,11 +423,7 @@ const ShaderHub =
                 this._mouseDown ?? -1, this._mousePressed ?? -1.0      // button clicks
             ];
 
-            this.device.queue.writeBuffer(
-                this.gpuBuffers[ "iMouse" ],
-                0,
-                new Float32Array( data )
-            );
+            this.renderer.updateMouse( data );
         }
 
         if( this.currentPass )
@@ -556,108 +501,11 @@ const ShaderHub =
 
     async initGraphics( canvas )
     {
-        this.gpuCanvas = canvas;
-        this.adapter = await navigator.gpu?.requestAdapter({
-            featureLevel: 'compatibility',
-        });
+        this.renderer = new Renderer( canvas );
 
-        this.device = await this.adapter?.requestDevice();
-        if( this.quitIfWebGPUNotAvailable( this.adapter, this.device ) === WEBGPU_ERROR )
-        {
-            return;
-        }
-
-        this.webGPUContext = canvas.getContext( 'webgpu' );
-
-        const devicePixelRatio = window.devicePixelRatio;
-        canvas.width = canvas.clientWidth * devicePixelRatio;
-        canvas.height = canvas.clientHeight * devicePixelRatio;
-
-        this.presentationFormat = navigator.gpu.getPreferredCanvasFormat();
-
-        this.webGPUContext.configure({
-            device: this.device,
-            format: this.presentationFormat,
-        });
-
-        // Input Parameters
-        {
-            this.gpuBuffers[ "iTime" ] = this.device.createBuffer({
-                size: 4,
-                usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
-            });
-
-            this.gpuBuffers[ "iTimeDelta" ] = this.device.createBuffer({
-                size: 4,
-                usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
-            });
-
-            this.gpuBuffers[ "iFrame" ] = this.device.createBuffer({
-                size: 4,
-                usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
-            });
-
-            this.gpuBuffers[ "iResolution" ] = this.device.createBuffer({
-                size: 8,
-                usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
-            });
-
-            this.gpuBuffers[ "iMouse" ] = this.device.createBuffer({
-                size: 32,
-                usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
-            });
-        }
-
-        // clamp-to-edge samplers
-        Shader.nearestSampler = this.device.createSampler();
-        Shader.bilinearSampler = this.device.createSampler({ magFilter: 'linear', minFilter: 'linear' });
-        Shader.trilinearSampler = this.device.createSampler({ magFilter: 'linear', minFilter: 'linear', mipmapFilter: 'linear' });
-
-        // repeat samplers
-        Shader.nearestRepeatSampler = this.device.createSampler({ addressModeU: "repeat", addressModeV: "repeat", addressModeW: "repeat" });
-        Shader.bilinearRepeatSampler = this.device.createSampler({ magFilter: 'linear', minFilter: 'linear', addressModeU: "repeat", addressModeV: "repeat", addressModeW: "repeat" });
-        Shader.trilinearRepeatSampler = this.device.createSampler({ magFilter: 'linear', minFilter: 'linear', mipmapFilter: 'linear', addressModeU: "repeat", addressModeV: "repeat", addressModeW: "repeat" });
+        await this.renderer.init();
 
         requestAnimationFrame( this.onFrame.bind( this) );
-    },
-
-    async createTexture( fileId, channel, updatePreview = false, options = { } )
-    {
-        if( !fileId )
-        {
-            return;
-        }
-
-        options = { ...options, flipY: false };
-
-        const url = await fs.getFileUrl( fileId );
-        const data = await fs.requestFile( url );
-        const imageBitmap = await createImageBitmap( await new Blob([data]) );
-        const dimensions = [ imageBitmap.width, imageBitmap.height ];
-        const imageTexture = this.device.createTexture({
-            label: fileId,
-            size: [ imageBitmap.width, imageBitmap.height, 1 ],
-            format: 'rgba8unorm',
-            usage:
-                GPUTextureUsage.TEXTURE_BINDING |
-                GPUTextureUsage.COPY_DST |
-                GPUTextureUsage.RENDER_ATTACHMENT,
-        });
-
-        this.device.queue.copyExternalImageToTexture(
-            { source: imageBitmap, ...options },
-            { texture: imageTexture },
-            dimensions
-        );
-
-        this.gpuTextures[ fileId ] = imageTexture;
-
-        if( updatePreview )
-        {
-            await ui.updateShaderChannelsView( null, channel );
-        }
-
-        return imageTexture;
     },
 
     async createKeyboardTexture( channel, updatePreview = false )
@@ -764,56 +612,13 @@ const ShaderHub =
         {
             await this.compileShader( true, pass );
         }
-    },
-
-    quitIfWebGPUNotAvailable( adapter, device )
-    {
-        if( !device )
-        {
-            return this.quitIfAdapterNotAvailable( adapter );
-        }
-
-        device.lost.then((reason) => {
-            this.fail(`Device lost ("${reason.reason}"):\n${reason.message}`);
-        });
-
-        // device.addEventListener('uncapturederror', (ev) => {
-        //     this.fail(`Uncaptured error:\n${ev.error.message}`);
-        // });
-
-        return WEBGPU_OK;
-    },
-
-    quitIfAdapterNotAvailable( adapter )
-    {
-        if( !("gpu" in navigator) )
-        {
-            this.fail("'navigator.gpu' is not defined - WebGPU not available in this browser");
-        }
-        else if( !adapter )
-        {
-            this.fail("No adapter found after calling 'requestAdapter'.");
-        }
-        else
-        {
-            this.fail("Unable to get WebGPU device for an unknown reason.");
-        }
-
-        return WEBGPU_ERROR;
-    },
-
-    fail( msg, msgTitle )
-    {
-        new LX.Dialog( msgTitle ?? "❌ WebGPU Error", (p) => {
-            p.root.classList.add( "p-4" );
-            p.root.innerHTML = msg;
-        }, { modal: true } );
     }
 }
 
 await ShaderHub.init();
 
 window.LX = LX;
+window.fs = fs;
 window.ShaderHub = ShaderHub;
 
 export { ShaderHub };

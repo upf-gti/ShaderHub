@@ -77,6 +77,11 @@ class Renderer
 
     updateFrame( timeDelta, elapsedTime, frameCount )
     {
+        if( !this.device )
+        {
+            return;
+        }
+
         this.device.queue.writeBuffer(
             this.gpuBuffers[ "iTimeDelta" ],
             0,
@@ -98,15 +103,28 @@ class Renderer
 
     updateResolution( resolutionX, resolutionY )
     {
+        if( !this.device )
+        {
+            return;
+        }
+
         this.device.queue.writeBuffer(
             this.gpuBuffers[ "iResolution" ],
             0,
-            new Float32Array([ resolutionX, resolutionY ])
+            new Float32Array([
+                resolutionX ?? this.canvas.offsetWidth,
+                resolutionY ?? this.canvas.offsetHeight
+            ])
         );
     }
 
     updateMouse( data )
     {
+        if( !this.device )
+        {
+            return;
+        }
+
         this.device.queue.writeBuffer(
             this.gpuBuffers[ "iMouse" ],
             0,

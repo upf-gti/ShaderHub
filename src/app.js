@@ -55,7 +55,7 @@ const ShaderHub =
             LX.emit( "@fps", `${ fps.get() } FPS` );
         }
 
-        this.renderer.updateResolution( this.resolutionX ?? this.renderer.canvas.offsetWidth, this.resolutionY ?? this.renderer.canvas.offsetHeight );
+        this.renderer.updateResolution( this.resolutionX, this.resolutionY );
 
         // Write mouse data
         {
@@ -186,9 +186,13 @@ const ShaderHub =
     async onShaderCanvasResized( xResolution, yResolution )
     {
         this.resizeBuffers( xResolution, yResolution );
+
+        this.renderer.updateResolution( xResolution, yResolution );
+
+        LX.emit( '@resolution', `${ xResolution }x${ yResolution }` );
+
         this.resolutionX = xResolution;
         this.resolutionY = yResolution;
-        LX.emit( '@resolution', `${ xResolution }x${ yResolution }` );
     },
 
     async onShaderEditorCreated( shader, canvas )
