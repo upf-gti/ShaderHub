@@ -190,7 +190,7 @@ export const ui = {
         topArea.root.className += " flex flex-row hub-background-blur content-area";
 
         // Shaderhub footer
-        LX.makeContainer( [`auto`, "auto"], "fg-primary text-lg flex flex-row gap-2 self-center text-center align-center ml-auto mr-auto", `
+        LX.makeContainer( [`auto`, "auto"], "fg-primary text-lg flex flex-row gap-2 self-center text-center place-content-center", `
             ${ LX.makeIcon("Github@solid", {svgClass:"lg"} ).innerHTML }<a class="decoration-none fg-secondary" href="https://github.com/upf-gti/ShaderHub">Code on Github</a>`, bottomArea );
 
         let leftSide = LX.makeContainer( ["auto", "100%"], "bg-none flex flex-col p-8 gap-2 overflow-scroll", "", topArea );
@@ -356,7 +356,7 @@ export const ui = {
         bottomArea.root.className += " hub-background-blur-md items-center content-center";
 
         // Shaderhub footer
-        LX.makeContainer( [`auto`, "auto"], "fg-primary text-lg flex flex-row gap-2 self-center text-center align-center ml-auto mr-auto", `
+        LX.makeContainer( [`auto`, "auto"], "fg-primary text-lg flex flex-row gap-2 self-center text-center place-content-center", `
             ${ LX.makeIcon("Github@solid", {svgClass:"lg"} ).innerHTML }<a class="decoration-none fg-secondary" href="https://github.com/upf-gti/ShaderHub">Code on Github</a>`, bottomArea );
 
         // Filters
@@ -480,7 +480,7 @@ export const ui = {
                 shaderPreview.src = shader.preview ?? "images/shader_preview.png";
                 shaderPreview.onload = () => shaderPreview.classList.remove( "opacity-0" );
                 shaderItem.querySelector( "div" ).remove();
-                const shaderDesc = LX.makeContainer( ["100%", "100%"], "flex flex-row rounded-b-lg gap-6 p-4 items-center select-none", `
+                const shaderDesc = LX.makeContainer( ["100%", "auto"], "flex flex-row rounded-b-lg gap-6 p-4 items-center select-none", `
                     <div class="w-full">
                         <div class="text-lg font-bold">${ shader.name }</div>
                         <div class="text-sm font-light">by ${ !shader.anonAuthor ? `<a onclick='ShaderHub.openProfile("${ shader.authorId }")' class='dodgerblue cursor-pointer hover:text-underline'>` : "" }<span class="font-bold">${ shader.author }</span>${ !shader.anonAuthor ? "</a>" : "" }</div>
@@ -510,7 +510,7 @@ export const ui = {
         bottomArea.root.className += " items-center content-center";
 
         // Shaderhub footer
-        LX.makeContainer( [`auto`, "auto"], "fg-primary text-lg flex flex-row gap-2 self-center text-center align-center ml-auto mr-auto", `
+        LX.makeContainer( [`auto`, "auto"], "fg-primary text-lg flex flex-row gap-2 self-center text-center place-content-center", `
             ${ LX.makeIcon("Github@solid", {svgClass:"lg"} ).innerHTML }<a class="decoration-none fg-secondary" href="https://github.com/upf-gti/ShaderHub">Code on Github</a>`, bottomArea );
 
         const users = await this.fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_id", userID ) ] );
@@ -638,7 +638,7 @@ export const ui = {
                     shaderPreview.src = shaderInfo.preview ?? "images/shader_preview.png";
                     shaderPreview.onload = () => shaderPreview.classList.remove( "opacity-0" );
                     shaderItem.querySelector( "div" ).remove();
-                    const shaderDesc = LX.makeContainer( ["100%", "100%"], "flex flex-row rounded-b-lg gap-6 p-4 items-center select-none", `
+                    const shaderDesc = LX.makeContainer( ["100%", "auto"], "flex flex-row rounded-b-lg gap-6 p-4 items-center select-none", `
                         <div class="w-full">
                             <div class="text-lg font-bold"><span>${ shaderInfo.name }</span></div>
                         </div>
@@ -791,7 +791,7 @@ export const ui = {
                     shaderPreview.src = shaderInfo.preview ?? "images/shader_preview.png";
                     shaderPreview.onload = () => shaderPreview.classList.remove( "opacity-0" );
                     shaderItem.querySelector( "div" ).remove();
-                    const shaderDesc = LX.makeContainer( ["100%", "100%"], "flex flex-row rounded-b-lg gap-6 p-4 items-center select-none", `
+                    const shaderDesc = LX.makeContainer( ["100%", "auto"], "flex flex-row rounded-b-lg gap-6 p-4 items-center select-none", `
                         <div class="w-full">
                             <div class="text-lg font-bold"><span>${ shaderInfo.name }</span></div>
                             <div class="text-sm font-light">by ${ !shaderInfo.anonAuthor ? `<a onclick='ShaderHub.openProfile("${ shaderInfo.authorId }")' class='dodgerblue cursor-pointer hover:text-underline'>` : "" }<span class="font-bold">${ shaderInfo.author }</span>${ !shaderInfo.anonAuthor ? "</a>" : "" }</div>
