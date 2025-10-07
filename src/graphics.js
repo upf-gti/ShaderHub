@@ -1,48 +1,235 @@
+import { LX } from 'lexgui';
 import * as Constants from "./constants.js";
 
-const WEBGPU_OK     = 0;
-const WEBGPU_ERROR  = 1;
-
-class FPSCounter
+class Renderer
 {
-    constructor()
+    constructor( canvas )
     {
-        this.frame = 0;
-        this.to = 0;
-        this.fps = 0;
+        this.canvas = canvas;
+
+        this.gpuTextures    = {};
+        this.gpuBuffers     = {};
     }
 
-    reset()
+    async init()
     {
-        this.frame = 0;
-        this.to = 0;
-        this.fps = 60.0;
-    }
+        this.adapter = await navigator.gpu?.requestAdapter({
+            featureLevel: 'compatibility',
+        });
 
-    get()
-    {
-        return Math.floor( this.fps );
-    }
-
-    count( time )
-    {
-        this.frame++;
-
-        if( ( time - this.to ) > 500.0 )
+        this.device = await this.adapter?.requestDevice();
+        if( this.quitIfWebGPUNotAvailable() === Constants.WEBGPU_ERROR )
         {
-            this.fps = 1000.0 * this.frame / ( time - this.to );
-            this.frame = 0;
-            this.to = time;
-            return true;
+            return;
         }
 
-        return false;
+        this.webGPUContext = this.canvas.getContext( 'webgpu' );
+
+        const devicePixelRatio = window.devicePixelRatio;
+        this.canvas.width = this.canvas.clientWidth * devicePixelRatio;
+        this.canvas.height = this.canvas.clientHeight * devicePixelRatio;
+
+        this.presentationFormat = navigator.gpu.getPreferredCanvasFormat();
+
+        this.webGPUContext.configure({
+            device: this.device,
+            format: this.presentationFormat,
+        });
+
+        // Input Parameters
+        {
+            this.gpuBuffers[ "iTime" ] = this.device.createBuffer({
+                size: 4,
+                usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
+            });
+
+            this.gpuBuffers[ "iTimeDelta" ] = this.device.createBuffer({
+                size: 4,
+                usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
+            });
+
+            this.gpuBuffers[ "iFrame" ] = this.device.createBuffer({
+                size: 4,
+                usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
+            });
+
+            this.gpuBuffers[ "iResolution" ] = this.device.createBuffer({
+                size: 8,
+                usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
+            });
+
+            this.gpuBuffers[ "iMouse" ] = this.device.createBuffer({
+                size: 32,
+                usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
+            });
+        }
+
+        // clamp-to-edge samplers
+        Renderer.nearestSampler = this.device.createSampler();
+        Renderer.bilinearSampler = this.device.createSampler({ magFilter: 'linear', minFilter: 'linear' });
+        Renderer.trilinearSampler = this.device.createSampler({ magFilter: 'linear', minFilter: 'linear', mipmapFilter: 'linear' });
+
+        // repeat samplers
+        Renderer.nearestRepeatSampler = this.device.createSampler({ addressModeU: "repeat", addressModeV: "repeat", addressModeW: "repeat" });
+        Renderer.bilinearRepeatSampler = this.device.createSampler({ magFilter: 'linear', minFilter: 'linear', addressModeU: "repeat", addressModeV: "repeat", addressModeW: "repeat" });
+        Renderer.trilinearRepeatSampler = this.device.createSampler({ magFilter: 'linear', minFilter: 'linear', mipmapFilter: 'linear', addressModeU: "repeat", addressModeV: "repeat", addressModeW: "repeat" });
+    }
+
+    updateFrame( timeDelta, elapsedTime, frameCount )
+    {
+        this.device.queue.writeBuffer(
+            this.gpuBuffers[ "iTimeDelta" ],
+            0,
+            new Float32Array([ timeDelta ])
+        );
+
+        this.device.queue.writeBuffer(
+            this.gpuBuffers[ "iTime" ],
+            0,
+            new Float32Array([ elapsedTime ])
+        );
+
+        this.device.queue.writeBuffer(
+            this.gpuBuffers[ "iFrame" ],
+            0,
+            new Int32Array([ frameCount ])
+        );
+    }
+
+    updateResolution( resolutionX, resolutionY )
+    {
+        this.device.queue.writeBuffer(
+            this.gpuBuffers[ "iResolution" ],
+            0,
+            new Float32Array([ resolutionX, resolutionY ])
+        );
+    }
+
+    updateMouse( data )
+    {
+        this.device.queue.writeBuffer(
+            this.gpuBuffers[ "iMouse" ],
+            0,
+            new Float32Array( data )
+        );
+    }
+
+    async createTexture( data, id, label = "" )
+    {
+        const options = { flipY: false };
+        const imageBitmap = await createImageBitmap( await new Blob( [ data ] ) );
+        const dimensions = [ imageBitmap.width, imageBitmap.height ];
+        const texture = this.device.createTexture({
+            label,
+            size: [ imageBitmap.width, imageBitmap.height, 1 ],
+            format: 'rgba8unorm',
+            usage:
+                GPUTextureUsage.TEXTURE_BINDING |
+                GPUTextureUsage.COPY_DST |
+                GPUTextureUsage.RENDER_ATTACHMENT,
+        });
+
+        this.device.queue.copyExternalImageToTexture(
+            { source: imageBitmap, ...options },
+            { texture: texture },
+            dimensions
+        );
+
+        this.gpuTextures[ id ] = texture;
+
+        return texture;
+    }
+
+    async createCubemapTexture( arrayBuffer, id, label = "" )
+    {
+        const zip = await JSZip.loadAsync( arrayBuffer );
+        const faceNames = [ "px", "nx", "py", "ny", "pz", "nz" ];
+        const faceImages = [];
+
+        for( const face of faceNames )
+        {
+            const file = zip.file( `${ face }.png` ) || zip.file( `${ face }.jpg` );
+            if( !file ) throw new Error( `Missing cubemap face: ${ face }` );
+            const blob = await file.async( "blob" );
+            const imageBitmap = await createImageBitmap( blob );
+            faceImages.push( imageBitmap );
+        }
+
+        const { width, height } = faceImages[ 0 ];
+
+        const texture = this.device.createTexture({
+            label,
+            size: [ width, height, 6 ],
+            format: "rgba8unorm",
+            usage:
+                GPUTextureUsage.TEXTURE_BINDING |
+                GPUTextureUsage.COPY_DST |
+                GPUTextureUsage.RENDER_ATTACHMENT,
+            dimension: "2d",
+        });
+
+        for( let i = 0; i < 6; i++ )
+        {
+            this.device.queue.copyExternalImageToTexture(
+                { source: faceImages[ i ] },
+                { texture, origin: [ 0, 0, i ] },
+                [ width, height ]
+            );
+        }
+
+        this.gpuTextures[ id ] = texture;
+
+        return texture;
+    }
+
+    quitIfWebGPUNotAvailable()
+    {
+        if( !this.device )
+        {
+            return this.quitIfAdapterNotAvailable();
+        }
+
+        this.device.lost.then( reason => {
+            this.fail(`Device lost ("${ reason.reason }"):\n${ reason.message }`);
+        });
+
+        // device.addEventListener('uncapturederror', (ev) => {
+        //     this.fail(`Uncaptured error:\n${ev.error.message}`);
+        // });
+
+        return Constants.WEBGPU_OK;
+    }
+
+    quitIfAdapterNotAvailable()
+    {
+        if( !( "gpu" in navigator ) )
+        {
+            this.fail( "'navigator.gpu' is not defined - WebGPU not available in this browser" );
+        }
+        else if( !this.adapter )
+        {
+            this.fail( "No adapter found after calling 'requestAdapter'." );
+        }
+        else
+        {
+            this.fail( "Unable to get WebGPU device for an unknown reason." );
+        }
+
+        return Constants.WEBGPU_ERROR;
+    }
+
+    fail( msg, msgTitle )
+    {
+        new LX.Dialog( msgTitle ?? "❌ WebGPU Error", p => {
+            p.root.classList.add( "p-4" );
+            p.root.innerHTML = msg;
+        }, { modal: true } );
     }
 }
 
 // Each shader pass corresponds to a shader file
-class ShaderPass {
-
+class ShaderPass
+{
     constructor( shader, device, data )
     {
         this.shader = shader;
@@ -105,17 +292,21 @@ class ShaderPass {
         }
     }
 
-    async execute( format, ctx, buffers )
+    async execute( renderer )
     {
         if( this.type === "common" )
         {
             return;
         }
 
+        const format = renderer.presentationFormat;
+        const ctx = renderer.webGPUContext;
+        const buffers = renderer.gpuBuffers;
+
         if( this.mustCompile || ( !this.pipeline && !( this.computePipelines ?? [] ).length ) || !this.bindGroup )
         {
             const r = await this.compile( format, buffers );
-            if( r !== WEBGPU_OK )
+            if( r !== Constants.WEBGPU_OK )
             {
                 return;
             }
@@ -418,7 +609,7 @@ class ShaderPass {
                 const [ samplerName, index ] = b;
                 const binding = bindingIndex++;
                 console.assert( binding === index, `Sampler binding indices do not match in pipeline: ${ pipeline.label }` );
-                entries.push( { binding, resource: Shader[ samplerName ] } );
+                entries.push( { binding, resource: Renderer[ samplerName ] } );
             } );
         }
 
@@ -455,7 +646,7 @@ class ShaderPass {
                     const [ samplerName, index ] = b;
                     const binding = baseBindingIndex++;
                     console.assert( binding === index, `Sampler binding indices do not match in pipeline: ${ pipeline.label }` );
-                    baseEntries.push( { binding, resource: Shader[ samplerName ] } );
+                    baseEntries.push( { binding, resource: Renderer[ samplerName ] } );
                 } );
             }
 
@@ -538,7 +729,7 @@ class ShaderPass {
             p.bindGroupB = this.bindGroupB;
             if( bindGroup?.constructor !== GPUBindGroup )
             {
-                return WEBGPU_ERROR;
+                return Constants.WEBGPU_ERROR;
             }
         }
 
@@ -551,14 +742,14 @@ class ShaderPass {
                 p.storageBindGroup = storageBindGroup;
                 if( storageBindGroup?.constructor !== GPUBindGroup )
                 {
-                    return WEBGPU_ERROR;
+                    return Constants.WEBGPU_ERROR;
                 }
 
                 const storageBindGroupB = await this.createStorageBindGroup( p.pipeline, true );
                 p.storageBindGroupB = storageBindGroupB;
                 if( storageBindGroupB?.constructor !== GPUBindGroup )
                 {
-                    return WEBGPU_ERROR;
+                    return Constants.WEBGPU_ERROR;
                 }
             }
         }
@@ -566,7 +757,7 @@ class ShaderPass {
         this.frameCount     = 0;
         this.mustCompile    = false;
 
-        return WEBGPU_OK;
+        return Constants.WEBGPU_OK;
     }
 
     async validate( entryName, entryCode )
@@ -1529,4 +1720,41 @@ Shader.COMPUTE_MAIN_TEMPLATE = `fn mainCompute(id: vec3u) {
     textureStore(screen, id.xy, vec4f(col, 1.0));
 }`.split( "\n" );
 
-export { Shader, ShaderPass, FPSCounter };
+class FPSCounter
+{
+    constructor()
+    {
+        this.frame = 0;
+        this.to = 0;
+        this.fps = 0;
+    }
+
+    reset()
+    {
+        this.frame = 0;
+        this.to = 0;
+        this.fps = 60.0;
+    }
+
+    get()
+    {
+        return Math.floor( this.fps );
+    }
+
+    count( time )
+    {
+        this.frame++;
+
+        if( ( time - this.to ) > 500.0 )
+        {
+            this.fps = 1000.0 * this.frame / ( time - this.to );
+            this.frame = 0;
+            this.to = time;
+            return true;
+        }
+
+        return false;
+    }
+}
+
+export { Renderer, Shader, ShaderPass, FPSCounter };

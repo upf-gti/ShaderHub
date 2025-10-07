@@ -3,10 +3,7 @@ import * as Constants from "./constants.js";
 import * as Utils from './utils.js';
 import { FS } from './fs.js';
 import { ui } from './ui.js';
-import { FPSCounter, Shader, ShaderPass } from './graphics.js';
-
-const WEBGPU_OK     = 0;
-const WEBGPU_ERROR  = 1;
+import { Renderer, FPSCounter, Shader, ShaderPass } from './graphics.js';
 
 const ERROR_CODE_DEFAULT    = 0;
 const ERROR_CODE_SUCCESS    = 1;
@@ -18,9 +15,6 @@ const Query =   Appwrite.Query;
 
 const ShaderHub =
 {
-    gpuTextures: {},
-    gpuBuffers: {},
-
     keyState:           new Map(),
     keyToggleState:     new Map(),
     keyPressed:         new Map(),
@@ -51,25 +45,9 @@ const ShaderHub =
 
         if( !this.timePaused )
         {
-            this.device.queue.writeBuffer(
-                this.gpuBuffers[ "iTimeDelta" ],
-                0,
-                new Float32Array([ this.timeDelta ])
-            );
-
-            this.device.queue.writeBuffer(
-                this.gpuBuffers[ "iTime" ],
-                0,
-                new Float32Array([ this.elapsedTime ])
-            );
+            this.renderer.updateFrame( this.timeDelta, this.elapsedTime, this.frameCount );
 
             this.elapsedTime += this.timeDelta;
-
-            this.device.queue.writeBuffer(
-                this.gpuBuffers[ "iFrame" ],
-                0,
-                new Int32Array([ this.frameCount ])
-            );
 
             this.frameCount++;
 
@@ -77,11 +55,7 @@ const ShaderHub =
             LX.emit( "@fps", `${ fps.get() } FPS` );
         }
 
-        this.device.queue.writeBuffer(
-            this.gpuBuffers[ "iResolution" ],
-            0,
-            new Float32Array([ this.resolutionX ?? this.gpuCanvas.offsetWidth, this.resolutionY ?? this.gpuCanvas.offsetHeight ])
-        );
+        this.renderer.updateResolution( this.resolutionX ?? this.renderer.canvas.offsetWidth, this.resolutionY ?? this.renderer.canvas.offsetHeight );
 
         // Write mouse data
         {
@@ -94,11 +68,7 @@ const ShaderHub =
                 this._mouseDown ?? -1, this._mousePressed ?? -1.0      // button clicks
             ];
 
-            this.device.queue.writeBuffer(
-                this.gpuBuffers[ "iMouse" ],
-                0,
-                new Float32Array( data )
-            );
+            this.renderer.updateMouse( data );
         }
 
         this.lastTime = now;
@@ -115,7 +85,7 @@ const ShaderHub =
                 const channelName = pass.channels[ c ];
                 if( !channelName ) continue;
 
-                if( !this.gpuTextures[ channelName ] )
+                if( !this.renderer.gpuTextures[ channelName ] )
                 {
                     if( channelName === "Keyboard" )
                     {
@@ -127,11 +97,11 @@ const ShaderHub =
                     }
                     else // Texture or cubemap
                     {
-                        await this.createTextureFromFile( channelName, c );
+                        await this.createTextureFromFile( channelName );
                     }
                 }
 
-                pass.setChannelTexture(  c, this.gpuTextures[ channelName ] );
+                pass.setChannelTexture( c, this.renderer.gpuTextures[ channelName ] );
             }
 
             if( pass.uniformsDirty )
@@ -141,11 +111,7 @@ const ShaderHub =
 
             if( !this._lastShaderCompilationWithErrors && !this._compilingShader )
             {
-                await pass.execute(
-                    this.presentationFormat,
-                    this.webGPUContext,
-                    this.gpuBuffers
-                );
+                await pass.execute( this.renderer );
             }
         }
 
@@ -166,7 +132,7 @@ const ShaderHub =
 
         if( this.capturer )
         {
-            this.capturer.capture( this.gpuCanvas );
+            this.capturer.capture( this.renderer.canvas );
 
             this.captureFrameCount++;
 
@@ -222,7 +188,7 @@ const ShaderHub =
         this.resizeBuffers( xResolution, yResolution );
         this.resolutionX = xResolution;
         this.resolutionY = yResolution;
-        LX.emit( "@resolution", `${ xResolution }x${ yResolution }` );
+        LX.emit( '@resolution', `${ xResolution }x${ yResolution }` );
     },
 
     async onShaderEditorCreated( shader, canvas )
@@ -235,15 +201,15 @@ const ShaderHub =
             e.preventDefault();
             e.stopPropagation();
             ui.editor.tabs.delete( name );
-            document.body.querySelectorAll( ".lextooltip" ).forEach( e => e.remove() );
+            document.body.querySelectorAll( '.lextooltip' ).forEach( e => e.remove() );
 
             // Destroy pass
             {
                 const passIndex = this.shader.passes.findIndex( p => p.name === name );
                 const pass = this.shader.passes[ passIndex ];
-                if( pass.type === "buffer" )
+                if( pass.type === 'buffer' )
                 {
-                    delete this.gpuTextures[ pass.name ];
+                    delete this.renderer.gpuTextures[ pass.name ];
                 }
 
                 this.shader.passes.splice( passIndex, 1 );
@@ -256,14 +222,14 @@ const ShaderHub =
         if( !this.shader.url )
         {
             const pass = {
-                name: "MainImage",
-                type: "image",
+                name: 'MainImage',
+                type: 'image',
                 codeLines: Shader.RENDER_MAIN_TEMPLATE,
                 resolutionX: this.resolutionX,
                 resolutionY: this.resolutionY
             }
 
-            const shaderPass = new ShaderPass( shader, this.device, pass );
+            const shaderPass = new ShaderPass( shader, this.renderer.device, pass );
             this.shader.passes.push( shaderPass );
             this.shader.likes = [];
 
@@ -284,14 +250,14 @@ const ShaderHub =
                 pass.resolutionY = this.resolutionY;
 
                 pass.uniforms = pass.uniforms ?? [];
-                pass.uniforms.forEach( u => u.type = u.type ?? "f32");
+                pass.uniforms.forEach( u => u.type = u.type ?? 'f32');
 
                 // Push passes to the shader
-                const shaderPass = new ShaderPass( shader, this.device, pass );
-                if( pass.type === "buffer" || pass.type === "compute" )
+                const shaderPass = new ShaderPass( shader, this.renderer.device, pass );
+                if( pass.type === 'buffer' || pass.type === 'compute' )
                 {
-                    console.assert( shaderPass.textures, "Buffer does not have render target textures" );
-                    this.gpuTextures[ pass.name ] = shaderPass.textures;
+                    console.assert( shaderPass.textures, 'Buffer does not have render target textures' );
+                    this.renderer.gpuTextures[ pass.name ] = shaderPass.textures;
                 }
 
                 this.shader.passes.push( shaderPass );
@@ -310,7 +276,7 @@ const ShaderHub =
         }
 
         const alreadyLiked = fs?.user && this.shader.likes.includes( fs.getUserId() );
-        LX.emit( "@on_like_changed", [ this.shader.likes.length, alreadyLiked ] );
+        LX.emit( '@on_like_changed', [ this.shader.likes.length, alreadyLiked ] );
 
         this.currentPass = this.shader.passes.at( -1 );
 
@@ -363,7 +329,7 @@ const ShaderHub =
     {
         let indexOffset = -1;
 
-        const shaderPass = new ShaderPass( this.shader, this.device, {
+        const shaderPass = new ShaderPass( this.shader, this.renderer.device, {
             name: passName,
             type: passType,
             resolutionX: this.resolutionX,
@@ -391,7 +357,7 @@ const ShaderHub =
             this.shader.passes.splice( this.shader.passes.length - 1, 0, shaderPass ); // Add before MainImage
 
             console.assert( shaderPass.textures, "Buffer/Compute pass does not have render target textures" );
-            this.gpuTextures[ passName ] = shaderPass.textures;
+            this.renderer.gpuTextures[ passName ] = shaderPass.textures;
         }
         else if( passType === "common" )
         {
@@ -447,32 +413,16 @@ const ShaderHub =
     {
         fps.reset();
 
-        this.frameCount = 0;
-        this.elapsedTime = 0;
-        this.timeDelta = 0;
+        this.frameCount     = 0;
+        this.elapsedTime    = 0;
+        this.timeDelta      = 0;
 
-        this.device.queue.writeBuffer(
-            this.gpuBuffers[ "iTimeDelta" ],
-            0,
-            new Float32Array([ this.timeDelta ])
-        );
-
-        this.device.queue.writeBuffer(
-            this.gpuBuffers[ "iTime" ],
-            0,
-            new Float32Array([ this.elapsedTime ])
-        );
-
-        this.device.queue.writeBuffer(
-            this.gpuBuffers[ "iFrame" ],
-            0,
-            new Int32Array([ this.frameCount ])
-        );
+        this.renderer.updateFrame( 0, 0, 0 );
 
         // Reset mouse data
         {
-            const X = this.resolutionX ?? this.gpuCanvas.offsetWidth;
-            const Y = this.resolutionY ?? this.gpuCanvas.offsetHeight;
+            const X = this.resolutionX ?? this.renderer.canvas.offsetWidth;
+            const Y = this.resolutionY ?? this.renderer.canvas.offsetHeight;
 
             this.mousePosition      = [ X * 0.5, Y * 0.5 ];
             this.lastMousePosition  = this.mousePosition;
@@ -489,11 +439,7 @@ const ShaderHub =
                 this._mouseDown ?? -1, this._mousePressed ?? -1.0      // button clicks
             ];
 
-            this.device.queue.writeBuffer(
-                this.gpuBuffers[ "iMouse" ],
-                0,
-                new Float32Array( data )
-            );
+            this.renderer.updateMouse( data );
         }
 
         if( this.currentPass )
@@ -605,7 +551,7 @@ const ShaderHub =
 
     requestFullscreen( element )
     {
-        element = element ?? this.gpuCanvas;
+        element = element ?? this.renderer.canvas;
 
         if( element == null ) element = document.documentElement;
         if( element.requestFullscreen ) element.requestFullscreen();
@@ -917,170 +863,31 @@ const ShaderHub =
 
     async initGraphics( canvas )
     {
-        this.gpuCanvas = canvas;
-        this.adapter = await navigator.gpu?.requestAdapter({
-            featureLevel: 'compatibility',
-        });
+        this.renderer = new Renderer( canvas );
 
-        this.device = await this.adapter?.requestDevice();
-        if( this.quitIfWebGPUNotAvailable( this.adapter, this.device ) === WEBGPU_ERROR )
-        {
-            return;
-        }
-
-        this.webGPUContext = canvas.getContext( 'webgpu' );
-
-        const devicePixelRatio = window.devicePixelRatio;
-        canvas.width = canvas.clientWidth * devicePixelRatio;
-        canvas.height = canvas.clientHeight * devicePixelRatio;
-
-        this.presentationFormat = navigator.gpu.getPreferredCanvasFormat();
-
-        this.webGPUContext.configure({
-            device: this.device,
-            format: this.presentationFormat,
-        });
-
-        // Input Parameters
-        {
-            this.gpuBuffers[ "iTime" ] = this.device.createBuffer({
-                size: 4,
-                usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
-            });
-
-            this.gpuBuffers[ "iTimeDelta" ] = this.device.createBuffer({
-                size: 4,
-                usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
-            });
-
-            this.gpuBuffers[ "iFrame" ] = this.device.createBuffer({
-                size: 4,
-                usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
-            });
-
-            this.gpuBuffers[ "iResolution" ] = this.device.createBuffer({
-                size: 8,
-                usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
-            });
-
-            this.gpuBuffers[ "iMouse" ] = this.device.createBuffer({
-                size: 32,
-                usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
-            });
-        }
-
-        // clamp-to-edge samplers
-        Shader.nearestSampler = this.device.createSampler();
-        Shader.bilinearSampler = this.device.createSampler({ magFilter: 'linear', minFilter: 'linear' });
-        Shader.trilinearSampler = this.device.createSampler({ magFilter: 'linear', minFilter: 'linear', mipmapFilter: 'linear' });
-
-        // repeat samplers
-        Shader.nearestRepeatSampler = this.device.createSampler({ addressModeU: "repeat", addressModeV: "repeat", addressModeW: "repeat" });
-        Shader.bilinearRepeatSampler = this.device.createSampler({ magFilter: 'linear', minFilter: 'linear', addressModeU: "repeat", addressModeV: "repeat", addressModeW: "repeat" });
-        Shader.trilinearRepeatSampler = this.device.createSampler({ magFilter: 'linear', minFilter: 'linear', mipmapFilter: 'linear', addressModeU: "repeat", addressModeV: "repeat", addressModeW: "repeat" });
+        await this.renderer.init();
 
         requestAnimationFrame( this.onFrame.bind( this) );
     },
 
-    async createTextureFromFile( channelName, c )
+    async createTextureFromFile( channelName )
     {
         const result = await fs.listDocuments( FS.ASSETS_COLLECTION_ID, [ Query.equal( "file_id", channelName ) ] );
         console.assert( result.total == 1, `Inconsistent asset list for file id ${ channelName }` );
 
-        const d = result.documents[ 0 ];
-        if( d[ "category" ] === "cubemap" )
+        const url = await fs.getFileUrl( channelName );
+        const data = await fs.requestFile( url );
+        const asset = result.documents[ 0 ];
+
+        let texture = null;
+
+        if( asset.category === "cubemap" )
         {
-            return await this.createCubemapTexture( channelName, c );
+            texture = await this.renderer.createCubemapTexture( data, channelName, asset.name );
         }
         else
         {
-            return await this.createTexture( channelName, c );
-        }
-    },
-
-    async createTexture( fileId, channel, updatePreview = false, options = { } )
-    {
-        if( !fileId )
-        {
-            return;
-        }
-
-        options = { ...options, flipY: false };
-
-        const url = await fs.getFileUrl( fileId );
-        const data = await fs.requestFile( url );
-        const imageBitmap = await createImageBitmap( await new Blob([data]) );
-        const dimensions = [ imageBitmap.width, imageBitmap.height ];
-        const imageTexture = this.device.createTexture({
-            label: fileId,
-            size: [ imageBitmap.width, imageBitmap.height, 1 ],
-            format: 'rgba8unorm',
-            usage:
-                GPUTextureUsage.TEXTURE_BINDING |
-                GPUTextureUsage.COPY_DST |
-                GPUTextureUsage.RENDER_ATTACHMENT,
-        });
-
-        this.device.queue.copyExternalImageToTexture(
-            { source: imageBitmap, ...options },
-            { texture: imageTexture },
-            dimensions
-        );
-
-        this.gpuTextures[ fileId ] = imageTexture;
-
-        if( updatePreview )
-        {
-            await ui.updateShaderChannelsView( null, channel );
-        }
-
-        return imageTexture;
-    },
-
-    async createCubemapTexture( fileId, channel, updatePreview = false )
-    {
-        const url = await fs.getFileUrl( fileId );
-        const arrayBuffer = await fs.requestFile( url );
-        const zip = await JSZip.loadAsync( arrayBuffer );
-
-        const faceNames = [ "px", "nx", "py", "ny", "pz", "nz" ];
-        const faceImages = [];
-
-        for( const face of faceNames )
-        {
-            const file = zip.file( `${ face }.png` ) || zip.file( `${ face }.jpg` );
-            if( !file ) throw new Error( `Missing cubemap face: ${ face }` );
-            const blob = await file.async( "blob" );
-            const imageBitmap = await createImageBitmap( blob );
-            faceImages.push( imageBitmap );
-        }
-
-        const { width, height } = faceImages[ 0 ];
-
-        const texture = this.device.createTexture({
-            size: [ width, height, 6 ],
-            format: "rgba8unorm",
-            usage:
-                GPUTextureUsage.TEXTURE_BINDING |
-                GPUTextureUsage.COPY_DST |
-                GPUTextureUsage.RENDER_ATTACHMENT,
-            dimension: "2d",
-        });
-
-        for( let i = 0; i < 6; i++ )
-        {
-            this.device.queue.copyExternalImageToTexture(
-                { source: faceImages[ i ] },
-                { texture, origin: [ 0, 0, i ] },
-                [ width, height ]
-            );
-        }
-
-        this.gpuTextures[ fileId ] = texture;
-
-        if( updatePreview )
-        {
-            await ui.updateShaderChannelsView( null, channel );
+            texture = await this.renderer.createTexture( data, channelName, asset.name );
         }
 
         return texture;
@@ -1112,7 +919,7 @@ const ShaderHub =
         const imageName = "Keyboard";
         const imageData = new ImageData( new Uint8ClampedArray( data ), dimensions[ 0 ], dimensions[ 1 ] );
         const imageBitmap = await createImageBitmap( imageData );
-        const imageTexture = this.gpuTextures[ imageName ] ?? this.device.createTexture({
+        const imageTexture = this.renderer.gpuTextures[ imageName ] ?? this.renderer.device.createTexture({
             label: "KeyboardTexture",
             size: [ imageBitmap.width, imageBitmap.height, 1 ],
             format: 'rgba8unorm',
@@ -1122,7 +929,7 @@ const ShaderHub =
                 GPUTextureUsage.RENDER_ATTACHMENT,
         });
 
-        this.device.queue.copyExternalImageToTexture(
+        this.renderer.device.queue.copyExternalImageToTexture(
             { source: imageBitmap },
             { texture: imageTexture },
             dimensions
@@ -1130,7 +937,7 @@ const ShaderHub =
 
         // Recreate stuff if we update the texture and
         // a shader pass is using it
-        this.gpuTextures[ imageName ] = imageTexture;
+        this.renderer.gpuTextures[ imageName ] = imageTexture;
 
         const pass = this.currentPass;
         const usedChannel = pass.channels.indexOf( imageName );
@@ -1222,7 +1029,7 @@ const ShaderHub =
 
         if( focusCanvas )
         {
-            this.gpuCanvas.focus();
+            this.renderer.canvas.focus();
         }
 
         this.manualCompile |= ( manualCompile ?? false );
@@ -1385,19 +1192,19 @@ const ShaderHub =
     {
         const width = outWidth ?? 640;
         const height = outHeight ?? 360;
-        const blob = await (() => {return new Promise((resolve) =>
-            this.gpuCanvas.toBlob((blob) => resolve(blob), "image/png")
+        const blob = await (() => {return new Promise( resolve =>
+            this.renderer.canvas.toBlob( blob => resolve( blob ), "image/png" )
         )})();
         const bitmap = await createImageBitmap( blob );
 
         const snapCanvas = document.createElement("canvas");
         snapCanvas.width = width;
         snapCanvas.height = height;
-        const ctx = snapCanvas.getContext("2d");
+        const ctx = snapCanvas.getContext( '2d' );
         ctx.drawImage( bitmap, 0, 0, width, height );
 
-        return new Promise((resolve) =>
-            snapCanvas.toBlob((blob) => resolve(blob), "image/png")
+        return new Promise( resolve =>
+            snapCanvas.toBlob( blob => resolve( blob ), 'image/png' )
         );
     },
 
@@ -1405,51 +1212,7 @@ const ShaderHub =
     {
         const blob = await this.snapshotCanvas();
         const url = URL.createObjectURL( blob );
-        window.open(url);
-    },
-
-    quitIfWebGPUNotAvailable( adapter, device )
-    {
-        if( !device )
-        {
-            return this.quitIfAdapterNotAvailable( adapter );
-        }
-
-        device.lost.then((reason) => {
-            this.fail(`Device lost ("${reason.reason}"):\n${reason.message}`);
-        });
-
-        // device.addEventListener('uncapturederror', (ev) => {
-        //     this.fail(`Uncaptured error:\n${ev.error.message}`);
-        // });
-
-        return WEBGPU_OK;
-    },
-
-    quitIfAdapterNotAvailable( adapter )
-    {
-        if( !("gpu" in navigator) )
-        {
-            this.fail("'navigator.gpu' is not defined - WebGPU not available in this browser");
-        }
-        else if( !adapter )
-        {
-            this.fail("No adapter found after calling 'requestAdapter'.");
-        }
-        else
-        {
-            this.fail("Unable to get WebGPU device for an unknown reason.");
-        }
-
-        return WEBGPU_ERROR;
-    },
-
-    fail( msg, msgTitle )
-    {
-        new LX.Dialog( msgTitle ?? "❌ WebGPU Error", (p) => {
-            p.root.classList.add( "p-4" );
-            p.root.innerHTML = msg;
-        }, { modal: true } );
+        window.open( url );
     }
 }
 
