@@ -1619,27 +1619,49 @@ export const ui = {
             }
         }
 
-        canvas.addEventListener('keydown', async (e) => {
+        canvas.addEventListener( 'keydown', async e => {
             ShaderHub.onKeyDown( e );
             e.preventDefault();
         }, false);
 
-        canvas.addEventListener('keyup', async (e) => {
+        canvas.addEventListener( 'keyup', async e => {
             ShaderHub.onKeyUp( e );
             e.preventDefault();
         }, false);
 
-        canvas.addEventListener("mousedown", (e) => {
-            ShaderHub.onMouseDown( e );
+        canvas.addEventListener( 'mousedown', e => {
+            ShaderHub.onMouseDown( e.offsetX, e.offsetY, e.button );
         });
 
-        canvas.addEventListener("mouseup", (e) => {
+        canvas.addEventListener( 'mouseup', e => {
             ShaderHub.onMouseUp( e );
         });
 
-        canvas.addEventListener("mousemove", (e) => {
-            ShaderHub.onMouseMove( e );
+        canvas.addEventListener( 'mousemove', e => {
+            ShaderHub.onMouseMove( e.offsetX, e.offsetY );
         });
+
+        // Touch events
+
+        canvas.addEventListener( 'touchstart', e => {
+            e.preventDefault();
+            const t = e.touches[ 0 ];
+            const rect = canvas.getBoundingClientRect();
+            ShaderHub.onMouseDown( t.clientX - rect.x, t.clientY - rect.y, 1 /* simulate left button */ );
+        }, { passive: false });
+
+        canvas.addEventListener( 'touchend', e => {
+            e.preventDefault();
+            const t = e.changedTouches[ 0 ];
+            if( t ) ShaderHub.onMouseUp( e );
+        }, { passive: false });
+
+        canvas.addEventListener( 'touchmove', e => {
+            e.preventDefault(); // Prevent scrolling while dragging
+            const t = e.touches[ 0 ];
+            const rect = canvas.getBoundingClientRect();
+            ShaderHub.onMouseMove( t.clientX - rect.x, t.clientY - rect.y );
+        }, { passive: false } );
 
         return canvas;
     },

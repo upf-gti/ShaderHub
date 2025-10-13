@@ -162,11 +162,11 @@ const ShaderHub =
         this.generateKbTexture = true;
     },
 
-    async onMouseDown( e )
+    async onMouseDown( x, y, button )
     {
-        this._mouseDown = parseInt( e.button );
+        this._mouseDown = parseInt( button );
         this._mousePressed = this._mouseDown;
-        this.mousePosition = [ e.offsetX, e.offsetY ];
+        this.mousePosition = [ x, y ];
         this.lastMousePosition = [ ...this.mousePosition ];
     },
 
@@ -175,11 +175,11 @@ const ShaderHub =
         this._mouseDown = undefined;
     },
 
-    async onMouseMove( e )
+    async onMouseMove( x, y )
     {
         if( this._mouseDown !== undefined )
         {
-            this.mousePosition = [ e.offsetX, e.offsetY ];
+            this.mousePosition = [ x, y ];
         }
     },
 
