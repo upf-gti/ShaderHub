@@ -579,15 +579,15 @@ const ShaderHub =
         else if( document.webkitExitFullscreen ) document.webkitExitFullscreen();
     },
 
-    getFullPath()
+    getFullPath( addPath = true )
     {
-        return window.location.origin + window.location.pathname;
+        return window.location.origin + ( addPath ? window.location.pathname : "" );
     },
 
     openBrowseList( e )
     {
         const needsReload = window.location.search === "";
-        window.open( `${ this.getFullPath() }#browse`, e?.button !== 1 ? "_self" : undefined );
+        window.open( `${ this.getFullPath( false ) }#browse`, e?.button !== 1 ? "_self" : undefined );
         if( needsReload ) window.location.reload();
     },
 

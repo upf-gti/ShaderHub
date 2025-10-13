@@ -54,6 +54,12 @@ export const ui = {
 
         const menubar = this.area.addMenubar( menubarOptions, { parentClass: "bg-none" } );
 
+        const searchShaderInput = new LX.TextInput(null, ``,
+            v => { this._searchShader( v ) },
+            { placeholder: "Search...", width: "256px", className: "right", buttonClass: "border fg-tertiary bg-secondary" }
+        );
+        menubar.root.appendChild( searchShaderInput.root );
+
         if( mobile )
         {
             const sidebarOptions = {
@@ -136,7 +142,7 @@ export const ui = {
             } );
         }
 
-        menubar.setButtonImage("ShaderHub", `images/icon_${ starterTheme }.png`, ( element, event ) => {
+        menubar.setButtonImage("ShaderHub", mobile ? `images/favicon.png` : `images/icon_${ starterTheme }.png`, ( element, event ) => {
             const needsReload = ( window.location.search === "" );
             window.location.hash = "";
             window.open( `${ ShaderHub.getFullPath() }`, event?.button !== 1 ? "_self" : undefined );
@@ -144,7 +150,12 @@ export const ui = {
         }, { float: "left" } );
 
         LX.addSignal( "@on_new_color_scheme", ( el, value ) => {
-            menubar.setButtonImage("ShaderHub", `images/icon_${ value }.png`, null, { float: "left" } );
+
+            if( !mobile )
+            {
+                menubar.setButtonImage("ShaderHub", `images/icon_${ value }.png`, null, { float: "left" } );
+            }
+
             r.style.setProperty( "--hub-background-image", `url("images/background${ value === "dark" ? "" : "_inverted" }.png")` );
         } );
 
@@ -180,6 +191,36 @@ export const ui = {
 
             await this.makeInitialPage();
         }
+    },
+
+    _searchShader( v )
+    {
+        const url = new URL( window.location.href );
+        if( v && v.trim() )
+        {
+            url.searchParams.set( 'search', v.trim() );
+        }
+        else
+        {
+            url.searchParams.delete( 'search' );
+        }
+        url.hash = 'browse';
+        window.location.href = url.toString();
+    },
+
+    _browseFeature( v )
+    {
+        const url = new URL( window.location.href );
+        if( v && v.trim() )
+        {
+            url.searchParams.set( 'feature', v.trim() );
+        }
+        else
+        {
+            url.searchParams.delete( 'feature' );
+        }
+        url.hash = 'browse';
+        window.location.href = url.toString();
     },
 
     async makeInitialPage()
@@ -349,6 +390,7 @@ export const ui = {
 
         const params = new URLSearchParams( document.location.search );
         const queryFeature = params.get( "feature" );
+        const querySearch = params.get( "search" );
 
         var [ topArea, bottomArea ] = this.area.split({ type: "vertical", sizes: ["calc(100% - 48px)", null], resize: false });
         topArea.root.parentElement.classList.add( "hub-background" )
@@ -361,10 +403,6 @@ export const ui = {
 
         // Filters
         {
-            const iBrowseFeature = (v) => {
-                window.location.href = `${ ShaderHub.getFullPath() }?feature=${ v }#browse`;
-            };
-
             LX.makeContainer( ["100%", "auto"], "font-medium fg-secondary", ``, topArea, { fontSize: "2rem" } );
             const filtersPanel = new LX.Panel( { className: "p-4 bg-none", height: "auto" } );
             filtersPanel.sameLine();
@@ -372,7 +410,7 @@ export const ui = {
             for( let f of Constants.FEATURES )
             {
                 const fLower = f.toLowerCase();
-                filtersPanel.addButton( null, f, (v) => iBrowseFeature( v.toLowerCase() ), { buttonClass: queryFeature === fLower ? "contrast" : "tertiary" } );
+                filtersPanel.addButton( null, f, (v) => this._browseFeature( v.toLowerCase() ), { buttonClass: queryFeature === fLower ? "contrast" : "tertiary" } );
             }
 
             filtersPanel.endLine();
@@ -381,10 +419,38 @@ export const ui = {
 
         // Get all stored shader files (not the code, only the data)
         const result = await this.fs.listDocuments( FS.SHADERS_COLLECTION_ID, [ Query.or( [ Query.equal( "public", true ), Query.isNull( "public" ) ] ) ] );
-        const dbShaders = result.documents.filter( (d) => {
-            if( !queryFeature ) return true;
-            return ( d[ "features" ] ?? "" ).split( "," ).includes( queryFeature );
-        } );
+        const dbShaders = result.documents.map( d =>
+        {
+            let score = 1;
+
+            if( querySearch )
+            {
+                score = 0;
+
+                const name = d.name.toLowerCase();
+                const desc = ( d.description || "" ).toLowerCase();
+                const author = ( d.author_name || "" ).toLowerCase();
+                const terms = querySearch.toLowerCase().split( /\s+/ );
+
+                for( const term of terms )
+                {
+                    if( name.includes( term ) ) score += 6;
+                    if( desc.includes( term ) ) score += 3;
+                    if( author.includes( term ) ) score += 1;
+                }
+            }
+
+            // If score is 0, it means no match for the search
+            // We have another opportunity to increase the score if it matches the feature filter
+            // but also a negative score if it doesn't match to skip it
+            if( score > 0 && queryFeature )
+            {
+                score += ( d[ "features" ] ?? "" ).split( "," ).includes( queryFeature ) ? 1 : -1e3;
+            }
+
+            return { ...d, score }
+        })
+        .filter( d => d.score > 0 );
 
         if( dbShaders.length === 0 )
         {
