@@ -35,8 +35,7 @@ You can test it here: [upf-gti.github.io/ShaderHub/](https://upf-gti.github.io/S
 ## Roadmap
 
 - Support sound channel
-- Shader desc/comments format
+- Support "#include" packages
+- Support custom texture images (by URL)
 - Shader Comments
 - Add shader tags to DB
-- Submit form for Login (LX)
-- Give more info on form validation errors (LX)
