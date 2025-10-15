@@ -587,7 +587,8 @@ const ShaderHub =
     openBrowseList( e )
     {
         const needsReload = window.location.search === "";
-        window.open( `${ this.getFullPath( false ) }#browse`, e?.button !== 1 ? "_self" : undefined );
+        window.location.search = "";
+        window.open( `${ this.getFullPath() }#browse`, e?.button !== 1 ? "_self" : undefined );
         if( needsReload ) window.location.reload();
     },
 
@@ -609,6 +610,7 @@ const ShaderHub =
     openHelp( e )
     {
         const needsReload = window.location.search === "";
+        window.location.search = "";
         window.open( `${ this.getFullPath() }#help`, e?.button !== 1 ? "_self" : undefined );
         if( needsReload ) window.location.reload();
     },
