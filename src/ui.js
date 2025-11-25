@@ -1384,7 +1384,7 @@ export const ui = {
                     makeParagraph( lines.join( "" ), p, "flex flex-col p-4" );
                 }
 
-            }, { modal: false, size: [ "700px", "900px" ] } );
+            }, { modal: false, size: [ "700px", "min(calc(100% - 32px), 900px)" ] } );
 
         }, { icon: "CircleQuestionMark", title: "Quick Help", tooltip: true } );
 
