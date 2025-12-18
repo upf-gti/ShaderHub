@@ -298,7 +298,7 @@ export const ui = {
         skeleton.root.classList.add( "grid", "shader-list-initial", "gap-8", "justify-center" );
         leftSide.appendChild( skeleton.root );
 
-        const previewFiles = await this.fs.listFiles( [ Query.startsWith( "name", "68" ), Query.endsWith( "name", ".png" ) ] );
+        const previewFiles = await this.fs.listFiles( [ Query.startsWith( "name", ShaderHub.previewNamePrefix ), Query.endsWith( "name", ".png" ) ] );
         const usersDocuments = await this.fs.listDocuments( FS.USERS_COLLECTION_ID );
 
         LX.doAsync( async () => {
@@ -334,7 +334,7 @@ export const ui = {
                     shaderInfo.anonAuthor = true;
                 }
 
-                const previewName = `${ shaderInfo.uid }.png`;
+                const previewName = ShaderHub.getShaderPreviewName( shaderInfo.uid );
                 const previewFile = previewFiles.files.find( f => f.name === previewName );
                 if( previewFile )
                 {
@@ -480,7 +480,7 @@ export const ui = {
         skeleton.root.classList.add( "grid", "shader-list", "gap-6", "justify-center" );
         topArea.attach( skeleton.root );
 
-        const previewFiles = await this.fs.listFiles( [ Query.startsWith( "name", "68" ), Query.endsWith( "name", ".png" ) ] );
+        const previewFiles = await this.fs.listFiles( [ Query.startsWith( "name", ShaderHub.previewNamePrefix ), Query.endsWith( "name", ".png" ) ] );
         const usersDocuments = await this.fs.listDocuments( FS.USERS_COLLECTION_ID );
 
         LX.doAsync( async () => {
@@ -519,7 +519,7 @@ export const ui = {
                     shaderInfo.anonAuthor = true;
                 }
 
-                const previewName = `${ shaderInfo.uid }.png`;
+                const previewName = ShaderHub.getShaderPreviewName( shaderInfo.uid );
                 const previewFile = previewFiles.files.find( f => f.name === previewName );
                 if( previewFile )
                 {
@@ -594,7 +594,7 @@ export const ui = {
         const ownProfile = this.fs.user && ( userID === this.fs.getUserId() );
         showLikes = JSON.parse( showLikes ) && ownProfile;
 
-        const previewFiles = await this.fs.listFiles( [ Query.startsWith( "name", "68" ), Query.endsWith( "name", ".png" ) ] );
+        const previewFiles = await this.fs.listFiles( [ Query.startsWith( "name", ShaderHub.previewNamePrefix ), Query.endsWith( "name", ".png" ) ] );
         const usersDocuments = await this.fs.listDocuments( FS.USERS_COLLECTION_ID );
 
         // Show profile
@@ -692,7 +692,7 @@ export const ui = {
                         url: await this.fs.getFileUrl( document[ "file_id" ] ),
                     };
 
-                    const previewName = `${ shaderInfo.uid }.png`;
+                    const previewName = ShaderHub.getShaderPreviewName( shaderInfo.uid );
                     const previewFile = previewFiles.files.find( f => f.name === previewName );
                     if( previewFile )
                     {
@@ -845,7 +845,7 @@ export const ui = {
                         shaderInfo.anonAuthor = true;
                     }
 
-                    const previewName = `${ shaderInfo.uid }.png`;
+                    const previewName = ShaderHub.getShaderPreviewName( shaderInfo.uid );
                     const previewFile = previewFiles.files.find( f => f.name === previewName );
                     if( previewFile )
                     {

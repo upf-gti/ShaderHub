@@ -28,6 +28,7 @@ const ShaderHub =
     generateKbTexture:  true,
     timePaused:         false,
     manualCompile:      false,
+    previewNamePrefix:  '_preview_',
 
     async init()
     {
@@ -644,6 +645,11 @@ const ShaderHub =
         return customSuggestions;
     },
 
+    getShaderPreviewName( uid )
+    {
+        return `${ this.previewNamePrefix }${ uid }.png`;
+    },
+
     async saveShaderFiles( ownShader, isRemix )
     {
         const passes = ownShader ? this.shader.passes : ( this.shader._json?.passes ?? this.shader.passes );
@@ -792,8 +798,7 @@ const ShaderHub =
             await fs.deleteFile( result[ "file_id" ] );
 
             // Preview
-            const previewName = `${ uid }.png`;
-            result = await fs.listFiles( [ Query.equal( "name", previewName ) ] );
+            result = await fs.listFiles( [ Query.equal( "name", this.getShaderPreviewName( uid ) ) ] );
             if( result.total > 0 )
             {
                 await fs.deleteFile( result.files[ 0 ][ "$id" ] );
@@ -848,7 +853,7 @@ const ShaderHub =
         shaderUid = shaderUid ?? this.shader.uid;
 
         // Delete old preview first if necessary
-        const previewName = `${ shaderUid }.png`;
+        const previewName = this.getShaderPreviewName( shaderUid );
         const result = await fs.listFiles( [ Query.equal( "name", previewName ) ] );
         if( result.total > 0 )
         {
