@@ -45,7 +45,7 @@ const formatMD = ( text ) =>
 {
     return text.substring( 0, 512 ) // CAP TO 512 chars
         .replace( /&/g, "&amp;" ).replace( /</g, "&lt;" ).replace( />/g, "&gt;" )
-        .replace( /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>' ) // Links: [text](url)
+        .replace( /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" class="text-blue-500" rel="noopener noreferrer">$1</a>' ) // Links: [text](url)
         .replace( /\*\*(.*?)\*\*/g, "<b>$1</b>" ) // Bold: **text**
         .replace( /(^|[^*])\*(?!\*)([^*]+)\*(?!\*)/g, '$1<i>$2</i>' ) // Italic: *text*
         .replace( /~~(.*?)~~/g, "<u>$1</u>" ) // Underline: ~~text~~

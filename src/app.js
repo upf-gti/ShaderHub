@@ -52,8 +52,8 @@ const ShaderHub =
 
             this.frameCount++;
 
-            LX.emit( "@elapsed-time", `${ this.elapsedTime.toFixed( 2 ) }s` );
-            LX.emit( "@fps", `${ fps.get() } FPS` );
+            LX.emitSignal( "@elapsed-time", `${ this.elapsedTime.toFixed( 2 ) }s` );
+            LX.emitSignal( "@fps", `${ fps.get() } FPS` );
         }
 
         this.renderer.updateResolution( this.resolutionX, this.resolutionY );
@@ -190,7 +190,7 @@ const ShaderHub =
 
         this.renderer.updateResolution( xResolution, yResolution );
 
-        LX.emit( '@resolution', `${ xResolution }x${ yResolution }` );
+        LX.emitSignal( '@resolution', `${ xResolution }x${ yResolution }` );
 
         this.resolutionX = xResolution;
         this.resolutionY = yResolution;
@@ -281,7 +281,7 @@ const ShaderHub =
         }
 
         const alreadyLiked = fs?.user && this.shader.likes.includes( fs.getUserId() );
-        LX.emit( '@on_like_changed', [ this.shader.likes.length, alreadyLiked ] );
+        LX.emitSignal( '@on_like_changed', [ this.shader.likes.length, alreadyLiked ] );
 
         this.currentPass = this.shader.passes.at( -1 );
 
@@ -324,7 +324,7 @@ const ShaderHub =
         }
 
         const alreadyLiked = this.shader.likes.includes( userId );
-        LX.emit( "@on_like_changed", [ this.shader.likes.length, alreadyLiked ] );
+        LX.emitSignal( "@on_like_changed", [ this.shader.likes.length, alreadyLiked ] );
 
         let result = await ShaderHub.shaderExists();
         await this.saveShader( result, false, false );
@@ -452,7 +452,7 @@ const ShaderHub =
             this.currentPass.resetExecution();
         }
 
-        LX.emit( "@elapsed-time", `${ this.elapsedTime.toFixed( 2 ) }s` );
+        LX.emitSignal( "@elapsed-time", `${ this.elapsedTime.toFixed( 2 ) }s` );
     },
 
     async getShaderById( id )
@@ -699,7 +699,7 @@ const ShaderHub =
             }, { pattern: LX.buildTextPattern( { minLength: 3 } ) } );
             p.addSeparator();
             p.sameLine( 2 );
-            p.addButton( null, "Cancel", () => dialog.close(), { width: "50%", buttonClass: "bg-error fg-white" } );
+            p.addButton( null, "Cancel", () => dialog.close(), { width: "50%", buttonClass: "destructive" } );
             p.addButton( null, "Confirm", async () => {
                 if( !shaderName.length || !textInput.valid( shaderName ) )
                 {
@@ -731,7 +731,7 @@ const ShaderHub =
                 // Close dialog on succeed and show toast
                 dialog.close();
                 Utils.toast( `✅ Shader saved`, `Shader: ${ shaderName } by ${ fs.user.name }` );
-            }, { width: "50%", buttonClass: "contrast" } );
+            }, { width: "50%", buttonClass: "primary" } );
         } );
     },
 
@@ -813,8 +813,8 @@ const ShaderHub =
             p.addTextArea( null, "Are you sure? This action cannot be undone.", null, { disabled: true } );
             p.addSeparator();
             p.sameLine( 2 );
-            p.addButton( null, "Cancel", () => dialog.close(), { width: "50%", buttonClass: "bg-error fg-white" } );
-            p.addButton( null, "Continue", innerDelete.bind( this ), { width: "50%", buttonClass: "contrast" } );
+            p.addButton( null, "Cancel", () => dialog.close(), { width: "50%", buttonClass: "destructive" } );
+            p.addButton( null, "Continue", innerDelete.bind( this ), { width: "50%", buttonClass: "primary" } );
         }, { modal: true } );
     },
 

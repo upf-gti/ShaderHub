@@ -131,7 +131,7 @@ const ShaderHub =
         
             if( finalCanvasControlsArea )
             {
-                finalCanvasControlsArea.root.className += " px-2 rounded-b-lg bg-secondary";
+                finalCanvasControlsArea.root.className += " px-2 rounded-b-lg bg-card";
                 const panel = finalCanvasControlsArea.addPanel( { className: "flex flex-row" } );
                 panel.sameLine();
                 panel.addButton( null, "ResetTime", () => this.onShaderTimeReset(), { icon: "SkipBack", title: "Reset time", tooltip: true } );
