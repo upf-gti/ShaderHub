@@ -892,11 +892,11 @@ export const ui = {
         this.shader = shader;
 
         let [ leftArea, rightArea ] = this.area.split({ sizes: ["50%", "50%"] });
-        rightArea.root.className += " bg-none p-3 shader-edit-content";
-        leftArea.root.className += " bg-none p-3 flex flex-col gap-2";
+        rightArea.root.className = rightArea.root.className.replace("bg-background", "bg-none p-3 shader-edit-content");
+        leftArea.root.className = leftArea.root.className.replace("bg-background", "bg-none p-3 flex flex-col gap-2");
 
         // Set background to parent area
-        this.area.root.parentElement.classList.add( "hub-background" );
+        this.area.root.parentElement.className = this.area.root.parentElement.className.replace( "bg-background", "hub-background" );
         leftArea.root.parentElement.classList.add( "hub-background-blur" );
 
         let [ codeArea, shaderSettingsArea ] = rightArea.split({ type: "vertical", sizes: ["80%", "20%"], resize: false });
@@ -982,7 +982,7 @@ export const ui = {
         });
 
         var [ graphicsArea, shaderDataArea ] = leftArea.split({ type: "vertical", sizes: ["auto", "auto"], resize: false });
-        graphicsArea.root.className += " bg-none box-shadow box-border rounded-lg";
+        graphicsArea.root.className += " bg-none box-shadow box-border rounded-lg overflow-hidden";
         shaderDataArea.root.className += " bg-none box-shadow box-border rounded-lg items-center justify-center";
 
         // Add Shader data
@@ -1000,7 +1000,7 @@ export const ui = {
                 <div class="flex flex-col gap-1">
                     <div class="flex flex-row items-center">
                         ${ ( ownProfile || isNewShader ) ? LX.makeIcon("Edit", { svgClass: "mr-2 cursor-pointer hover:text-foreground" } ).innerHTML : "" }
-                        <div class="text-foreground text-xl font-semibold">${ shader.name }</div>
+                        <div class="text-foreground text-base font-semibold">${ shader.name }</div>
                     </div>
                     <div class="text-muted-foreground text-sm">Created by ${ !shader.anonAuthor ? `<a onclick='ShaderHub.openProfile("${ shader.authorId }")' class='text-blue-500 decoration-none cursor-pointer underline-offset-4 hover:underline'>` : `` }${ shader.author }${ !shader.anonAuthor ? "</a>" : "" } on ${ shader.creationDate }
                     ${ originalShader ? `(remixed from <a onclick='ShaderHub.openShader("${ shader.originalId }")' class='text-blue-500 decoration-none cursor-pointer underline-offset-4 hover:underline'>${ originalShader.name }</a> by <a onclick='ShaderHub.openProfile("${ originalShader.authorId }")' class='text-blue-500 decoration-none cursor-pointer underline-offset-4 hover:underline'>${ originalShader.author }</a>)` : `` }
