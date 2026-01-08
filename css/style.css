@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Google+Sans:ital,opsz,wght@0,17..18,400..700;1,17..18,400..700&display=swap');
+
 @import "tailwindcss";
 
 @custom-variant dark (&:where(.dark, .dark *));
@@ -38,12 +40,8 @@
     .scrollbar-hidden { -ms-overflow-style: none; scrollbar-width: none; }
 }
 
-:root {
-	--hub-background-image: url("../images/background.png");
-}
-
 * {
-	font-family: var(--global-code-font) !important;
+	font-family: "Google Sans", sans-serif;
 }
 
 .webgpu-canvas { aspect-ratio: 16 / 9; outline: none }
@@ -56,7 +54,7 @@
 .code-border-default { border: 1px solid var(--border) }
 .code-border-error { border: 1px solid var(--destructive) }
 
-.box-shadow { box-shadow: 0 0 8px 4px rgba(0, 0, 0, 0.15) }
+.box-shadow { box-shadow: 0 0 6px 2px rgba(0, 0, 0, 0.15) }
 .box-border { border: 1px solid var(--border) }
 
 .notifications ol .lextoast .lextoastcontent .desc {
@@ -73,7 +71,6 @@
 }
 
 .lexcodearea {
-	border-top-right-radius: 8px !important;
 	overflow: hidden;
 }
 
@@ -86,8 +83,8 @@
 }
 
 .channel-title {
-	border-top-left-radius: 8px;
-	border-top-right-radius: 8px;
+	border-top-left-radius: 0.5rem;
+	border-top-right-radius: 0.5rem;
 }
 
 .shader-list-initial {
@@ -97,8 +94,8 @@
 .shader-item {
     grid-column-end: span 1;
     grid-row-end: span 1;
-	border: 1px solid var(--border);
-	box-shadow: 0 0 8px 4px rgba(0, 0, 0, 0.25);
+	border-radius: 0.75rem;
+	border: 1px solid light-dark(#9492927a, #ffffff26);
 	overflow: hidden;
 }
 
@@ -107,7 +104,7 @@
 }
 
 .shader-item > img {
-	transition: scale 0.15s ease-out;
+	transition: scale 0.2s ease-out;
 }
 
 .shader-item:hover img {
@@ -158,25 +155,45 @@
 }
 
 .help-content p, .help-content li {
-	color: var(--global-text-secondary);
+	color: var(--secondary-foreground);
+	list-style: initial;
+}
+
+.help-content ul {
+	padding-inline-start: 2rem;
+	list-style: initial;
+}
+
+.help-content h1 {
+	font-weight: 600;
+	font-size: 1.75rem;
+}
+
+.help-content h2 {
+	font-weight: 600;
+	font-size: 1.5rem;
 }
 
 .hub-background {
-	background-color: transparent;
-	background-image: var(--hub-background-image);
-	background-size: cover;
+	background: #05050A;
+	background: linear-gradient(0deg,rgba(5, 5, 8, 1) 0%, rgba(20, 21, 22, 1) 76%, rgba(27, 28, 30, 1) 100%);
+}
+
+:root[data-mode="light"] .hub-background {
+	background: #f5f7fc;
+	background: linear-gradient(0deg,rgba(232, 233, 235, 1) 0%, rgb(221, 222, 223) 76%, rgba(210, 211, 212, 1) 100%);
 }
 
 .hub-background-blur {
 	background: transparent;
-	--webkit-backdrop-filter: blur(96px) grayscale(0.75);
-    backdrop-filter: blur(96px) grayscale(0.75);
+	--webkit-backdrop-filter: blur(96px);
+    backdrop-filter: blur(96px);
 }
 
 .hub-background-blur-md {
 	background-color: var(--global-blur-background);
-	--webkit-backdrop-filter: blur(96px) grayscale(0.75);
-    backdrop-filter: blur(96px) grayscale(0.75);
+	--webkit-backdrop-filter: blur(96px);
+    backdrop-filter: blur(96px);
 }
 
 @media (min-width: 0px) {

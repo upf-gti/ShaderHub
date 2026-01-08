@@ -447,7 +447,7 @@ const ShaderHub =
             try {
                 result = await fs.getDocument( FS.SHADERS_COLLECTION_ID, id );
             } catch (error) {
-                LX.makeContainer( ["100%", "auto"], "mt-8 text-xxl font-medium justify-center text-center", "No shader found.", this.area );
+                LX.makeContainer( ["100%", "auto"], "mt-8 text-2xl font-medium justify-center text-center", "No shader found.", this.area );
                 return;
             }
 
