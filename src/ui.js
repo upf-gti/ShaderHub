@@ -1769,14 +1769,14 @@ export const ui = {
     async onLogin( user )
     {
         // Update login info
-        const loginButton = document.getElementById( "loginOptionsButton" );
+        const loginButton = document.querySelector( "#loginOptionsButton button" );
         if( loginButton )
         {
-            loginButton.innerHTML = this.getLoginHtml( user );
+            loginButton.innerHTML = await this.getLoginHtml( user );
         }
 
         // Hide signup info
-        document.getElementById( "signupContainer" )?.classList.add( "hidden" );
+        document.querySelector( "#signupContainer" )?.classList.add( "hidden" );
 
         // Login feedback
         document.querySelectorAll( ".lextoast" ).forEach( t => t.close() );
@@ -1795,14 +1795,14 @@ export const ui = {
         await this.fs.logout();
 
         // Update login info
-        const loginButton = document.getElementById( "loginOptionsButton" );
+        const loginButton = document.querySelector( "#loginOptionsButton button" );
         if( loginButton )
         {
-            loginButton.innerHTML = this.getLoginHtml();
+            loginButton.innerHTML = await this.getLoginHtml();
         }
 
         // Show again signup info
-        document.getElementById( "signupContainer" )?.classList.remove( "hidden" );
+        document.querySelector( "#signupContainer" )?.classList.remove( "hidden" );
 
         // Update shader description (menu, likes, etc)
         const params = new URLSearchParams( document.location.search );
