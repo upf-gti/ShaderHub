@@ -25,7 +25,9 @@ export const ui = {
 
         // this.area.root.classList.add( "hub-background" );
 
+        const params = new URLSearchParams( document.location.search );
         const starterMode = LX.getMode();
+
         const menubarOptions = [];
         const menubarButtons = [
             {
@@ -53,8 +55,9 @@ export const ui = {
 
         const menubar = this.area.addMenubar( menubarOptions, { parentClass: "bg-none" } );
 
-        const searchShaderInput = new LX.TextInput(null, ``,
-            v => { this._searchShader( v ) },
+        const querySearch = params.get( "search" );
+        const searchShaderInput = new LX.TextInput(null, querySearch ?? '',
+            v => this._searchShader( v ),
             { placeholder: "Search...", width: "256px", className: "right" }
         );
         menubar.root.appendChild( searchShaderInput.root );
@@ -171,7 +174,6 @@ export const ui = {
         menubar.root.classList.add( "hub-background-blur-md" );
         menubar.siblingArea.root.classList.add( "content-area" );
 
-        const params = new URLSearchParams( document.location.search );
         const queryShader = params.get( "shader" );
         const queryProfile = params.get( "profile" );
         const queryLikes = params.get( "show_likes" );
@@ -214,7 +216,7 @@ export const ui = {
             url.searchParams.delete( 'search' );
         }
         url.searchParams.delete( 'shader' ); // Remove shader param if any since this can be done from any view
-        url.hash = 'browse';
+        url.hash = window.location.hash;
         window.location.href = url.toString();
     },
 
@@ -233,6 +235,12 @@ export const ui = {
         window.location.href = url.toString();
     },
 
+    _makeFooter( area )
+    {
+        LX.makeContainer( [`auto`, "auto"], "text-foreground text-sm flex flex-row gap-2 self-center items-center text-center place-content-center", `
+            ${ LX.makeIcon("Github@solid", { svgClass:"lg" } ).innerHTML }<a class="decoration-none hover:underline underline-offset-4" href="https://github.com/upf-gti/ShaderHub">Code on Github</a>`, area );
+    },
+
     async makeInitialPage()
     {
         var [ topArea, bottomArea ] = this.area.split({ type: "vertical", sizes: ["calc(100% - 48px)", "48px"], resize: false });
@@ -240,9 +248,7 @@ export const ui = {
         bottomArea.root.className += " items-center content-center";
         topArea.root.className += " flex flex-row hub-background-blur content-area";
 
-        // Shaderhub footer
-        LX.makeContainer( [`auto`, "auto"], "text-foreground text-base flex flex-row gap-2 self-center items-center text-center place-content-center", `
-            ${ LX.makeIcon("Github@solid", {svgClass:"lg"} ).innerHTML }<a class="decoration-none" href="https://github.com/upf-gti/ShaderHub">Code on Github</a>`, bottomArea );
+        this._makeFooter( bottomArea );
 
         let leftSide = LX.makeContainer( ["auto", "100%"], "bg-none flex flex-col p-8 gap-2 overflow-scroll", "", topArea );
         leftSide.style.minWidth = "50%";
@@ -405,9 +411,7 @@ export const ui = {
         topArea.root.className += " p-6 overflow-scroll hub-background-blur";
         bottomArea.root.className += " hub-background-blur-md items-center content-center";
 
-        // Shaderhub footer
-        LX.makeContainer( [`auto`, "auto"], "text-foreground text-lg flex flex-row gap-2 self-center text-center place-content-center", `
-            ${ LX.makeIcon("Github@solid", {svgClass:"lg"} ).innerHTML }<a class="decoration-none text-card-foreground" href="https://github.com/upf-gti/ShaderHub">Code on Github</a>`, bottomArea );
+        this._makeFooter( bottomArea );
 
         // Filters
         {
@@ -582,9 +586,7 @@ export const ui = {
         topArea.root.className += " p-6 hub-background-blur overflow-scroll";
         bottomArea.root.className += " items-center content-center";
 
-        // Shaderhub footer
-        LX.makeContainer( [`auto`, "auto"], "text-foreground text-lg flex flex-row gap-2 self-center text-center place-content-center", `
-            ${ LX.makeIcon("Github@solid", {svgClass:"lg"} ).innerHTML }<a class="decoration-none text-card-foreground" href="https://github.com/upf-gti/ShaderHub">Code on Github</a>`, bottomArea );
+        this._makeFooter( bottomArea );
 
         const users = await this.fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_id", userID ) ] );
         if( users.total === 0 )
@@ -602,15 +604,41 @@ export const ui = {
 
         const previewFiles = await this.fs.listFiles( [ Query.startsWith( "name", ShaderHub.previewNamePrefix ), Query.endsWith( "name", ".png" ) ] );
         const usersDocuments = await this.fs.listDocuments( FS.USERS_COLLECTION_ID );
+        const params = new URLSearchParams( document.location.search );
+        const querySearch = params.get( "search" );
 
         // Show profile
         if( !showLikes )
         {
             document.title = `${ userName } - ShaderHub`;
 
-            const infoContainer = LX.makeContainer( ["100%", "auto"], "flex flex-col gap-2 p-2 my-8 justify-center", `
-                <div class="flex flex-row gap-4 text-3xl font-bold content-center items-center">
-                    ${ new LX.Avatar({ imgSource: user["avatar"], fallback: userName[0].toUpperCase(), className: 'size-12 [&_span]:text-xl [&_span]:leading-12' }).root.outerHTML }
+            const avatar = new LX.Avatar({ imgSource: user["avatar"], fallback: userName[0].toUpperCase(), className: `size-12 [&_span]:text-xl [&_span]:leading-12 ${ownProfile ? `cursor-pointer hover:brightness-125` : `pointer-events-none`}` });
+            if( ownProfile )
+            {
+                avatar.root.addEventListener( 'click', () => {
+                    const popPanel = new LX.Panel( { height: 'h-fit', className: '' } );
+                    popPanel.addText( 'URL', user.avatar, async ( v ) => {
+                        if( user.avatar === v )
+                        {
+                            popover.destroy();
+                            return;
+                        }
+                        const r = await this.fs.updateDocument( FS.USERS_COLLECTION_ID, user[ "$id" ], {
+                            "avatar": v
+                        } );
+                        if( r )
+                        {
+                            popover.destroy();
+                            avatar.root.querySelector( 'img' ).src = v;
+                            Utils.toast( `✅ Avatar updated`, `User: ${ userName }` );
+                        }
+                    }, { width: '400px', nameWidth: '10%', skipReset: true } );
+                    const popover = new LX.Popover( avatar.root, [ popPanel ], { side: 'bottom', align: 'start' } );
+                } );
+            }
+
+            const infoContainer = LX.makeContainer( ["100%", "auto"], "flex flex-col gap-4 p-2 my-8 justify-center", `
+                <div class="avatar-container flex flex-row gap-3 text-3xl font-bold content-center items-center">
                     ${ userName }
                 </div>
                 <div class="flex flex-row gap-2">
@@ -618,6 +646,9 @@ export const ui = {
                     <div style="max-width: 600px; overflow-wrap: break-word;" class="desc-content text-lg font-medium text-card-foreground">${ user[ "description" ] ?? "" }</div>
                 </div>
             `, topArea );
+
+            const avatarContainer = infoContainer.querySelector( ".avatar-container" );
+            avatarContainer.prepend( avatar.root );
 
             const editButton = infoContainer.querySelector( "svg" );
             if( editButton )
@@ -652,7 +683,31 @@ export const ui = {
 
             const result = await this.fs.listDocuments( FS.SHADERS_COLLECTION_ID, queries );
 
-            if( result.total === 0 )
+            let dbShaders = result.documents.map( d =>
+            {
+                let score = 1;
+
+                if( querySearch )
+                {
+                    score = 0;
+
+                    const name = d.name.toLowerCase();
+                    const desc = ( d.description || "" ).toLowerCase();
+                    const author = ( d.author_name || "" ).toLowerCase();
+                    const terms = querySearch.toLowerCase().split( /\s+/ );
+
+                    for( const term of terms )
+                    {
+                        if( name.includes( term ) ) score += 6;
+                        if( desc.includes( term ) ) score += 3;
+                        if( author.includes( term ) ) score += 1;
+                    }
+                }
+
+                return { ...d, score }
+            }).filter( d => d.score > 0 );
+
+            if( dbShaders.length === 0 )
             {
                 LX.makeContainer( ["100%", "auto"], "mt-8 text-2xl font-medium justify-center text-center", "No shaders found.", topArea );
                 return;
@@ -660,7 +715,7 @@ export const ui = {
 
             let skeletonHtml = "";
 
-            for( let i = 0; i < result.total; ++i )
+            for( let i = 0; i < dbShaders.length; ++i )
             {
                 const shaderItem = LX.makeElement( "li", `shader-item lexskeletonpart relative bg-background-blur hover:bg-accent overflow-hidden flex flex-col h-auto`, "" );
                 const shaderPreview = LX.makeElement( "img", "opacity-0 rounded-lg bg-background-blur hover:bg-accent border-none cursor-pointer self-center mt-2", "", shaderItem );
@@ -685,11 +740,11 @@ export const ui = {
                 // Instead of destroying it, convert to normal container
                 skeleton.root.querySelectorAll( ".lexskeletonpart" ).forEach( i => i.classList.remove( "lexskeletonpart" ) );
 
-                result.documents = result.documents.sort( (a, b) => a.name.localeCompare( b.name ) );
+                dbShaders = dbShaders.sort( (a, b) => a.name.localeCompare( b.name ) );
 
-                for( let i = 0; i < result.total; ++i )
+                for( let i = 0; i < dbShaders.length; ++i )
                 {
-                    const document = result.documents[ i ];
+                    const document = dbShaders[ i ];
                     const uid = document[ "$id" ];
                     const name = document.name;
 
@@ -788,20 +843,44 @@ export const ui = {
 
             const result = await this.fs.listDocuments( FS.SHADERS_COLLECTION_ID, queries );
 
-            if( result.total === 0 )
+            let dbShaders = result.documents.map( d =>
+            {
+                let score = 1;
+
+                if( querySearch )
+                {
+                    score = 0;
+
+                    const name = d.name.toLowerCase();
+                    const desc = ( d.description || "" ).toLowerCase();
+                    const author = ( d.author_name || "" ).toLowerCase();
+                    const terms = querySearch.toLowerCase().split( /\s+/ );
+
+                    for( const term of terms )
+                    {
+                        if( name.includes( term ) ) score += 6;
+                        if( desc.includes( term ) ) score += 3;
+                        if( author.includes( term ) ) score += 1;
+                    }
+                }
+
+                return { ...d, score }
+            }).filter( d => d.score > 0 );
+
+            if( dbShaders.length === 0 )
             {
                 LX.makeContainer( ["100%", "auto"], "mt-8 text-2xl font-medium justify-center text-center", "No shaders found.", topArea );
                 return;
             }
 
             const infoContainer = LX.makeContainer( ["100%", "auto"], "flex flex-col gap-2 p-2 my-8 justify-center", `
-                <div style="font-size: 2.5rem" class="font-bold">${ result.total } Liked Shaders</div>
+                <div style="font-size: 2.5rem" class="font-bold">${ dbShaders.length } Liked Shaders</div>
                 <div style="font-size: 1rem;" class="font-medium text-card-foreground">Order: Most recent</div>
             `, topArea );
 
             let skeletonHtml = "";
 
-            for( let i = 0; i < result.total; ++i )
+            for( let i = 0; i < dbShaders.length; ++i )
             {
                 const shaderItem = LX.makeElement( "li", `shader-item lexskeletonpart relative bg-background-blur hover:bg-accent overflow-hidden flex flex-col h-auto`, "" );
                 const shaderPreview = LX.makeElement( "img", "opacity-0 rounded-lg bg-background-blur hover:bg-accent border-none cursor-pointer self-center mt-2", "", shaderItem );
@@ -827,11 +906,11 @@ export const ui = {
                 skeleton.root.querySelectorAll( ".lexskeletonpart" ).forEach( i => i.classList.remove( "lexskeletonpart" ) );
 
                 const indexMap = new Map( likes.map( ( id, i ) => [ id, i ] ) );
-                result.documents = result.documents.sort( ( a, b ) => indexMap.get( a ) - indexMap.get( b ) ).reverse();
+                dbShaders = dbShaders.sort( ( a, b ) => indexMap.get( a ) - indexMap.get( b ) ).reverse();
 
-                for( let i = 0; i < result.total; ++i )
+                for( let i = 0; i < dbShaders.length; ++i )
                 {
-                    const document = result.documents[ i ];
+                    const document = dbShaders[ i ];
                     const name = document.name;
 
                     const shaderInfo = {
