@@ -2094,9 +2094,9 @@ export const ui = {
                 channelItem.style.maxHeight = "200px";
                 const channelPreview = LX.makeElement( "img", "w-full h-full rounded-t-lg bg-card hover:bg-accent border-none cursor-pointer", "", channelItem );
                 const fileId = document[ "file_id" ];
-                const preview = document[ "preview" ];
                 const localUrl = document[ "local_url" ];
-                channelPreview.src = preview ? await this.fs.getFileUrl( preview ) : ( fileId ? await this.fs.getFileUrl( fileId ) : ( localUrl ?? "images/shader_preview.png" ) );;
+                const preview = document[ "preview" ];
+                channelPreview.src = localUrl ?? ( preview ? await this.fs.getFileUrl( preview ) : ( fileId ? await this.fs.getFileUrl( fileId ) : "images/shader_preview.png" ) );
                 const shaderDesc = LX.makeContainer( ["100%", "auto"], "absolute top-0 p-2 w-full bg-background-blur items-center select-none text-sm font-bold", `
                     ${ document.name } (uint8)
                 `, channelItem );
@@ -2149,6 +2149,18 @@ export const ui = {
             tabs.add( "Cubemaps", this.cubemapsContainer );
         }
 
+        {
+            if( !this.audiosContainer )
+            {
+                this.audiosContainer = LX.makeContainer( [ "100%", "100%" ], "grid channel-server-list gap-4 p-4 box-border rounded-lg justify-center overflow-scroll" );
+            }
+
+            this.audiosContainer.innerHTML = "";
+            await _createChannelItems( "audio", this.audiosContainer );
+            this.audiosContainer.style.display = "grid";
+            tabs.add( "Audio", this.audiosContainer );
+        }
+
         this._currentChannelIndex = channelIndex;
 
         let dialog = new LX.Dialog( `[${ pass.name }] Channel${ channelIndex }`, (p) => {
@@ -2180,7 +2192,7 @@ export const ui = {
             {
                 if( !this.imageCache[ metadata.url ] )
                 {
-                    this.imageCache[ metadata.url ] = await Utils.imageToDataURL( fs, metadata.url )
+                    this.imageCache[ metadata.url ] = await Utils.imageToDataURL( this.fs, metadata.url )
                 }
 
                 imageSrc = this.imageCache[ metadata.url ];

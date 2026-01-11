@@ -181,7 +181,7 @@
 
 :root[data-mode="light"] .hub-background {
 	background: #f5f7fc;
-	background: linear-gradient(0deg,rgba(232, 233, 235, 1) 0%, rgb(221, 222, 223) 76%, rgba(210, 211, 212, 1) 100%);
+	background: linear-gradient(0deg,rgba(237, 238, 239, 1) 0%, rgb(225, 226, 227) 76%, rgba(218, 219, 220, 1) 100%);
 }
 
 .hub-background-blur {

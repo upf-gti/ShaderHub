@@ -18,6 +18,7 @@ const ShaderHub =
     keyState:           new Map(),
     keyToggleState:     new Map(),
     keyPressed:         new Map(),
+    audioPlaying:       {},
     mousePosition:      [ 0, 0 ],
     lastMousePosition:  [ 0, 0 ],
 
@@ -34,6 +35,8 @@ const ShaderHub =
     {
         await fs.detectAutoLogin();
         await ui.init( fs );
+
+        this.audioContext = new AudioContext( { sampleRate: 48000 } );
     },
 
     async onFrame()
@@ -96,7 +99,7 @@ const ShaderHub =
                     {
                         await this.loadBufferChannel( pass, channelName, c )
                     }
-                    else // Texture or cubemap
+                    else // Texture, cubemap or audio
                     {
                         await this.createTextureFromFile( channelName );
                     }
@@ -127,6 +130,26 @@ const ShaderHub =
             await this.createKeyboardTexture();
 
             this._anyKeyPressed = false;
+        }
+
+        for( const data in this.audioPlaying )
+        {
+            const audioData = this.audioPlaying[ data ];
+            const audio = audioData.audio;
+            const id = audio.id ?? '';
+
+            for( let i = 0; i < this.shader.passes.length; ++i )
+            {
+                // Buffers and images draw
+                const pass = this.shader.passes[ i ];
+                if( pass.type === "common" ) continue;
+
+                const usedChannel = pass.channels.indexOf( id );
+                if( usedChannel > -1 )
+                {
+                    await this.createAudioTexture( null, id, audio.name );
+                }
+            }
         }
 
         this._mousePressed = undefined;
@@ -511,7 +534,7 @@ const ShaderHub =
 
     async getChannelMetadata( pass, channel )
     {
-        let name = pass.channels[ channel ], url = null;
+        let name = pass.channels[ channel ], url = null, category = null;
 
         if( !pass ) url = Constants.IMAGE_EMPTY_SRC;
         else
@@ -519,6 +542,7 @@ const ShaderHub =
             const assetFileId = pass.channels[ channel ];
             if( !assetFileId ) url = Constants.IMAGE_EMPTY_SRC;
             else if( assetFileId === "Keyboard" ) url = "images/keyboard.png";
+            else if( assetFileId === "Audio" ) url = "images/audio.png";
             else if( assetFileId.startsWith( "Buffer" ) ) url = "images/buffer.png";
             else if( assetFileId.startsWith( "Compute" ) ) url = "images/buffer.png"; // TODO: Change preview image for computes
             else
@@ -526,21 +550,23 @@ const ShaderHub =
                 const result = await fs.listDocuments( FS.ASSETS_COLLECTION_ID, [ Query.equal( "file_id", assetFileId ) ] );
                 console.assert( result.total == 1, `Inconsistent asset list for file id ${ assetFileId }` );
                 const d = result.documents[ 0 ];
+
+                name = d.name;
+                category = d.category;
+
                 const preview = d[ "preview" ];
                 if( preview )
                 {
-                    url = await fs.getFileUrl( preview );
+                    url = preview.includes( '/' ) ? preview : await fs.getFileUrl( preview );
                 }
                 else
                 {
-                    url = ( d[ "category" ] === "cubemap" ) ? Constants.IMAGE_EMPTY_SRC : await fs.getFileUrl( assetFileId );
+                    url = ( category === "cubemap" || category === "audio" ) ? Constants.IMAGE_EMPTY_SRC : await fs.getFileUrl( assetFileId );
                 }
-
-                name = d.name;
             }
         }
 
-        return { url, name }
+        return { url, name, category }
     },
 
     resizeBuffers( resolutionX, resolutionY )
@@ -896,6 +922,10 @@ const ShaderHub =
         {
             texture = await this.renderer.createCubemapTexture( data, channelName, asset.name );
         }
+        else if( asset.category === "audio" )
+        {
+            texture = await this.createAudioTexture( data, channelName, asset.name );
+        }
         else
         {
             texture = await this.renderer.createTexture( data, channelName, asset.name );
@@ -966,6 +996,96 @@ const ShaderHub =
                 await ui.updateShaderChannelsView( pass );
             }
         }
+    },
+
+    async createAudioTexture( arrayBuffer, id, label = "" )
+    {
+        const FFT_SIZE = 1024; // gives 512 frequency bins
+        const dimensions = [ 512, 2 ];
+
+        if ( !this.audioPlaying[ id ] )
+        {
+            const blob = new Blob( [ arrayBuffer ], { type: "audio/mpeg" } );
+            const url = URL.createObjectURL( blob );
+            const audio = new Audio();
+            audio.src = url;
+            audio.crossOrigin = "anonymous";
+            audio.preload = "auto";
+            audio.id = id;
+            audio.name = label;
+
+            const source = this.audioContext.createMediaElementSource( audio );
+            const analyser = this.audioContext.createAnalyser();
+
+            analyser.fftSize = FFT_SIZE;
+            analyser.smoothingTimeConstant = 0.8;
+
+            source.connect( analyser );
+            analyser.connect( this.audioContext.destination );
+
+            const frequencyBinCount = analyser.frequencyBinCount;
+            const freqData = new Uint8Array( frequencyBinCount );
+            const timeData = new Uint8Array( frequencyBinCount );
+
+            this.audioPlaying[ id ] = {
+                audio,
+                analyser,
+                source,
+                freqData,
+                timeData
+            };
+
+            audio.play();
+        }
+
+        const audioData = this.audioPlaying[ id ];
+        audioData.analyser.getByteFrequencyData( audioData.freqData );
+        audioData.analyser.getByteTimeDomainData( audioData.timeData );
+
+        const data = [];
+
+        // Row 0: Frequency spectrum
+        for ( let i = 0; i < dimensions[ 0 ]; i++ )
+        {
+            const v = audioData.freqData[i];
+            data.push( v, v, v, 255 );
+        }
+
+        // Row 1: Waveform
+        for ( let i = 0; i < dimensions[ 0 ]; i++ )
+        {
+            const v = audioData.timeData[i];
+            data.push( v, v, v, 255 );
+        }
+
+        const imageName = id;
+        const imageData = new ImageData( new Uint8ClampedArray( data ), dimensions[ 0 ], dimensions[ 1 ] );
+        const imageBitmap = await createImageBitmap( imageData );
+
+        // TODO: make this r8unorm
+        const imageTexture =
+            this.renderer.gpuTextures[ imageName ] ??
+            this.renderer.device.createTexture({
+                label,
+                size: [ imageBitmap.width, imageBitmap.height, 1 ],
+                format: "rgba8unorm",
+                usage:
+                    GPUTextureUsage.TEXTURE_BINDING |
+                    GPUTextureUsage.COPY_DST |
+                    GPUTextureUsage.RENDER_ATTACHMENT,
+            });
+
+        this.renderer.device.queue.copyExternalImageToTexture(
+            { source: imageBitmap },
+            { texture: imageTexture },
+            dimensions
+        );
+
+        // Recreate stuff if we update the texture and
+        // a shader pass is using it
+        this.renderer.gpuTextures[ imageName ] = imageTexture;
+
+        return imageTexture;
     },
 
     setEditorErrorBorder( errorCode = ERROR_CODE_DEFAULT )
