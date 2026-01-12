@@ -8,6 +8,7 @@ class FS {
     static SHADERS_COLLECTION_ID = "shaders";
     static USERS_COLLECTION_ID = "users";
     static ASSETS_COLLECTION_ID = "assets";
+    static INTERACTIONS_COLLECTION_ID = "interactions";
 
     constructor() {
         this.client = new Appwrite.Client()

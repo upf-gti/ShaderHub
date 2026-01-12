@@ -305,6 +305,9 @@
   .inline-flex\! {
     display: inline-flex !important;
   }
+  .table {
+    display: table;
+  }
   .size-12 {
     width: calc(var(--spacing) * 12);
     height: calc(var(--spacing) * 12);

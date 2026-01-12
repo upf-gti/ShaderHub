@@ -328,7 +328,7 @@ const ShaderHub =
             this.shader.likes.push( userId );
         }
 
-        // Update user likes
+        // Update user likes and interactions table
         {
             const users = await fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_id", userId ) ] );
             const user = users?.documents[ 0 ];
@@ -338,10 +338,34 @@ const ShaderHub =
             if( userLikeIndex !== -1 )
             {
                 userLikes.splice( userLikeIndex, 1 );
+
+                // Search current interaction and remove it
+                const doc = await fs.listDocuments( FS.INTERACTIONS_COLLECTION_ID, [
+                    Query.equal( "type", "like" ),
+                    Query.equal( "author_id", fs.getUserId() ),
+                    Query.equal( "shader_id", this.shader.uid )
+                ] );
+
+                if( doc.total === 0 )
+                {
+                    console.warn( "Weird, no like interaction found to delete!" );
+                }
+                else
+                {
+                    const interaction = doc?.documents[ 0 ];
+                    await fs.deleteDocument( FS.INTERACTIONS_COLLECTION_ID, interaction[ "$id" ] );
+                }
             }
             else
             {
                 userLikes.push( this.shader.uid );
+
+                // Add interaction
+                await fs.createDocument( FS.INTERACTIONS_COLLECTION_ID, {
+                    "type": "like",
+                    "author_id": fs.getUserId(),
+                    "shader_id": this.shader.uid,
+                } );
             }
 
             // this is not the user id, it's the id of the user row in the users DB
