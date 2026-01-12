@@ -374,6 +374,9 @@
   .items-center {
     align-items: center;
   }
+  .items-start {
+    align-items: flex-start;
+  }
   .justify-center {
     justify-content: center;
   }
@@ -462,6 +465,12 @@
   }
   .bg-background-blur {
     background-color: var(--color-background-blur);
+  }
+  .bg-background\/50\! {
+    background-color: var(--color-background) !important;
+    @supports (color: color-mix(in lab, red, red)) {
+      background-color: color-mix(in oklab, var(--color-background) 50%, transparent) !important;
+    }
   }
   .bg-card {
     background-color: var(--color-card);

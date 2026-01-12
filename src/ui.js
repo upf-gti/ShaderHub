@@ -1359,6 +1359,86 @@ export const ui = {
                     } );
                 }
             }
+
+            // Comments
+            {
+                const commentsContainer = LX.makeContainer( [`auto`, "auto"], "text-foreground mt-4 flex flex-col", "", shaderDataContainer );
+
+                const refreshComments = async () =>
+                {
+                    const shaderComments  = await this.fs.listDocuments( FS.INTERACTIONS_COLLECTION_ID, [
+                        Query.equal( "type", "comment" ),
+                        Query.equal( "shader_id", shaderUid ),
+                        Query.limit( 100 ),
+                        Query.orderDesc( "$createdAt" )
+                    ] );
+                    commentsContainer.innerHTML = `Comments (${ shaderComments.total })`;
+
+                    if( this.fs.user && !isNewShader )
+                    {
+                        const users = await this.fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_id", this.fs.getUserId() ) ] );
+                        const dbUser = users.documents[ 0 ];
+                        const avatar = new LX.Avatar({
+                            imgSource: dbUser.avatar,
+                            fallback: dbUser.user_name[ 0 ].toUpperCase(),
+                            className: 'mx-2'
+                        });
+
+                        const newCommentItem = LX.makeContainer( [`100%`, "auto"], "flex flex-row mt-2 p-2 gap-2 bg-muted/75 rounded-lg items-start content-center", `
+                                ${ avatar.root.outerHTML }
+                        `, commentsContainer );
+
+                        const commentInput = new LX.TextArea( null, "", null, { placeholder: "Add a comment...", className: "flex w-full flex-auto-fill", inputClass: "bg-background/50!", fitHeight: true } );
+                        newCommentItem.appendChild( commentInput.root );
+                        const submitButton = new LX.Button( null, "SubmitComment", async () => {
+                            const commentText = Utils.formatMD( commentInput.value().trim() );
+                            if( commentText.length === 0 ) return;
+                            const newComment = await this.fs.createDocument( FS.INTERACTIONS_COLLECTION_ID, {
+                                type: "comment",
+                                shader_id: shaderUid,
+                                author_id: this.fs.getUserId(),
+                                text: commentText
+                            } );
+                            commentInput.set( "" );
+                            // Utils.toast( `✅ Comment added`, `Your comment has been added to shader: ${ shader.name }` );
+                            // Reload comments
+                            refreshComments();
+                        }, { buttonClass: "primary self-start", icon: "Send", title: "Submit Comment" } );
+                        newCommentItem.appendChild( submitButton.root );
+                    }
+
+                    if( shaderComments.total > 0 )
+                    {
+                        const authorIds = Array.from( new Set( shaderComments.documents.map( c => c["author_id"] ) ) );
+                        const usersWithComments = await this.fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_id", authorIds ) ] );
+
+                        for( const comment of shaderComments.documents )
+                        {
+                            const commentAuthorId = comment[ "author_id" ];
+                            const dbUser = usersWithComments.documents.find( u => u["user_id"] === commentAuthorId );
+                            const commentAuthorName = dbUser.user_name;
+                            const avatar = new LX.Avatar({
+                                imgSource: dbUser.avatar,
+                                fallback: commentAuthorName[ 0 ].toUpperCase(),
+                                className: 'mx-2'
+                            });
+                            const commentDate = ( new Date( comment[ "$createdAt" ] ) ).toLocaleDateString( undefined, { year: 'numeric', month: 'short', day: 'numeric' } );
+                            const commentItem = LX.makeContainer( [`100%`, "auto"], "flex flex-row mt-2 p-2 gap-2 bg-muted/75 rounded-lg items-center content-center", `
+                                ${ avatar.root.outerHTML }
+                                <div class="flex flex-col gap-1">
+                                    <div class="flex flex-row gap-2 items-center">
+                                        <div class="text-sm font-medium">${ `<a onclick='ShaderHub.openProfile("${ commentAuthorId }")' class='text-amber-500 cursor-pointer underline-offset-4 hover:underline'>${ commentAuthorName }</a>` }</div>
+                                        <div class="text-xs text-muted-foreground">${ commentDate }</div>
+                                    </div>
+                                    <div class="text-sm w-full break-all">${ comment[ "text" ] ?? "" }</div>
+                                </div>
+                            `, commentsContainer );
+                        }
+                    }
+                }
+
+                await refreshComments();
+            }
         }
 
         await this._createShaderDataView();
