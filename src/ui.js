@@ -74,6 +74,13 @@ export const ui = {
                 displaySelected: true
             };
 
+            if( fs.user )
+            {
+                const users = await this.fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_id", fs.getUserId() ) ] );
+                const dbUser = users.documents[ 0 ];
+                sidebarOptions.headerImage = dbUser.avatar;
+            }
+
             const sidebarCallback = m => {
                 if( fs.user )
                 {
@@ -431,7 +438,7 @@ export const ui = {
         topArea.root.className += " p-6 overflow-scroll hub-background-blur";
         bottomArea.root.className += " hub-background-blur-md items-center content-center";
 
-        const header = LX.makeContainer( ["100%", "auto"], "flex flex-row font-medium text-card-foreground", ``, topArea, { fontSize: "2rem" } );
+        const header = LX.makeContainer( ["100%", "auto"], `flex ${ mobile ? "flex-col mb-2" : "flex-row" } font-medium text-card-foreground`, ``, topArea, { fontSize: "2rem" } );
 
         this._makeFooter( bottomArea );
 
@@ -539,11 +546,18 @@ export const ui = {
             Query.endsWith( "name", ".png" ),
             Query.contains( "name", dbShaders.map( d => d[ "$id" ] ) )
         ] );
-        const usersDocuments = await this.fs.listDocuments( FS.USERS_COLLECTION_ID );
+        const usersDocuments = await this.fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_name", dbShaders.map( d => d[ "author_name" ] ) ) ] );
 
         LX.doAsync( async () => {
 
             let shaderList = [];
+            let dbUser = null;
+
+            if( this.fs.user )
+            {
+                const users = await this.fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_id", this.fs.getUserId() ) ] );
+                dbUser = users.documents[ 0 ];
+            }
 
             for( const document of dbShaders )
             {
@@ -555,13 +569,9 @@ export const ui = {
                     creationDate: Utils.toESDate( document[ "$createdAt" ] ),
                     likeCount: document[ "like_count" ],
                     features: ( document[ "features" ] ?? "" ).split( "," ),
-                    public: document[ "public" ] ?? true
+                    public: document[ "public" ] ?? true,
+                    liked: dbUser ? ( dbUser.liked_shaders ?? [] ).includes( document[ "$id" ] ) : false
                 };
-
-                if( queryFeature && !shaderInfo.features.includes( queryFeature ) )
-                {
-                    continue;
-                }
 
                 const authorId = document[ "author_id" ];
                 if( authorId )
@@ -609,7 +619,7 @@ export const ui = {
                         <div class="text-xs font-light">by ${ !shader.anonAuthor ? `<a onclick='ShaderHub.openProfile("${ shader.authorId }")' class='text-amber-500 cursor-pointer underline-offset-4 hover:underline'>` : "" }<span class="font-medium">${ shader.author }</span>${ !shader.anonAuthor ? "</a>" : "" }</div>
                     </div>
                     <div class="flex flex-row gap-1 items-center">
-                        ${ LX.makeIcon( "Heart", { svgClass: "fill-current text-card-foreground" } ).innerHTML }
+                        ${ LX.makeIcon( "Heart", { svgClass: `${ shader.liked ? "text-amber-500" : "" } fill-current` } ).innerHTML }
                         <span>${ shader.likeCount ?? 0 }</span>
                     </div>`, shaderItem );
 
@@ -1293,12 +1303,12 @@ export const ui = {
             LX.addSignal( "@on_like_changed", ( target, likeData ) => {
                 const [ likesCount, alreadyLiked ] = likeData;
                 likeSpan.innerHTML = likesCount;
-                likeButton.classList.toggle( "text-destructive", alreadyLiked );
+                likeButton.classList.toggle( "text-amber-600", alreadyLiked );
             } );
 
             if( this.fs.user && !ownProfile && !isNewShader )
             {
-                likeButton.classList.add( "hover:text-destructive", "cursor-pointer" );
+                likeButton.classList.add( "hover:text-amber-600", "cursor-pointer" );
                 likeButton.title = "Like Shader";
                 LX.asTooltip( likeButton, likeButton.title );
                 likeButton.addEventListener( "click", (e) => {

@@ -282,6 +282,8 @@ class ShaderPass
                     id: channel,
                     category: "empty"
                 }
+
+                channel = this.channels[ i ];
             }
 
             channel.filter = channel.filter ?? "linear";
