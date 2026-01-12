@@ -315,10 +315,10 @@ const ShaderHub =
         const shaderLikesByUser = await fs.listDocuments( FS.INTERACTIONS_COLLECTION_ID, [
             Query.equal( "type", "like" ),
             Query.equal( "shader_id", this.shader.uid ?? "" ),
-            Query.equal( "author_id", fs?.getUserId() ?? "" )
+            Query.equal( "author_id", fs.user ? fs.getUserId() : "" )
         ] );
 
-        const alreadyLiked = fs?.user && shaderLikesByUser.total > 0;
+        const alreadyLiked = ( fs?.user && shaderLikesByUser.total > 0 ) ?? false;
         LX.emitSignal( '@on_like_changed', [ shaderLikes.total, alreadyLiked ] );
 
         this.currentPass = this.shader.passes.at( -1 );
@@ -582,7 +582,7 @@ const ShaderHub =
     async getChannelMetadata( pass, channelIndex )
     {
         const channel = pass.channels[ channelIndex ];
-        let name = channel?.id, url = null, category = null;
+        let name = channel?.id, url = null, category = channel?.category;
 
         if( !pass ) url = Constants.IMAGE_EMPTY_SRC;
         else
@@ -592,7 +592,6 @@ const ShaderHub =
             else if( assetFileId === "Keyboard" ) url = "images/keyboard.png";
             else if( assetFileId.startsWith( "Buffer" ) ) url = "images/buffer.png";
             else if( assetFileId.startsWith( "Compute" ) ) url = "images/buffer.png"; // TODO: Change preview image for computes
-            else if( channel.category === "audio" ) url = "images/audio.png";
             else
             {
                 const result = await fs.listDocuments( FS.ASSETS_COLLECTION_ID, [ Query.equal( "file_id", assetFileId ) ] );
@@ -604,7 +603,7 @@ const ShaderHub =
                 name = d.name;
                 category = d.category;
 
-                const preview = d[ "preview" ];
+                const preview = category === "sound" ? "images/sound.png" : d[ "preview" ];
                 if( preview )
                 {
                     url = preview.includes( '/' ) ? preview : await fs.getFileUrl( preview );

@@ -284,7 +284,7 @@ export const ui = {
                 <span class="text-muted-foreground text-3xl">ShaderHub beta (${ ShaderHub.version })</span>
                 <span class="text-balanced text-4xl sm:text-5xl font-medium">Create and Share Shaders using latest WebGPU!</span>
                 <a onclick='ShaderHub.openShader("6963e7bd0533036adf87")' class="flex flex-row gap-1 items-center text-sm p-1 px-4 rounded-full text-secondary-foreground decoration-none hover:bg-secondary cursor-pointer"><span class="flex bg-amber-500 w-2 h-2 rounded-full"></span>
-                New Sound Channel, User Avatars, and lots of UI Improvements${ LX.makeIcon( "ArrowRight", { svgClass: "sm" } ).innerHTML }</a>
+                New Sound Channel, User Avatars, Shader Comments, UI Improvements${ LX.makeIcon( "ArrowRight", { svgClass: "sm" } ).innerHTML }</a>
             `, container );
 
             if( !mobile )
