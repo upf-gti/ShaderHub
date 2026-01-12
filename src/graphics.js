@@ -1557,7 +1557,6 @@ class Shader {
         this.description = data.description ?? "";
         this.creationDate = data.creationDate ?? "";
         this.hasPreview = data.hasPreview ?? false;
-        this.likes = data.likes ?? [];
     }
 
     static GetUniformSize = function( type ) {

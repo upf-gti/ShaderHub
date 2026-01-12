@@ -1296,7 +1296,7 @@ export const ui = {
             }
 
             const shaderStats = LX.makeContainer( [`auto`, "auto"], "ml-auto flex p-1 gap-1 self-start items-center", `
-                ${ LX.makeIcon( "Heart", { svgClass: "lg fill-current" } ).innerHTML } <span>${ shader.likes?.length ?? "" }</span>
+                ${ LX.makeIcon( "Heart", { svgClass: "lg fill-current" } ).innerHTML } <span></span>
             `, shaderOptions );
 
             const likeSpan = shaderStats.querySelector( "span" );

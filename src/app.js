@@ -263,7 +263,6 @@ const ShaderHub =
 
             const shaderPass = new ShaderPass( shader, this.renderer.device, pass );
             this.shader.passes.push( shaderPass );
-            this.shader.likes = [];
 
             // Set code in the editor
             ui.editor.addTab( pass.name, false, pass.name, { codeLines: pass.codeLines, language: "WGSL" } );
@@ -274,7 +273,6 @@ const ShaderHub =
             console.assert( json, "DB: No JSON Shader data available!" );
 
             this.shader._json = LX.deepCopy( json );
-            this.shader.likes = [ ...( json.likes ?? [] ) ];
 
             for( const pass of json.passes ?? [] )
             {
@@ -307,8 +305,21 @@ const ShaderHub =
             }
         }
 
-        const alreadyLiked = fs?.user && this.shader.likes.includes( fs.getUserId() );
-        LX.emitSignal( '@on_like_changed', [ this.shader.likes.length, alreadyLiked ] );
+        // Get the total like count for the shader
+        const shaderLikes = await fs.listDocuments( FS.INTERACTIONS_COLLECTION_ID, [
+            Query.equal( "type", "like" ),
+            Query.equal( "shader_id", this.shader.uid ?? "" )
+        ] );
+
+        // Check if the user already liked this shader
+        const shaderLikesByUser = await fs.listDocuments( FS.INTERACTIONS_COLLECTION_ID, [
+            Query.equal( "type", "like" ),
+            Query.equal( "shader_id", this.shader.uid ?? "" ),
+            Query.equal( "author_id", fs?.getUserId() ?? "" )
+        ] );
+
+        const alreadyLiked = fs?.user && shaderLikesByUser.total > 0;
+        LX.emitSignal( '@on_like_changed', [ shaderLikes.total, alreadyLiked ] );
 
         this.currentPass = this.shader.passes.at( -1 );
 
@@ -318,67 +329,60 @@ const ShaderHub =
     async onShaderLike()
     {
         const userId = fs.getUserId();
-        const likeIndex = this.shader.likes.indexOf( userId );
-        if( likeIndex !== -1 )
-        {
-            this.shader.likes.splice( likeIndex, 1 );
-        }
-        else
-        {
-            this.shader.likes.push( userId );
-        }
 
         // Update user likes and interactions table
+        const users = await fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_id", userId ) ] );
+        const user = users?.documents[ 0 ];
+        console.assert( user );
+        const userLikes = user[ "liked_shaders" ];
+        const userLikeIndex = userLikes.indexOf( this.shader.uid );
+        const wasLiked = ( userLikeIndex !== -1 );
+
+        if( wasLiked )
         {
-            const users = await fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_id", userId ) ] );
-            const user = users?.documents[ 0 ];
-            console.assert( user );
-            const userLikes = user[ "liked_shaders" ];
-            const userLikeIndex = userLikes.indexOf( this.shader.uid );
-            if( userLikeIndex !== -1 )
+            userLikes.splice( userLikeIndex, 1 );
+
+            // Search current interaction and remove it
+            const doc = await fs.listDocuments( FS.INTERACTIONS_COLLECTION_ID, [
+                Query.equal( "type", "like" ),
+                Query.equal( "author_id", fs.getUserId() ),
+                Query.equal( "shader_id", this.shader.uid )
+            ] );
+
+            if( doc.total === 0 )
             {
-                userLikes.splice( userLikeIndex, 1 );
-
-                // Search current interaction and remove it
-                const doc = await fs.listDocuments( FS.INTERACTIONS_COLLECTION_ID, [
-                    Query.equal( "type", "like" ),
-                    Query.equal( "author_id", fs.getUserId() ),
-                    Query.equal( "shader_id", this.shader.uid )
-                ] );
-
-                if( doc.total === 0 )
-                {
-                    console.warn( "Weird, no like interaction found to delete!" );
-                }
-                else
-                {
-                    const interaction = doc?.documents[ 0 ];
-                    await fs.deleteDocument( FS.INTERACTIONS_COLLECTION_ID, interaction[ "$id" ] );
-                }
+                console.warn( "Weird, no like interaction found to delete!" );
             }
             else
             {
-                userLikes.push( this.shader.uid );
-
-                // Add interaction
-                await fs.createDocument( FS.INTERACTIONS_COLLECTION_ID, {
-                    "type": "like",
-                    "author_id": fs.getUserId(),
-                    "shader_id": this.shader.uid,
-                } );
+                const interaction = doc?.documents[ 0 ];
+                await fs.deleteDocument( FS.INTERACTIONS_COLLECTION_ID, interaction[ "$id" ] );
             }
+        }
+        else
+        {
+            userLikes.push( this.shader.uid );
 
-            // this is not the user id, it's the id of the user row in the users DB
-            await fs.updateDocument( FS.USERS_COLLECTION_ID, user[ "$id" ], {
-                "liked_shaders": userLikes
+            // Add interaction
+            await fs.createDocument( FS.INTERACTIONS_COLLECTION_ID, {
+                "type": "like",
+                "author_id": fs.getUserId(),
+                "shader_id": this.shader.uid,
             } );
         }
 
-        const alreadyLiked = this.shader.likes.includes( userId );
-        LX.emitSignal( "@on_like_changed", [ this.shader.likes.length, alreadyLiked ] );
+        // this is not the user id, it's the id of the user row in the users DB
+        await fs.updateDocument( FS.USERS_COLLECTION_ID, user[ "$id" ], {
+            "liked_shaders": userLikes
+        } );
 
-        let result = await ShaderHub.shaderExists();
-        await this.saveShader( result, false, false );
+        // Get the total like count for the shader
+        const shaderLikes = await fs.listDocuments( FS.INTERACTIONS_COLLECTION_ID, [
+            Query.equal( "type", "like" ),
+            Query.equal( "shader_id", this.shader.uid )
+        ] );
+
+        LX.emitSignal( "@on_like_changed", [ shaderLikes.total, !wasLiked ] );
     },
 
     onShaderPassCreated( passType, passName )
@@ -725,11 +729,9 @@ const ShaderHub =
     async saveShaderFiles( ownShader, isRemix )
     {
         const passes = ownShader ? this.shader.passes : ( this.shader._json?.passes ?? this.shader.passes );
-        const likes = isRemix ? [] : this.shader.likes; // can be updated by anyone, use latest data
 
         // Upload file and get id
         const json = {
-            likes: likes,
             // use json data or updated data depending on who's saving
             passes: passes.map( p => {
                 return {
@@ -790,7 +792,7 @@ const ShaderHub =
                     "author_id": fs.getUserId(),
                     "author_name": this.shader.author ?? "",
                     "file_id": newFileId,
-                    "like_count": this.shader.likes.length,
+                    "like_count": 0,
                     "features": this.shader.getFeatures(),
                     "remixable": true,
                     "public": true
@@ -819,8 +821,7 @@ const ShaderHub =
 
         // Update files reference in the DB
         const row = {
-            "file_id": newFileId,
-            "like_count": this.shader.likes.length
+            "file_id": newFileId
         };
 
         // Update specific stuff only if shader owner
