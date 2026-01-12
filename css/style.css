@@ -120,7 +120,8 @@
 
 .channel-server-list {
 	grid-template-columns: repeat(auto-fill, minmax(175px, 1fr));
-	grid-auto-rows: minmax(175px, auto);
+	/* grid-auto-rows: minmax(175px, auto); */
+	grid-auto-rows: max-content;
 }
 
 .channel-server-list li {

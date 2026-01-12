@@ -281,8 +281,10 @@ export const ui = {
         {
             const container = LX.makeContainer( ["100%", "100%"], "bg-background-blur flex flex-col gap-8 rounded-xl box-shadow box-border place-content-center items-center overflow-scroll", "", rightSide );
             const header = LX.makeContainer( [ null, "auto" ], "flex flex-col mt-8 px-10 gap-4 text-center items-center place-content-center", `
-                <span class="text-muted-foreground text-2xl">ShaderHub beta</span>
+                <span class="text-muted-foreground text-3xl">ShaderHub beta (${ ShaderHub.version })</span>
                 <span class="text-balanced text-4xl sm:text-5xl font-medium">Create and Share Shaders using latest WebGPU!</span>
+                <a onclick='ShaderHub.openShader("6963e7bd0533036adf87")' class="flex flex-row gap-1 items-center text-sm p-1 px-4 rounded-full text-secondary-foreground decoration-none hover:bg-secondary cursor-pointer"><span class="flex bg-amber-500 w-2 h-2 rounded-full"></span>
+                New Sound Channel, User Avatars, and lots of UI Improvements${ LX.makeIcon( "ArrowRight", { svgClass: "sm" } ).innerHTML }</a>
             `, container );
 
             if( !mobile )
@@ -2202,14 +2204,14 @@ export const ui = {
                     continue;
                 }
 
-                const channelItem = LX.makeElement( "li", "relative flex rounded-lg bg-card hover:bg-accent overflow-hidden", "", container );
+                const channelItem = LX.makeElement( "li", "relative flex rounded-lg bg-card box-border hover:bg-accent overflow-hidden", "", container );
                 channelItem.style.maxHeight = "200px";
-                const channelPreview = LX.makeElement( "img", "w-full h-full rounded-t-lg bg-card hover:bg-accent border-none cursor-pointer", "", channelItem );
+                const channelPreview = LX.makeElement( "img", "w-full h-full rounded-t-lg bg-card hover:scale-105 transition-transform ease-out border-none cursor-pointer", "", channelItem );
                 const fileId = document[ "file_id" ];
                 const localUrl = document[ "local_url" ];
                 const preview = document[ "preview" ];
                 channelPreview.src = localUrl ?? ( preview ? await this.fs.getFileUrl( preview ) : ( fileId ? await this.fs.getFileUrl( fileId ) : "images/shader_preview.png" ) );
-                const shaderDesc = LX.makeContainer( ["100%", "auto"], "absolute top-0 p-2 w-full bg-background-blur items-center select-none text-sm font-bold", `
+                const shaderDesc = LX.makeContainer( ["100%", "auto"], "absolute text-xs top-0 p-2 w-full rounded-t-lg bg-background-blur backdrop-blur-xs items-center select-none font-semibold keep-all", `
                     ${ document.name } (uint8)
                 `, channelItem );
                 channelItem.addEventListener( "click", async ( e ) => {
@@ -2227,7 +2229,7 @@ export const ui = {
         {
             if( !this.texturesContainer )
             {
-                this.texturesContainer = LX.makeContainer( [ "100%", "100%" ], "grid channel-server-list gap-4 p-4 box-border rounded-lg justify-center overflow-scroll" );
+                this.texturesContainer = LX.makeContainer( [ "100%", "100%" ], "grid channel-server-list gap-3 p-2 rounded-lg justify-center overflow-scroll" );
             }
 
             this.texturesContainer.innerHTML = "";
@@ -2239,7 +2241,7 @@ export const ui = {
         {
             if( !this.miscContainer )
             {
-                this.miscContainer = LX.makeContainer( [ "100%", "100%" ], "grid channel-server-list gap-4 p-4 box-border rounded-lg justify-center overflow-scroll" );
+                this.miscContainer = LX.makeContainer( [ "100%", "100%" ], "grid channel-server-list gap-3 p-2 rounded-lg justify-center overflow-scroll" );
             }
 
             this.miscContainer.innerHTML = "";
@@ -2251,7 +2253,7 @@ export const ui = {
         {
             if( !this.cubemapsContainer )
             {
-                this.cubemapsContainer = LX.makeContainer( [ "100%", "100%" ], "grid channel-server-list gap-4 p-4 box-border rounded-lg justify-center overflow-scroll" );
+                this.cubemapsContainer = LX.makeContainer( [ "100%", "100%" ], "grid channel-server-list gap-3 p-2 rounded-lg justify-center overflow-scroll" );
             }
 
             this.cubemapsContainer.innerHTML = "";
@@ -2263,7 +2265,7 @@ export const ui = {
         {
             if( !this.soundsContainer )
             {
-                this.soundsContainer = LX.makeContainer( [ "100%", "100%" ], "grid channel-server-list gap-4 p-4 box-border rounded-lg justify-center overflow-scroll" );
+                this.soundsContainer = LX.makeContainer( [ "100%", "100%" ], "grid channel-server-list gap-3 p-2 rounded-lg justify-center overflow-scroll" );
             }
 
             this.soundsContainer.innerHTML = "";
@@ -2275,8 +2277,9 @@ export const ui = {
         this._currentChannelIndex = channelIndex;
 
         let dialog = new LX.Dialog( `[${ pass.name }] Channel${ channelIndex }`, (p) => {
+            p.root.classList.remove( "break-all" );
             p.attach( area );
-        }, { modal: false, close: true, minimize: false, size: [`${ Math.min( 1280, window.innerWidth - 64 ) }px`, "512px"], draggable: true });
+        }, { modal: false, close: true, minimize: false, size: [`${ Math.min( 1280, window.innerWidth - 64 ) }px`, "530px"], draggable: true });
 
         this._lastOpenedDialog = dialog;
     },
@@ -2297,7 +2300,7 @@ export const ui = {
             channelContainer.style.minHeight = "100px";
             LX.insertChildAtIndex( this.channelsContainer, channelContainer, channelIndex );
 
-            const channelImage = LX.makeElement( "img", "size-full rounded-lg bg-card hover:bg-accent border-none", "", channelContainer );
+            const channelImage = LX.makeElement( "img", "size-full rounded-lg bg-card hover:bg-accent hover:scale-105 transition-transform ease-out border-none", "", channelContainer );
             const metadata = await ShaderHub.getChannelMetadata( pass, channelIndex );
             let imageSrc = Constants.IMAGE_EMPTY_SRC;
             if( metadata?.url )
@@ -2312,24 +2315,27 @@ export const ui = {
             channelImage.src = imageSrc;
 
             // Channel Title
-            LX.makeContainer( ["100%", "auto"], "p-2 absolute bg-card text-xs text-center content-center top-0 rounded-t-lg pointer-events-none",
-                metadata?.name ? `${ metadata.name } (iChannel${ channelIndex })` : `iChannel${ channelIndex }`, channelContainer );
+            LX.makeContainer( ["100%", "auto"], "p-2 absolute bg-background-blur backdrop-blur-xs text-xs text-center content-center top-0 rounded-t-lg pointer-events-none",
+                metadata?.name ? `<span class="font-semibold">${ metadata.name }</span> (iChannel${ channelIndex })` : `iChannel${ channelIndex }`, channelContainer );
 
             if( channel !== undefined )
             {
                 // Channel Options
-                const channelOptions = LX.makeContainer( ["100%", "auto"], "flex flex-row absolute bg-card text-xs text-center content-center justify-end bottom-0 rounded-b-lg", "", channelContainer );
+                const channelOptions = LX.makeContainer( ["100%", "auto"], "flex flex-row absolute bg-background-blur backdrop-blur-xs text-xs text-center content-center justify-end bottom-0 rounded-b-lg", "", channelContainer );
                 const panel = new LX.Panel({ className: "w-fit m-0 p-0" });
                 channelOptions.appendChild( panel.root );
                 panel.sameLine();
 
                 if( channel.category === "sound" )
                 {
-                    panel.addButton( null, "PlayButton", ( name, e ) => ShaderHub.playSoundUniformChannel( channelIndex ), { icon: "Pause", swap: "Play", title: "Play/Pause Channel", tooltip: true, buttonClass: "ghost" } );
+                    panel.addButton( null, "PlayButton", ( name, e ) => ShaderHub.playSoundUniformChannel( channelIndex ),
+                        { icon: "Pause", swap: "Play", title: "Play/Pause Channel", tooltip: true, className: "p-0", buttonClass: "sm ghost" } );
 
-                    panel.addButton( null, "RewindButton", ( name, e ) => ShaderHub.rewindSoundUniformChannel( channelIndex ), { icon: "Rewind", title: "Rewind Channel", tooltip: true, buttonClass: "ghost" } );
+                    panel.addButton( null, "RewindButton", ( name, e ) => ShaderHub.rewindSoundUniformChannel( channelIndex ),
+                        { icon: "Rewind", title: "Rewind Channel", tooltip: true, className: "p-0", buttonClass: "sm ghost" } );
 
-                    panel.addButton( null, "MuteButton", ( name, e ) => ShaderHub.muteSoundUniformChannel( channelIndex ), { icon: "Volume2", swap: "VolumeOff", title: "Mute Channel", tooltip: true, buttonClass: "ghost" } );
+                    panel.addButton( null, "MuteButton", ( name, e ) => ShaderHub.muteSoundUniformChannel( channelIndex ),
+                        { icon: "Volume2", swap: "VolumeOff", title: "Mute Channel", tooltip: true, className: "p-0", buttonClass: "sm ghost" } );
                 }
 
                 panel.addButton( null, "ChannelOptionsButton", async ( name, e ) => {
@@ -2349,7 +2355,7 @@ export const ui = {
                         // null,
                         { name: "Remove", className: "text-destructive", callback: async () => await ShaderHub.removeUniformChannel( channelIndex ) },
                     ], { side: "top", align: "end" });
-                }, { icon: "Settings", title: "Channel Options", tooltip: true, buttonClass: "pointer-events-auto ghost" } );
+                }, { icon: "Settings", title: "Channel Options", tooltip: true, className: "p-0", buttonClass: "pointer-events-auto sm ghost" } );
 
                 panel.endLine( "justify-end" );
             }

@@ -15,6 +15,8 @@ const Query =   Appwrite.Query;
 
 const ShaderHub =
 {
+    version:            "1.1",
+
     keyState:           new Map(),
     keyToggleState:     new Map(),
     keyPressed:         new Map(),
@@ -562,6 +564,7 @@ const ShaderHub =
             else if( assetFileId === "Keyboard" ) url = "images/keyboard.png";
             else if( assetFileId.startsWith( "Buffer" ) ) url = "images/buffer.png";
             else if( assetFileId.startsWith( "Compute" ) ) url = "images/buffer.png"; // TODO: Change preview image for computes
+            else if( channel.category === "audio" ) url = "images/audio.png";
             else
             {
                 const result = await fs.listDocuments( FS.ASSETS_COLLECTION_ID, [ Query.equal( "file_id", assetFileId ) ] );
