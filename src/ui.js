@@ -1061,6 +1061,12 @@ export const ui = {
             },
             onSelectTab: async ( name, editor ) => {
                 ShaderHub.onShaderPassSelected( name );
+            },
+            onReady: ( editor ) => {
+                // Force this, why?
+                LX.doAsync( () => {
+                    editor.charWidth = editor._measureChar();
+                }, 100 );
             }
         });
 
@@ -2102,9 +2108,8 @@ export const ui = {
                 `, channelItem );
                 channelItem.addEventListener( "click", async ( e ) => {
                     e.preventDefault();
-                    pass.channels[ this._currentChannelIndex ] = fileId ?? document.name;
+                    ShaderHub.addUniformChannel( pass, this._currentChannelIndex, { id: fileId ?? document.name, category } )
                     await this.updateShaderChannelsView( pass, this._currentChannelIndex );
-                    pass.mustCompile = true;
                     dialog.close();
                 } );
             }
@@ -2150,15 +2155,15 @@ export const ui = {
         }
 
         {
-            if( !this.audiosContainer )
+            if( !this.soundsContainer )
             {
-                this.audiosContainer = LX.makeContainer( [ "100%", "100%" ], "grid channel-server-list gap-4 p-4 box-border rounded-lg justify-center overflow-scroll" );
+                this.soundsContainer = LX.makeContainer( [ "100%", "100%" ], "grid channel-server-list gap-4 p-4 box-border rounded-lg justify-center overflow-scroll" );
             }
 
-            this.audiosContainer.innerHTML = "";
-            await _createChannelItems( "audio", this.audiosContainer );
-            this.audiosContainer.style.display = "grid";
-            tabs.add( "Audio", this.audiosContainer );
+            this.soundsContainer.innerHTML = "";
+            await _createChannelItems( "sound", this.soundsContainer );
+            this.soundsContainer.style.display = "grid";
+            tabs.add( "Sound", this.soundsContainer );
         }
 
         this._currentChannelIndex = channelIndex;
@@ -2178,6 +2183,7 @@ export const ui = {
 
         const iUpdateChannel = async ( channelIndex ) => {
 
+            const channel = pass.channels[ channelIndex ];
             const child = this.channelsContainer.children[ channelIndex ];
             if( child ) this.channelsContainer.removeChild( child );
 
@@ -2188,7 +2194,7 @@ export const ui = {
             const channelImage = LX.makeElement( "img", "size-full rounded-lg bg-card hover:bg-accent border-none", "", channelContainer );
             const metadata = await ShaderHub.getChannelMetadata( pass, channelIndex );
             let imageSrc = Constants.IMAGE_EMPTY_SRC;
-            if( metadata.url )
+            if( metadata?.url )
             {
                 if( !this.imageCache[ metadata.url ] )
                 {
@@ -2198,18 +2204,54 @@ export const ui = {
                 imageSrc = this.imageCache[ metadata.url ];
             }
             channelImage.src = imageSrc;
-            const channelTitle = LX.makeContainer( ["100%", "auto"], "p-2 absolute bg-card text-xs text-center content-center top-0 channel-title pointer-events-none",
-                metadata.name ? `${ metadata.name } (iChannel${ channelIndex })` : `iChannel${ channelIndex }`, channelContainer );
-            channelContainer.addEventListener( "click", async ( e ) => {
+
+            // Channel Title
+            LX.makeContainer( ["100%", "auto"], "p-2 absolute bg-card text-xs text-center content-center top-0 rounded-t-lg pointer-events-none",
+                metadata?.name ? `${ metadata.name } (iChannel${ channelIndex })` : `iChannel${ channelIndex }`, channelContainer );
+
+            if( channel !== undefined )
+            {
+                // Channel Options
+                const channelOptions = LX.makeContainer( ["100%", "auto"], "flex flex-row absolute bg-card text-xs text-center content-center justify-end bottom-0 rounded-b-lg", "", channelContainer );
+                const panel = new LX.Panel({ className: "w-fit m-0 p-0" });
+                channelOptions.appendChild( panel.root );
+                panel.sameLine();
+
+                if( channel.category === "sound" )
+                {
+                    panel.addButton( null, "PlayButton", ( name, e ) => ShaderHub.playSoundUniformChannel( channelIndex ), { icon: "Play", swap: "Pause", title: "Play/Pause Channel", tooltip: true, buttonClass: "ghost" } );
+
+                    panel.addButton( null, "RewindButton", ( name, e ) => ShaderHub.rewindSoundUniformChannel( channelIndex ), { icon: "Rewind", title: "Rewind Channel", tooltip: true, buttonClass: "ghost" } );
+
+                    panel.addButton( null, "MuteButton", ( name, e ) => ShaderHub.muteSoundUniformChannel( channelIndex ), { icon: "Volume2", swap: "VolumeOff", title: "Mute Channel", tooltip: true, buttonClass: "ghost" } );
+                }
+
+                panel.addButton( null, "ChannelOptionsButton", async ( name, e ) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    // const svgClass = "2xs fill-current inline-flex! mr-2";
+                    LX.addDropdownMenu( e.target, [
+                        // { name: "Filter", submenu: [
+                        //     { name: `${ channel.filter === "linear" ? LX.makeIcon( "Circle", { svgClass } ).innerHTML : "" }Linear`, callback: async () => ShaderHub.updateUniformChannelFilter( pass, channelIndex, "linear" ) },
+                        //     { name: `${ channel.filter === "mipmap" ? LX.makeIcon( "Circle", { svgClass } ).innerHTML : "" }Mipmap`, callback: async () => ShaderHub.updateUniformChannelFilter( pass, channelIndex, "mipmap" ) },
+                        //     { name: `${ channel.filter === "nearest" ? LX.makeIcon( "Circle", { svgClass } ).innerHTML : "" }Nearest`, callback: async () => ShaderHub.updateUniformChannelFilter( pass, channelIndex, "nearest" ) },
+                        // ] },
+                        // { name: "Wrap", submenu: [
+                        //     { name: `${ channel.wrap === "clamp" ? LX.makeIcon( "Circle", { svgClass } ).innerHTML : "" }Clamp to Edge`, callback: async () => ShaderHub.updateUniformChannelWrap( pass, channelIndex, "clamp" ) },
+                        //     { name: `${ channel.wrap === "repeat" ? LX.makeIcon( "Circle", { svgClass } ).innerHTML : "" }Repeat`, callback: async () => ShaderHub.updateUniformChannelWrap( pass, channelIndex, "repeat" ) },
+                        // ] },
+                        // null,
+                        { name: "Remove", className: "text-destructive", callback: async () => await ShaderHub.removeUniformChannel( channelIndex ) },
+                    ], { side: "top", align: "end" });
+                }, { icon: "Settings", title: "Channel Options", tooltip: true, buttonClass: "pointer-events-auto ghost" } );
+
+                panel.endLine( "justify-end" );
+            }
+
+            channelImage.addEventListener( "click", async ( e ) => {
                 e.preventDefault();
                 await this.openAvailableChannels( pass, channelIndex );
             } );
-            channelContainer.addEventListener("contextmenu", ( e ) => {
-                e.preventDefault();
-                new LX.DropdownMenu( e.target, [
-                    { name: "Remove", className: "text-destructive", callback: async () => await ShaderHub.removeUniformChannel( channelIndex ) },
-                ], { side: "top", align: "start" });
-            });
         }
 
         if( channel !== undefined )

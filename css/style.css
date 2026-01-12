@@ -82,11 +82,6 @@
 	field-sizing: content;
 }
 
-.channel-title {
-	border-top-left-radius: 0.5rem;
-	border-top-right-radius: 0.5rem;
-}
-
 .shader-list-initial {
 	grid-template-columns:repeat(2, 1fr);
 }

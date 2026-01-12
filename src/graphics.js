@@ -271,6 +271,23 @@ class ShaderPass
 
         this.frameCount = 0;
 
+        for( let i = 0; i < this.channels.length; ++i )
+        {
+            let channel = this.channels[ i ];
+
+            // Support legacy channels (no category)
+            if( channel.constructor !== Object )
+            {
+                this.channels[ i ] = {
+                    id: channel,
+                    category: "empty"
+                }
+            }
+
+            channel.filter = channel.filter ?? "linear";
+            channel.wrap   = channel.wrap ?? "clamp";
+        }
+
         if( this.type === "buffer" )
         {
             this.textures = [
@@ -606,13 +623,13 @@ class ShaderPass
 
         if( hasTextureBindings )
         {
-            entries.push( ...this.channels.map( ( channelName, index ) => {
-                if( !channelName ) return;
-                if( !pipeline.textureBindings[ channelName ] ) return;
+            entries.push( ...this.channels.map( ( channel, index ) => {
+                if( !channel ) return;
+                if( !pipeline.textureBindings[ channel.id ] ) return;
                 let texture = this.channelTextures[ index ];
                 if( !texture ) return;
                 const binding = bindingIndex++;
-                console.assert( binding === pipeline.textureBindings[ channelName ], `Texture binding indices do not match in pipeline: ${ pipeline.label }` );
+                console.assert( binding === pipeline.textureBindings[ channel.id ], `Texture binding indices do not match in pipeline: ${ pipeline.label }` );
                 texture = ( texture instanceof Array ) ? texture[ Constants.BUFFER_PASS_TEXTURE_A_INDEX ] : texture;
                 const resource = texture.depthOrArrayLayers > 1 ? texture.createView( { dimension: 'cube' } ) : texture.createView();
                 return { binding, resource };
@@ -643,13 +660,13 @@ class ShaderPass
         {
             if( hasTextureBindings )
             {
-                baseEntries.push( ...this.channels.map( ( channelName, index ) => {
-                    if( !channelName ) return;
-                    if( !pipeline.textureBindings[ channelName ] ) return;
+                baseEntries.push( ...this.channels.map( ( channel, index ) => {
+                    if( !channel ) return;
+                    if( !pipeline.textureBindings[ channel.id ] ) return;
                     let texture = this.channelTextures[ index ];
                     if( !texture ) return;
                     const binding = baseBindingIndex++;
-                    console.assert( binding === pipeline.textureBindings[ channelName ], `Texture binding indices do not match in pipeline: ${ pipeline.label }` );
+                    console.assert( binding === pipeline.textureBindings[ channel.id ], `Texture binding indices do not match in pipeline: ${ pipeline.label }` );
                     texture = ( texture instanceof Array ) ? texture[ Constants.BUFFER_PASS_TEXTURE_B_INDEX ] : texture;
                     const resource = texture.depthOrArrayLayers > 1 ? texture.createView( { dimension: 'cube' } ) : texture.createView();
                     return { binding, resource };
@@ -1018,12 +1035,12 @@ class ShaderPass
             {
                 const textureBindingsIndex = templateCodeLines.indexOf( "$texture_bindings" );
                 console.assert( textureBindingsIndex > -1 );
-                const bindings = this.channels.map( ( channelName, index ) => {
-                    if( !channelName ) return;
+                const bindings = this.channels.map( ( channel, index ) => {
+                    if( !channel ) return;
                     const channelIndexName = `iChannel${ index }`;
                     if( !this.isBindingUsed( channelIndexName, noBindingsShaderCode ) ) return;
                     const binding = bindingIndex++;
-                    textureBindings[ channelName ] = binding;
+                    textureBindings[ channel.id ] = binding;
                     const texture = this.channelTextures[ index ];
                     return `@group(0) @binding(${ binding }) var ${ channelIndexName } : ${ texture.depthOrArrayLayers > 1 ? "texture_cube" : "texture_2d" }<f32>;`;
                 } ).filter( u => u !== undefined );
@@ -1604,10 +1621,14 @@ class Shader {
         if( computes.length ) features.push( "compute" );
 
         this.passes.some( p => {
-            const keyboardPasses = p.channels.filter( u => u === "Keyboard" );
-            if( keyboardPasses.length )
+            if( p.channels.filter( u => u?.id === "Keyboard" ).length )
             {
                 features.push( "keyboard" );
+                return true;
+            }
+            if( p.channels.filter( u => u?.category === "sound" ).length )
+            {
+                features.push( "sound" );
                 return true;
             }
         } )
