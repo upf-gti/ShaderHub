@@ -2315,7 +2315,7 @@ export const ui = {
 
                 if( channel.category === "sound" )
                 {
-                    panel.addButton( null, "PlayButton", ( name, e ) => ShaderHub.playSoundUniformChannel( channelIndex ), { icon: "Play", swap: "Pause", title: "Play/Pause Channel", tooltip: true, buttonClass: "ghost" } );
+                    panel.addButton( null, "PlayButton", ( name, e ) => ShaderHub.playSoundUniformChannel( channelIndex ), { icon: "Pause", swap: "Play", title: "Play/Pause Channel", tooltip: true, buttonClass: "ghost" } );
 
                     panel.addButton( null, "RewindButton", ( name, e ) => ShaderHub.rewindSoundUniformChannel( channelIndex ), { icon: "Rewind", title: "Rewind Channel", tooltip: true, buttonClass: "ghost" } );
 
