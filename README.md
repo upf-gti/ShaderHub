@@ -3,6 +3,12 @@
 ![logo](./images/icon_dark.png#gh-dark-mode-only)
 ![logo](./images/icon_light.png#gh-light-mode-only)
 
+Version: 1.1
+- Support for Sound Channels
+- Shader Comments
+- User Avatars
+- Polished UI using LexGUI v8
+
 ShaderHub is an experimental **WebGPU-based shader playground**.  
 It is designed as a **demo tool** for exploring graphics programming, with a focus on **education and learning WebGPU**, rather than replacing other platforms.
 
@@ -21,7 +27,7 @@ You can test it here: [upf-gti.github.io/ShaderHub/](https://upf-gti.github.io/S
 - **Shader sharing & embedding** — share shaders with a link or embed them.
 - **Export options** — record shaders to GIF or video.
 - **Accounts & remixing** — log in, save your shaders, and remix others'.
-- **Shader likes** — users can like and discover shaders.
+- **Shader likes and comments** — users can like and comment from the community.
 
 ---
 
@@ -34,8 +40,7 @@ You can test it here: [upf-gti.github.io/ShaderHub/](https://upf-gti.github.io/S
 
 ## Roadmap
 
-- Support sound channel
 - Support "#include" packages
 - Support custom texture images (by URL)
-- Shader Comments
 - Add shader tags to DB
+- Support video channels
