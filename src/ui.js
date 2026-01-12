@@ -220,6 +220,21 @@ export const ui = {
         window.location.href = url.toString();
     },
 
+    _browsePage( v )
+    {
+        const url = new URL( window.location.href );
+        if( v && v.trim() )
+        {
+            url.searchParams.set( 'page', v.trim() );
+        }
+        else
+        {
+            url.searchParams.delete( 'page' );
+        }
+        url.hash = 'browse';
+        window.location.href = url.toString();
+    },
+
     _browseFeature( v )
     {
         const url = new URL( window.location.href );
@@ -231,6 +246,7 @@ export const ui = {
         {
             url.searchParams.delete( 'feature' );
         }
+        url.searchParams.delete( 'page' ); // Reset page when changing feature
         url.hash = 'browse';
         window.location.href = url.toString();
     },
@@ -319,12 +335,15 @@ export const ui = {
         LX.doAsync( async () => {
 
             // Get all stored shader files (not the code, only the data)
-            const result = await this.fs.listDocuments( FS.SHADERS_COLLECTION_ID, [ Query.or( [ Query.equal( "public", true ), Query.isNull( "public" ) ] ) ] );
-            const dbShaders = result.documents.sort( (a, b) => ( b[ "like_count" ] ?? 0 ) - ( a[ "like_count" ] ?? 0 ) ).slice( 0, 3 );
+            const result = await this.fs.listDocuments( FS.SHADERS_COLLECTION_ID, [
+                Query.or( [ Query.equal( "public", true ), Query.isNull( "public" ) ] ),
+                Query.orderDesc( 'like_count' ),
+                Query.limit( 3 ),
+            ] );
 
             let shaderList = [];
 
-            for( const document of dbShaders )
+            for( const document of result.documents )
             {
                 const name = document.name;
 
@@ -405,17 +424,19 @@ export const ui = {
         const params = new URLSearchParams( document.location.search );
         const queryFeature = params.get( "feature" );
         const querySearch = params.get( "search" );
+        const queryPage = params.get( "page" );
 
         var [ topArea, bottomArea ] = this.area.split({ type: "vertical", sizes: ["calc(100% - 48px)", null], resize: false });
         topArea.root.parentElement.classList.add( "hub-background" )
         topArea.root.className += " p-6 overflow-scroll hub-background-blur";
         bottomArea.root.className += " hub-background-blur-md items-center content-center";
 
+        const header = LX.makeContainer( ["100%", "auto"], "flex flex-row font-medium text-card-foreground", ``, topArea, { fontSize: "2rem" } );
+
         this._makeFooter( bottomArea );
 
         // Filters
         {
-            LX.makeContainer( ["100%", "auto"], "font-medium text-card-foreground", ``, topArea, { fontSize: "2rem" } );
             const filtersPanel = new LX.Panel( { className: "p-4 bg-none", height: "auto" } );
             filtersPanel.sameLine();
 
@@ -426,11 +447,41 @@ export const ui = {
             }
 
             filtersPanel.endLine();
-            topArea.attach( filtersPanel );
+            header.appendChild( filtersPanel.root );
+        }
+
+        {
+            this.paginator = new LX.Pagination({
+                maxButtons: 4,
+                useEllipsis: true,
+                alwaysShowEdges: false,
+                xallowChangeItemsPerPage: true,
+                onChange: (page) => {
+                    this._browsePage( page.toString() );
+                }
+            });
+            header.appendChild( this.paginator.root );
+        }
+
+        const PAGE_LIMIT = 25;
+        const page = queryPage ? parseInt( queryPage ) : 1;
+        const shaderQueries = [
+            Query.or( [ Query.equal( "public", true ), Query.isNull( "public" ) ] ),
+            Query.orderAsc( 'name' ),
+            Query.offset( ( page - 1 ) * PAGE_LIMIT )
+        ]
+
+        if( queryFeature )
+        {
+            shaderQueries.push( Query.contains( "features", queryFeature ) );
         }
 
         // Get all stored shader files (not the code, only the data)
-        const result = await this.fs.listDocuments( FS.SHADERS_COLLECTION_ID, [ Query.or( [ Query.equal( "public", true ), Query.isNull( "public" ) ] ) ] );
+        const result = await this.fs.listDocuments( FS.SHADERS_COLLECTION_ID, shaderQueries );
+
+        this.paginator.setPages( Math.ceil( result.total / PAGE_LIMIT ) );
+        this.paginator.setPage( page );
+
         const dbShaders = result.documents.map( d =>
         {
             let score = 1;
@@ -450,14 +501,6 @@ export const ui = {
                     if( desc.includes( term ) ) score += 3;
                     if( author.includes( term ) ) score += 1;
                 }
-            }
-
-            // If score is 0, it means no match for the search
-            // We have another opportunity to increase the score if it matches the feature filter
-            // but also a negative score if it doesn't match to skip it
-            if( score > 0 && queryFeature )
-            {
-                score += ( d[ "features" ] ?? "" ).split( "," ).includes( queryFeature ) ? 1 : -1e3;
             }
 
             return { ...d, score }
@@ -490,7 +533,12 @@ export const ui = {
         skeleton.root.classList.add( "grid", "shader-list", "gap-6", "justify-center" );
         topArea.attach( skeleton.root );
 
-        const previewFiles = await this.fs.listFiles( [ Query.startsWith( "name", ShaderHub.previewNamePrefix ), Query.endsWith( "name", ".png" ) ] );
+        // This should list only the preview files we need
+        const previewFiles = await this.fs.listFiles( [
+            Query.startsWith( "name", ShaderHub.previewNamePrefix ),
+            Query.endsWith( "name", ".png" ),
+            Query.contains( "name", dbShaders.map( d => d[ "$id" ] ) )
+        ] );
         const usersDocuments = await this.fs.listDocuments( FS.USERS_COLLECTION_ID );
 
         LX.doAsync( async () => {
@@ -542,8 +590,6 @@ export const ui = {
 
                 shaderList.push( shaderInfo );
             }
-
-            shaderList = shaderList.sort( (a, b) => a.name.localeCompare( b.name ) );
 
             // Instead of destroying it, convert to normal container
             skeleton.root.querySelectorAll( ".lexskeletonpart" ).forEach( i => i.classList.remove( "lexskeletonpart" ) );
@@ -602,10 +648,11 @@ export const ui = {
         const ownProfile = this.fs.user && ( userID === this.fs.getUserId() );
         showLikes = JSON.parse( showLikes ) && ownProfile;
 
-        const previewFiles = await this.fs.listFiles( [ Query.startsWith( "name", ShaderHub.previewNamePrefix ), Query.endsWith( "name", ".png" ) ] );
         const usersDocuments = await this.fs.listDocuments( FS.USERS_COLLECTION_ID );
         const params = new URLSearchParams( document.location.search );
         const querySearch = params.get( "search" );
+        const queryPage = params.get( "page" );
+        const PAGE_LIMIT = 25;
 
         // Show profile
         if( !showLikes )
@@ -672,8 +719,25 @@ export const ui = {
                 } );
             }
 
+            {
+                this.paginator = new LX.Pagination({
+                    maxButtons: 4,
+                    useEllipsis: true,
+                    alwaysShowEdges: false,
+                    xallowChangeItemsPerPage: true,
+                    onChange: (page) => {
+                        this._browsePage( page.toString() );
+                    }
+                });
+                infoContainer.appendChild( this.paginator.root );
+            }
+
+            const page = queryPage ? parseInt( queryPage ) : 1;
             const queries = [
                 Query.equal( "author_id", userID ),
+                Query.orderAsc( 'name' ),
+                Query.offset( ( page - 1 ) * PAGE_LIMIT ),
+                Query.limit( PAGE_LIMIT )
             ];
 
             if( !ownProfile )
@@ -683,7 +747,10 @@ export const ui = {
 
             const result = await this.fs.listDocuments( FS.SHADERS_COLLECTION_ID, queries );
 
-            let dbShaders = result.documents.map( d =>
+            this.paginator.setPages( Math.ceil( result.total / PAGE_LIMIT ) );
+            this.paginator.setPage( page );
+
+            const dbShaders = result.documents.map( d =>
             {
                 let score = 1;
 
@@ -735,12 +802,17 @@ export const ui = {
             skeleton.root.classList.add( "grid", "shader-list", "gap-6", "justify-center" );
             topArea.attach( skeleton.root );
 
+            const previewFiles = await this.fs.listFiles( [
+                Query.startsWith( "name", ShaderHub.previewNamePrefix ),
+                Query.endsWith( "name", ".png" ),
+                Query.contains( "name", dbShaders.map( d => d[ "$id" ] ) ),
+                Query.limit( PAGE_LIMIT )
+            ] );
+
             LX.doAsync( async () => {
 
                 // Instead of destroying it, convert to normal container
                 skeleton.root.querySelectorAll( ".lexskeletonpart" ).forEach( i => i.classList.remove( "lexskeletonpart" ) );
-
-                dbShaders = dbShaders.sort( (a, b) => a.name.localeCompare( b.name ) );
 
                 for( let i = 0; i < dbShaders.length; ++i )
                 {
@@ -826,8 +898,22 @@ export const ui = {
         {
             document.title = `${ userName } Likes - ShaderHub`;
 
+            this.paginator = new LX.Pagination({
+                maxButtons: 4,
+                useEllipsis: true,
+                alwaysShowEdges: false,
+                xallowChangeItemsPerPage: true,
+                onChange: (page) => {
+                    this._browsePage( page.toString() );
+                }
+            });
+
+            const page = queryPage ? parseInt( queryPage ) : 1;
+
             const queries = [
                 Query.or( [ Query.equal( "public", true ), Query.isNull( "public" ) ] ),
+                Query.offset( ( page - 1 ) * PAGE_LIMIT ),
+                Query.limit( PAGE_LIMIT )
             ];
 
             const likes = user[ "liked_shaders" ];
@@ -842,6 +928,9 @@ export const ui = {
             }
 
             const result = await this.fs.listDocuments( FS.SHADERS_COLLECTION_ID, queries );
+
+            this.paginator.setPages( Math.ceil( result.total / PAGE_LIMIT ) );
+            this.paginator.setPage( page );
 
             let dbShaders = result.documents.map( d =>
             {
@@ -877,6 +966,7 @@ export const ui = {
                 <div style="font-size: 2.5rem" class="font-bold">${ dbShaders.length } Liked Shaders</div>
                 <div style="font-size: 1rem;" class="font-medium text-card-foreground">Order: Most recent</div>
             `, topArea );
+            infoContainer.appendChild( this.paginator.root );
 
             let skeletonHtml = "";
 
@@ -899,6 +989,13 @@ export const ui = {
             const skeleton = new LX.Skeleton( skeletonHtml );
             skeleton.root.classList.add( "grid", "shader-list", "gap-6", "justify-center" );
             topArea.attach( skeleton.root );
+
+            const previewFiles = await this.fs.listFiles( [
+                Query.startsWith( "name", ShaderHub.previewNamePrefix ),
+                Query.endsWith( "name", ".png" ),
+                Query.contains( "name", dbShaders.map( d => d[ "$id" ] ) ),
+                Query.limit( PAGE_LIMIT )
+            ] );
 
             LX.doAsync( async () => {
 
@@ -963,7 +1060,6 @@ export const ui = {
                 }
             }, 10 );
         }
-
     },
 
     async makeShaderView( shaderUid )
