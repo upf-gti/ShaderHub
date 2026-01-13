@@ -35,29 +35,35 @@ class FS {
         }
     }
 
-    async createAccount( mail, password, name, oncreate, onerror  ) {
-        console.assert( mail && password && name );
-        await this.account.create('unique()', mail, password, name )
-            .then( user => {
-                if( oncreate ) oncreate( user );
-            } )
-            .catch( error => {
-                console.error( error );
-                if( onerror ) onerror( error?.message );
-            } );
+    async createAccount( email, password, name, oncreate, onerror  ) {
+        console.assert( email && password && name );
+        await this.account.create( {
+            userId: "unique()",
+            email,
+            password,
+            name
+        }).then( user => {
+            if( oncreate ) oncreate( user );
+        } )
+        .catch( error => {
+            console.error( error );
+            if( onerror ) onerror( error?.message );
+        } );
     }
 
-    async login( mail, password, onlogin, onerror ) {
-        await this.account.createEmailPasswordSession( mail ?? "public@shaderhub.com", password ?? "password123" )
-            .then( async session => {
-                this.user = await this.account.get();
-                this.session = session;
-                console.log( "Login", this.user );
-                if( onlogin ) onlogin( this.user, this.session );
-            })
-            .catch( error => {
-                if( onerror ) onerror( error?.message );
-            } );
+    async login( email, password, onlogin, onerror ) {
+        await this.account.createEmailPasswordSession({
+            email,
+            password
+        }).then( async session => {
+            this.user = await this.account.get();
+            this.session = session;
+            console.log( "Login", this.user );
+            if( onlogin ) onlogin( this.user, this.session );
+        })
+        .catch( error => {
+            if( onerror ) onerror( error?.message );
+        } );
     }
 
     async logout() {
@@ -87,34 +93,38 @@ class FS {
         });
     }
 
-    async getDocument( collectionId, docId ) {
-        return await this.databases.getDocument( FS.DATABASE_ID, collectionId, docId );
-    }
-
-    async createDocument( collectionId, docRow ) {
-        return await this.databases.createDocument(
-            FS.DATABASE_ID,
+    async getDocument( collectionId, documentId ) {
+        return await this.databases.getDocument({
+            databaseId: FS.DATABASE_ID,
             collectionId,
-            "unique()",
-            docRow
-        );
+            documentId
+        });
     }
 
-    async updateDocument( collectionId, documentId, docRow ) {
-        return await this.databases.updateDocument(
-            FS.DATABASE_ID,
+    async createDocument( collectionId, data ) {
+        return await this.databases.createDocument({
+            databaseId: FS.DATABASE_ID,
+            collectionId,
+            documentId: "unique()",
+            data
+        });
+    }
+
+    async updateDocument( collectionId, documentId, data ) {
+        return await this.databases.updateDocument({
+            databaseId:FS.DATABASE_ID,
             collectionId,
             documentId,
-            docRow
-        );
+            data
+        });
     }
 
     async deleteDocument( collectionId, documentId ) {
-        return await this.databases.deleteDocument(
-            FS.DATABASE_ID,
+        return await this.databases.deleteDocument({
+            databaseId: FS.DATABASE_ID,
             collectionId,
             documentId
-        );
+        });
     }
 
     async listFiles( queries = [] ) {
@@ -125,7 +135,10 @@ class FS {
     }
 
     async getFile( fileId ) {
-        return await this.storage.getFile( FS.BUCKET_ID, fileId );
+        return await this.storage.getFile({
+            bucketId: FS.BUCKET_ID,
+            fileId
+        });
     }
 
     async getFileUrl( fileId ) {
@@ -141,7 +154,7 @@ class FS {
     }
 
     async createFile( file, fileId ) {
-        return await this.storage.createFile( {
+        return await this.storage.createFile({
             bucketId: FS.BUCKET_ID,
             fileId: fileId ?? "unique()",
             file
@@ -149,14 +162,14 @@ class FS {
     }
 
     async deleteFile( fileId ) {
-        return await this.storage.deleteFile( {
+        return await this.storage.deleteFile({
             bucketId: FS.BUCKET_ID,
             fileId
         });
     }
 
     async getImagePreview( fileId, options ) {
-        return await this.storage.getFilePreview( {
+        return await this.storage.getFilePreview({
             bucketId: FS.BUCKET_ID,
             fileId,
             ...options
