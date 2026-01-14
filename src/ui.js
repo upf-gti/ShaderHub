@@ -94,6 +94,8 @@ export const ui = {
                 else
                 {
                     m.add( "Login", { icon: "LogIn", callback: () => this.openLoginDialog() } );
+                    m.add( "Browse", { icon: "Search", callback: () => ShaderHub.openPage( "browse" ) } );
+                    m.add( "Help", { icon: "HelpCircle", callback: () => ShaderHub.openPage( "help" ) } );
                     m.add( "Create account", { icon: "UserPlus", callback: () => this.openSignUpDialog() } );
                 }
             }
@@ -132,10 +134,10 @@ export const ui = {
                 const avatar = new LX.Avatar({
                     imgSource: dbUser.avatar,
                     fallback: dbUser.user_name[ 0 ].toUpperCase(),
-                    className: 'mx-2 size-5 ring-2 ring-secondary-foreground',
+                    className: 'mx-2 size-5 ring-2 ring-neutral-200',
                 });
 
-                return  `<span class="decoration-none text-secondary-foreground">${ user.email }</span>
+                return  `<span class="decoration-none text-neutral-200">${ user.email }</span>
                     ${ avatar.root.outerHTML }
                     ${ LX.makeIcon("ChevronsUpDown", { iconClass: "pl-2" } ).innerHTML }`;
             };
@@ -328,7 +330,6 @@ export const ui = {
                 const form = new LX.Form( null, formData, async (value, event) => {
                     await this.fs.login( value.email, value.password, async ( user, session ) => {
                         await this.onLogin( user );
-                        ShaderHub.openPage( "browse" );
                     }, (err) => {
                         Utils.toast( `❌ Error`, err, -1 );
                     } );
@@ -2189,6 +2190,10 @@ export const ui = {
         if( queryShader )
         {
             await this._createShaderDataView();
+        }
+        else if( document.location.hash === "" )
+        {
+            ShaderHub.openPage( "browse" );
         }
     },
 
