@@ -44,10 +44,10 @@ export const ui = {
                     name: "New", callback: ( k, entry, event ) => ShaderHub.openShader( "new", event )
                 },
                 {
-                    name: "Browse", callback: ( k, entry, event ) => ShaderHub.openBrowseList( event )
+                    name: "Browse", callback: ( k, entry, event ) => ShaderHub.openPage( k.toLowerCase(), event )
                 },
                 {
-                    name: "Help", callback: ( k, entry, event ) => ShaderHub.openHelp( event )
+                    name: "Help", callback: ( k, entry, event ) => ShaderHub.openPage( k.toLowerCase(), event )
                 }
             );
         }
@@ -85,8 +85,8 @@ export const ui = {
                 {
                     m.add( "Profile", { icon: "User", callback: () => ShaderHub.openProfile( fs.getUserId() ) } );
                     m.add( "Liked Shaders", { icon: "Heart", callback: () => ShaderHub.openProfileLikes( fs.getUserId() ) } );
-                    m.add( "Browse", { icon: "Search", callback: () => ShaderHub.openBrowseList() } );
-                    m.add( "Help", { icon: "HelpCircle", callback: () => ShaderHub.openHelp() } );
+                    m.add( "Browse", { icon: "Search", callback: () => ShaderHub.openPage( "browse" ) } );
+                    m.add( "Help", { icon: "HelpCircle", callback: () => ShaderHub.openPage( "help" ) } );
                     m.add( "Logout", { icon: "LogOut", callback: async () => {
                         await this.onLogout();
                     } } );
@@ -300,7 +300,7 @@ export const ui = {
                 const form = new LX.Form( null, formData, async (value, event) => {
                     await this.fs.login( value.email, value.password, async ( user, session ) => {
                         await this.onLogin( user );
-                        ShaderHub.openBrowseList();
+                        ShaderHub.openPage( "browse" );
                     }, (err) => {
                         Utils.toast( `❌ Error`, err, -1 );
                     } );

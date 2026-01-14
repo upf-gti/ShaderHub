@@ -660,11 +660,20 @@ const ShaderHub =
         return window.location.origin + ( addPath ? window.location.pathname : "" );
     },
 
-    openBrowseList( e )
+    openPage( hash = "", e )
     {
+        const path = `${ this.getFullPath() }${ hash ? `#${ hash }` : "" }`;
+
+        if( e?.button === 1 )
+        {
+            e.preventDefault();
+            window.open( path, "_blank" );
+            return;
+        }
+
         const needsReload = window.location.search === "";
         window.location.search = "";
-        window.open( `${ this.getFullPath() }#browse`, e?.button !== 1 ? "_self" : undefined );
+        window.open( path, "_self" );
         if( needsReload ) window.location.reload();
     },
 
@@ -681,14 +690,6 @@ const ShaderHub =
     openShader( shaderID, e )
     {
         window.open( `${ this.getFullPath() }?shader=${ shaderID }`, e?.button !== 1 ? "_self" : undefined );
-    },
-
-    openHelp( e )
-    {
-        const needsReload = window.location.search === "";
-        window.location.search = "";
-        window.open( `${ this.getFullPath() }#help`, e?.button !== 1 ? "_self" : undefined );
-        if( needsReload ) window.location.reload();
     },
 
     getCurrentSuggestions()
