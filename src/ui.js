@@ -369,17 +369,24 @@ export const ui = {
         skeleton.root.classList.add( "grid", "shader-list-initial", "gap-8", "justify-center" );
         leftSide.appendChild( skeleton.root );
 
-        const previewFiles = await this.fs.listFiles( [ Query.startsWith( "name", ShaderHub.previewNamePrefix ), Query.endsWith( "name", ".png" ) ] );
-        const usersDocuments = await this.fs.listDocuments( FS.USERS_COLLECTION_ID );
+        // Get all stored shader files (not the code, only the data)
+        const result = await this.fs.listDocuments( FS.SHADERS_COLLECTION_ID, [
+            Query.or( [ Query.equal( "public", true ), Query.isNull( "public" ) ] ),
+            Query.orderDesc( 'like_count' ),
+            Query.limit( 3 ),
+        ] );
+
+        const previewFiles = await this.fs.listFiles( [
+            Query.startsWith( "name", ShaderHub.previewNamePrefix ),
+            Query.endsWith( "name", ".png" ),
+            Query.contains( "name", result.documents.map( d => d[ "$id" ] ) )
+        ] );
+
+        const usersDocuments = await this.fs.listDocuments( FS.USERS_COLLECTION_ID, [
+            Query.contains( "user_id", result.documents.map( d => d[ "author_id" ] ) )
+        ] );
 
         LX.doAsync( async () => {
-
-            // Get all stored shader files (not the code, only the data)
-            const result = await this.fs.listDocuments( FS.SHADERS_COLLECTION_ID, [
-                Query.or( [ Query.equal( "public", true ), Query.isNull( "public" ) ] ),
-                Query.orderDesc( 'like_count' ),
-                Query.limit( 3 ),
-            ] );
 
             let shaderList = [];
 
@@ -527,6 +534,7 @@ export const ui = {
         const page = queryPage ? parseInt( queryPage ) : 1;
         const orderBy = queryOrderBy ? Constants.ORDER_BY_MAPPING[ queryOrderBy ] : Constants.ORDER_BY_MAPPING[ "name" ];
         console.log( "Order by:", orderBy );
+
         const shaderQueries = [
             Query.or( [ Query.equal( "public", true ), Query.isNull( "public" ) ] ),
             orderBy.direction === "asc" ? Query.orderAsc( orderBy.field ) : Query.orderDesc( orderBy.field ),
