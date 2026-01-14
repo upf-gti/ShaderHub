@@ -1248,19 +1248,22 @@ export const ui = {
 
             const shaderOptions = LX.makeContainer( [`auto`, "auto"], "ml-auto flex flex-row p-1 gap-1 self-start content-center items-center", ``, shaderNameAuthorOptionsContainer );
 
-            const shaderStats = LX.makeContainer( [`auto`, "auto"], "ml-auto flex p-1 gap-1 items-center", `
-                ${ LX.makeIcon( "Heart", { svgClass: "lg fill-current" } ).innerHTML } <span></span>
-            `, shaderOptions );
-
-            const likeSpan = shaderStats.querySelector( "span" );
-            const likeButton = shaderStats.querySelector( "svg" );
-
-            LX.addSignal( "@on_like_changed", ( target, likeData ) => {
-                const [ likesCount, alreadyLiked ] = likeData;
-                likeSpan.innerHTML = likesCount;
-                likeButton.classList.toggle( "text-amber-600", alreadyLiked );
-            } );
-
+            if( !isNewShader )
+            {
+                const shaderStats = LX.makeContainer( [`auto`, "auto"], "ml-auto flex p-1 gap-1 items-center", `
+                    ${ LX.makeIcon( "Heart", { svgClass: "lg fill-current" } ).innerHTML } <span></span>
+                `, shaderOptions );
+    
+                const likeSpan = shaderStats.querySelector( "span" );
+                const likeButton = shaderStats.querySelector( "svg" );
+    
+                LX.addSignal( "@on_like_changed", ( target, likeData ) => {
+                    const [ likesCount, alreadyLiked ] = likeData;
+                    likeSpan.innerHTML = likesCount;
+                    likeButton.classList.toggle( "text-amber-600", alreadyLiked );
+                } );
+            }
+            
             if( this.fs.user )
             {
                 if( !ownProfile && !isNewShader )

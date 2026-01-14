@@ -765,12 +765,18 @@ const ShaderHub =
             return;
         }
 
-        const dialog = new LX.Dialog( "Confirm Shader name", ( p ) => {
-            let shaderName = this.shader.name;
+        const dialog = new LX.Dialog( "Confirm Shader Data", ( p ) => {
+            let shaderName = this.shader.name, isShaderPublic = false, isShaderRemixable = true;
             const textInput = p.addText( "Name", shaderName, ( v ) => {
                 shaderName = v;
             }, { pattern: LX.buildTextPattern( { minLength: 3 } ) } );
             p.addSeparator();
+            p.addCheckbox( "Public", isShaderPublic, ( v ) => {
+                isShaderPublic = v;
+            }, { nameWidth: "50%", className: "primary" } );
+            p.addCheckbox( "Allow Remix", isShaderRemixable, ( v ) => {
+                isShaderRemixable = v;
+            }, { nameWidth: "50%", className: "primary" } );
             p.sameLine( 2 );
             p.addButton( null, "Cancel", () => dialog.close(), { width: "50%", buttonClass: "destructive" } );
             p.addButton( null, "Confirm", async () => {
@@ -793,8 +799,8 @@ const ShaderHub =
                     "file_id": newFileId,
                     "like_count": 0,
                     "features": this.shader.getFeatures(),
-                    "remixable": true,
-                    "public": true
+                    "remixable": isShaderRemixable,
+                    "public": isShaderPublic
                 } );
 
                 this.shader.uid = result[ "$id" ];
@@ -877,8 +883,9 @@ const ShaderHub =
                 await fs.deleteFile( result.files[ 0 ][ "$id" ] );
             }
 
-            Utils.toast( `✅ Shader deleted`, `Shader: ${ name } by ${ fs.user.name }` );
+            dialog.destroy();
 
+            Utils.toast( `✅ Shader deleted`, `Shader: ${ name } by ${ fs.user.name }` );
         };
 
         const dialog = new LX.Dialog( `Delete shader: ${ name }`, (p) => {
