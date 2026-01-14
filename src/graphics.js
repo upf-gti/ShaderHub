@@ -274,6 +274,7 @@ class ShaderPass
         for( let i = 0; i < this.channels.length; ++i )
         {
             let channel = this.channels[ i ];
+            if( !channel ) continue;
 
             // Support legacy channels (no category)
             if( channel.constructor !== Object )

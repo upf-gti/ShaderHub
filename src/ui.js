@@ -1,7 +1,6 @@
 import { LX } from 'lexgui';
 import 'lexgui/extensions/CodeEditor.js';
 import { DocMaker } from 'lexgui/extensions/DocMaker.js';
-// import './extra/codeeditor.js';
 import * as Constants from "./constants.js";
 import * as Utils from './utils.js';
 import { FS } from './fs.js';
@@ -655,6 +654,7 @@ export const ui = {
 
         const user = users.documents[ 0 ];
         const userName = user[ "user_name" ];
+        const userDisplayName = user[ "name" ];
 
         // Likes are only shown for the active user, they are private!
         const ownProfile = this.fs.user && ( userID === this.fs.getUserId() );
@@ -698,7 +698,7 @@ export const ui = {
 
             const infoContainer = LX.makeContainer( ["100%", "auto"], "flex flex-col gap-4 p-2 my-8 justify-center", `
                 <div class="avatar-container flex flex-row gap-3 text-3xl font-bold content-center items-center">
-                    ${ userName }
+                    ${ userDisplayName ? `${ userDisplayName } <span class="text-xl font-normal text-muted-foreground">(${ userName })</span>` : userName }
                 </div>
                 <div class="flex flex-row gap-2">
                     <div class="w-auto self-start mt-1">${ ownProfile && !mobile ? LX.makeIcon("Edit", { svgClass: "mr-3 cursor-pointer hover:text-foreground" } ).innerHTML : "" }</div>
@@ -937,6 +937,13 @@ export const ui = {
             if( qOrs.length )
             {
                 queries.push( qOrs.length === 1 ? qOrs[ 0 ] : Query.or( qOrs ) );
+            }
+            else
+            {
+                LX.makeContainer( ["100%", "auto"], "mt-8 text-2xl font-medium justify-center text-center", `
+                    No liked shaders found. <br>
+                    Start browsing now to discover new shaders!`, topArea );
+                return;
             }
 
             const result = await this.fs.listDocuments( FS.SHADERS_COLLECTION_ID, queries );
@@ -1179,8 +1186,8 @@ export const ui = {
         });
 
         var [ graphicsArea, shaderDataArea ] = leftArea.split({ type: "vertical", sizes: ["auto", "auto"], resize: false });
-        graphicsArea.root.className += " bg-none box-shadow box-border rounded-xl overflow-hidden";
-        shaderDataArea.root.className += " bg-none box-shadow box-border rounded-xl items-center justify-center";
+        graphicsArea.root.className += " bg-none box-shadow box-border rounded-xl overflow-hidden flex-auto-keep";
+        shaderDataArea.root.className += " bg-none box-shadow box-border rounded-xl items-center justify-center flex-auto-fill";
 
         // Add Shader data
         this._createShaderDataView = async () =>
@@ -1239,10 +1246,34 @@ export const ui = {
                 } )
             }
 
-            const shaderOptions = LX.makeContainer( [`auto`, "auto"], "ml-auto flex flex-col p-1 gap-1 self-start items-center", ``, shaderNameAuthorOptionsContainer );
+            const shaderOptions = LX.makeContainer( [`auto`, "auto"], "ml-auto flex flex-row p-1 gap-1 self-start content-center items-center", ``, shaderNameAuthorOptionsContainer );
+
+            const shaderStats = LX.makeContainer( [`auto`, "auto"], "ml-auto flex p-1 gap-1 items-center", `
+                ${ LX.makeIcon( "Heart", { svgClass: "lg fill-current" } ).innerHTML } <span></span>
+            `, shaderOptions );
+
+            const likeSpan = shaderStats.querySelector( "span" );
+            const likeButton = shaderStats.querySelector( "svg" );
+
+            LX.addSignal( "@on_like_changed", ( target, likeData ) => {
+                const [ likesCount, alreadyLiked ] = likeData;
+                likeSpan.innerHTML = likesCount;
+                likeButton.classList.toggle( "text-amber-600", alreadyLiked );
+            } );
 
             if( this.fs.user )
             {
+                if( !ownProfile && !isNewShader )
+                {
+                    likeButton.classList.add( "hover:text-amber-600", "cursor-pointer" );
+                    likeButton.title = "Like Shader";
+                    LX.asTooltip( likeButton, likeButton.title );
+                    likeButton.addEventListener( "click", (e) => {
+                        e.preventDefault();
+                        ShaderHub.onShaderLike();
+                    } );
+                }
+
                 const shaderOptionsButton = new LX.Button( null, "ShaderOptions", async () => {
 
                     const result    = await ShaderHub.shaderExists();
@@ -1292,31 +1323,7 @@ export const ui = {
             }
             else
             {
-                LX.makeContainer( [`auto`, "auto"], "text-muted-foreground text-sm", "Login to save/remix this shader", shaderOptions );
-            }
-
-            const shaderStats = LX.makeContainer( [`auto`, "auto"], "ml-auto flex p-1 gap-1 self-start items-center", `
-                ${ LX.makeIcon( "Heart", { svgClass: "lg fill-current" } ).innerHTML } <span></span>
-            `, shaderOptions );
-
-            const likeSpan = shaderStats.querySelector( "span" );
-            const likeButton = shaderStats.querySelector( "svg" );
-
-            LX.addSignal( "@on_like_changed", ( target, likeData ) => {
-                const [ likesCount, alreadyLiked ] = likeData;
-                likeSpan.innerHTML = likesCount;
-                likeButton.classList.toggle( "text-amber-600", alreadyLiked );
-            } );
-
-            if( this.fs.user && !ownProfile && !isNewShader )
-            {
-                likeButton.classList.add( "hover:text-amber-600", "cursor-pointer" );
-                likeButton.title = "Like Shader";
-                LX.asTooltip( likeButton, likeButton.title );
-                likeButton.addEventListener( "click", (e) => {
-                    e.preventDefault();
-                    ShaderHub.onShaderLike();
-                } );
+                LX.makeContainer( [`125px`, "auto"], "text-muted-foreground text-sm", "Login to Save or Remix", shaderOptions );
             }
 
             // Editable description
@@ -2398,7 +2405,7 @@ export const ui = {
             LX.makeContainer( ["100%", "auto"], "p-2 absolute bg-background-blur backdrop-blur-xs text-xs text-center content-center top-0 rounded-t-lg pointer-events-none",
                 metadata?.name ? `<span class="font-semibold">${ metadata.name }</span> (iChannel${ channelIndex })` : `iChannel${ channelIndex }`, channelContainer );
 
-            if( channel !== undefined )
+            if( !!channel )
             {
                 // Channel Options
                 const channelOptions = LX.makeContainer( ["100%", "auto"], "flex flex-row absolute bg-background-blur backdrop-blur-xs text-xs text-center content-center justify-end bottom-0 rounded-b-lg", "", channelContainer );
