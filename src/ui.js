@@ -1509,38 +1509,63 @@ export const ui = {
 
                             if( canComment )
                             {
-                                const replyButton = new LX.Button( null, "ReplyComment", async () => {
+                                const commentActionsButton = new LX.Button( null, "ActionsButton", async () => {
     
-                                    document.querySelectorAll( ".shader-comment-reply-item" ).forEach( e => e.remove() );
-    
-                                    const newReplyItem = LX.makeContainer( [`100%`, "auto"], "shader-comment-reply-item flex flex-row mt-2 p-2 gap-2 bg-muted/75 rounded-lg items-start content-center",
-                                        ``, commentItemContainer );
-    
-                                    const replyInput = new LX.TextArea( null, "", (v) => {
-                                        if( v.length === 0 ) newReplyItem.remove();
-                                    }, { placeholder: `Replying to ${commentAuthorName}...`, className: "flex w-full flex-auto-fill", inputClass: "bg-background/50!", fitHeight: true } );
-                                    newReplyItem.appendChild( replyInput.root );
-                                    const submitButton = new LX.Button( null, "SubmitReply", async () => {
-                                        const replyText = Utils.formatMD( replyInput.value().trim() );
-                                        if( replyText.length === 0 ) return;
-                                        
-                                        // Add reply interaction to DB
+                                    const options = [
                                         {
-                                            await this.fs.createDocument( FS.INTERACTIONS_COLLECTION_ID, {
-                                                type: "comment-reply",
-                                                shader_id: shaderUid,
-                                                author_id: this.fs.getUserId(),
-                                                comment_id: comment[ "$id" ], 
-                                                text: replyText
-                                            } );
+                                            name: "Reply",
+                                            icon: "Reply",
+                                            callback: () => {
+                                                document.querySelectorAll( ".shader-comment-reply-item" ).forEach( e => e.remove() );
+        
+                                                const newReplyItem = LX.makeContainer( [`100%`, "auto"], "shader-comment-reply-item flex flex-row mt-2 p-2 gap-2 bg-muted/75 rounded-lg items-start content-center",
+                                                    ``, commentItemContainer );
+                
+                                                const replyInput = new LX.TextArea( null, "", (v) => {
+                                                    if( v.length === 0 ) newReplyItem.remove();
+                                                }, { placeholder: `Replying to ${commentAuthorName}...`, className: "flex w-full flex-auto-fill", inputClass: "bg-background/50!", fitHeight: true } );
+                                                newReplyItem.appendChild( replyInput.root );
+                                                const submitButton = new LX.Button( null, "SubmitReply", async () => {
+                                                    const replyText = Utils.formatMD( replyInput.value().trim() );
+                                                    if( replyText.length === 0 ) return;
+                                                    
+                                                    // Add reply interaction to DB
+                                                    {
+                                                        await this.fs.createDocument( FS.INTERACTIONS_COLLECTION_ID, {
+                                                            type: "comment-reply",
+                                                            shader_id: shaderUid,
+                                                            author_id: this.fs.getUserId(),
+                                                            comment_id: comment[ "$id" ], 
+                                                            text: replyText
+                                                        } );
+                                                    }
+                                                    
+                                                    refreshComments();
+                                                }, { buttonClass: "primary self-start", icon: "Send", title: "Submit Reply" } );
+                                                newReplyItem.appendChild( submitButton.root );
+                                            }
                                         }
-                                        
-                                        refreshComments();
-                                    }, { buttonClass: "primary self-start", icon: "Send", title: "Submit Reply" } );
-                                    newReplyItem.appendChild( submitButton.root );
+                                    ]
+
+                                    if( this.fs.getUserId() === commentAuthorId )
+                                    {
+                                        options.push( null, {
+                                            name: "Delete",
+                                            icon: "Trash2",
+                                            className: "text-destructive",
+                                            callback: async () => {
+                                                // Remove comment interaction from DB
+                                                await this.fs.deleteDocument( FS.INTERACTIONS_COLLECTION_ID, comment[ "$id" ] );
+                                                // Remove DOM el
+                                                commentItemContainer.remove();
+                                            }
+                                        });
+                                    }
+
+                                    LX.addDropdownMenu( commentActionsButton.root, options, { side: "bottom", align: "end" });
     
-                                }, { className: 'ml-auto flex-auto-keep', buttonClass: "h-7 p-0 outline self-center", icon: "Reply", title: `Reply to ${commentAuthorName}`, tooltip: true } );
-                                commentItem.appendChild( replyButton.root );
+                                }, { buttonClass: "h-7 p-0 ghost self-center ml-auto flex-auto-keep", icon: "EllipsisVertical" } );
+                                commentItem.appendChild( commentActionsButton.root );
                             }
 
                             const repliesContainer = LX.makeContainer( [`100%`, "auto"], "flex flex-col bg-accent/50! rounded-b-lg", "", commentItemContainer );
@@ -1588,6 +1613,33 @@ export const ui = {
                                         <div class="text-sm w-full break-all">${ replyText }</div>
                                     </div>
                                 `, repliesContainer );
+
+                                if( canComment )
+                                {
+                                    const commentActionsButton = new LX.Button( null, "ActionsButton", async () => {
+        
+                                        const options = [];
+    
+                                        if( this.fs.getUserId() === replyAuthorId )
+                                        {
+                                            options.push( {
+                                                name: "Delete",
+                                                icon: "Trash2",
+                                                className: "text-destructive",
+                                                callback: async () => {
+                                                    // Remove reply interaction from DB
+                                                    await this.fs.deleteDocument( FS.INTERACTIONS_COLLECTION_ID, reply[ "$id" ] );
+                                                    // Remove DOM el
+                                                    replyItem.remove();
+                                                }
+                                            } );
+                                        }
+    
+                                        LX.addDropdownMenu( commentActionsButton.root, options, { side: "bottom", align: "end" });
+        
+                                    }, { buttonClass: "h-7 p-0 ghost self-center ml-auto flex-auto-keep", icon: "EllipsisVertical" } );
+                                    replyItem.appendChild( commentActionsButton.root );
+                                }
                             }
                         }
                     }
