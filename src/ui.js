@@ -244,13 +244,31 @@ export const ui = {
     _browseFeature( v )
     {
         const url = new URL( window.location.href );
-        if( v && v.trim() )
+        const alreadyThere = ( url.searchParams.get( "feature" ) === v );
+        if( v && v.trim() && !alreadyThere )
         {
             url.searchParams.set( 'feature', v.trim() );
         }
         else
         {
             url.searchParams.delete( 'feature' );
+        }
+        url.searchParams.delete( 'page' ); // Reset page when changing feature
+        url.hash = 'browse';
+        window.location.href = url.toString();
+    },
+
+    _browseOrderBy( v )
+    {
+        const url = new URL( window.location.href );
+        const alreadyThere = ( url.searchParams.get( "order_by" ) === v );
+        if( v && v.trim() && !alreadyThere )
+        {
+            url.searchParams.set( 'order_by', v.trim() );
+        }
+        else
+        {
+            url.searchParams.delete( 'order_by' );
         }
         url.searchParams.delete( 'page' ); // Reset page when changing feature
         url.hash = 'browse';
@@ -427,7 +445,7 @@ export const ui = {
             if( shaderList.length === 0 )
             {
                 skeleton.root.innerHTML = "";
-                LX.makeContainer( ["100%", "auto"], "text-2xl font-medium justify-center text-center", "No shaders found.", skeleton.root );
+                LX.makeContainer( ["100%", "auto"], "mt-8 text-2xl font-medium justify-center text-center", "No shaders found.", skeleton.root );
             }
 
         }, 10 );
@@ -437,6 +455,7 @@ export const ui = {
     {
         const params = new URLSearchParams( document.location.search );
         const queryFeature = params.get( "feature" );
+        const queryOrderBy = params.get( "order_by" );
         const querySearch = params.get( "search" );
         const queryPage = params.get( "page" );
 
@@ -454,10 +473,29 @@ export const ui = {
             const filtersPanel = new LX.Panel( { className: "p-4 bg-none", height: "auto" } );
             filtersPanel.sameLine();
 
+            filtersPanel.addLabel( "Filter Features", { fit: true } );
+
             for( let f of Constants.FEATURES )
             {
                 const fLower = f.toLowerCase();
                 filtersPanel.addButton( null, f, (v) => this._browseFeature( v.toLowerCase() ), { buttonClass: `xs ${queryFeature === fLower ? "primary" : "outline bg-card!"}` } );
+            }
+
+            filtersPanel.endLine();
+            header.appendChild( filtersPanel.root );
+        }
+
+        // Browsing Shader Order
+        {
+            const filtersPanel = new LX.Panel( { className: "p-4 bg-none", height: "auto" } );
+            filtersPanel.sameLine();
+
+            filtersPanel.addLabel( "Order by", { fit: true } );
+
+            for( let f of Constants.ORDER_BY_NAMES )
+            {
+                const fLower = f.toLowerCase();
+                filtersPanel.addButton( null, f, (v) => this._browseOrderBy( v.toLowerCase() ), { buttonClass: `xs ${queryOrderBy === fLower ? "primary" : "outline bg-card!"}` } );
             }
 
             filtersPanel.endLine();
@@ -479,9 +517,11 @@ export const ui = {
 
         const PAGE_LIMIT = 25;
         const page = queryPage ? parseInt( queryPage ) : 1;
+        const orderBy = queryOrderBy ? Constants.ORDER_BY_MAPPING[ queryOrderBy ] : Constants.ORDER_BY_MAPPING[ "name" ];
+        console.log( "Order by:", orderBy );
         const shaderQueries = [
             Query.or( [ Query.equal( "public", true ), Query.isNull( "public" ) ] ),
-            Query.orderAsc( 'name' ),
+            orderBy.direction === "asc" ? Query.orderAsc( orderBy.field ) : Query.orderDesc( orderBy.field ),
             Query.offset( ( page - 1 ) * PAGE_LIMIT )
         ]
 
@@ -522,7 +562,8 @@ export const ui = {
 
         if( dbShaders.length === 0 )
         {
-            LX.makeContainer( ["100%", "auto"], "text-2xl font-medium justify-center text-center", "No shaders found.", topArea );
+            LX.makeContainer( ["100%", "auto"], "mt-8 text-2xl font-medium justify-center text-center", "No shaders found.", topArea );
+            return;
         }
 
         let skeletonHtml = "";

@@ -14,6 +14,12 @@ export const BUFFER_PASS_TEXTURE_A_INDEX = 0;
 export const BUFFER_PASS_TEXTURE_B_INDEX = 1;
 
 export const FEATURES = [ "Multipass", "Compute", "Keyboard", "Sound" ];
+export const ORDER_BY_NAMES = [ "Name", "Popular", "Recent" ];
+export const ORDER_BY_MAPPING = {
+    "name": { field: "name", direction: "asc" },
+    "popular": { field: "like_count", direction: "desc" },
+    "recent": { field: "$createdAt", direction: "desc" }
+};
 
 export const UNIFORM_CHANNELS_COUNT = 4;
 export const DEFAULT_UNIFORMS_LIST = [
