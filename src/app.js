@@ -1469,6 +1469,33 @@ const ShaderHub =
         // this.capturer.save( function( blob ) { /* ... */ } );
     },
 
+    async saveComment( shaderUid, text )
+    {
+        await fs.createDocument( FS.INTERACTIONS_COLLECTION_ID, {
+            type: "comment",
+            shader_id: shaderUid,
+            author_id: fs.getUserId(),
+            text
+        } );
+
+        if( !text.includes( '@' ) )
+        {
+            return;
+        }
+
+        const regex = /(^|\s)@([a-zA-Z0-9._]+)/g;
+        const users = [ ...text.matchAll(regex)].map(m => m[2] );
+        if( !users.length )
+        {
+            return;
+        }
+
+        // Notify users for the MENTION
+        // TODO
+
+        return true;
+    },
+
     async snapshotCanvas( outWidth, outHeight )
     {
         const width = outWidth ?? 640;
