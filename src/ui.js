@@ -200,15 +200,22 @@ export const ui = {
             if( hash === "#browse" )
             {
                 this.makeBrowseList();
-                return;
             }
             else if( hash === "#help" )
             {
                 this.makeHelpView();
-                return;
             }
+            else
+            {
+                await this.makeInitialPage();
+            }
+        }
 
-            await this.makeInitialPage();
+        const queryPasswordRecoverySecret = params.get( "secret" );
+        const queryPasswordRecoveryUserId = params.get( "userId" );
+        if( queryPasswordRecoverySecret )
+        {
+            this.openUpdatePasswordRecoverDialog( queryPasswordRecoveryUserId, queryPasswordRecoverySecret );
         }
     },
 
@@ -2232,6 +2239,75 @@ export const ui = {
         this.allowCapture = true;
     },
 
+    openRecoverPasswordDialog()
+    {
+        if( this._lastOpenedDialog )
+        {
+            this._lastOpenedDialog.close();
+        }
+
+        const dialog = new LX.Dialog( "Recover Password", ( p ) => {
+            const formData = {
+                email: { label: "Email", value: "", icon: "AtSign" },
+            };
+            const form = p.addForm( null, formData, async (value, errors, event) => {
+                
+                try {
+                    const r = await this.fs.account.createRecovery({
+                        email: value.email,
+                        url: window.location.href // Redirect URL after recovery
+                    });
+
+                    if( r )
+                    {
+                        dialog.close();
+                        Utils.toast( `✅ Recovery email sent`, `Please check your email (${ value.email }) for further instructions.` );
+                    }
+                } catch( e ) {
+                    errorMsg.set( `❌ ${ e }` );
+                }
+
+            }, { primaryActionName: "Continue", secondaryButtonClass: "ghost", secondaryActionName: "Cancel", secondaryActionCallback: () => {
+                dialog.close();
+            } });
+            const errorMsg = p.addTextArea( null, "", null, { inputClass: "text-card-foreground", disabled: true, fitHeight: true } );
+        }, { modal: true } );
+
+        this._lastOpenedDialog = dialog;
+    },
+
+    openUpdatePasswordRecoverDialog( userId, secret )
+    {
+        if( this._lastOpenedDialog )
+        {
+            this._lastOpenedDialog.close();
+        }
+
+        const dialog = new LX.Dialog( "Update Password", ( p ) => {
+            const formData = {
+                password: { label: "New password", value: "", type: "password", icon: "Key", pattern: { minLength: Constants.PASSWORD_MIN_LENGTH, digit: true } },
+                confirmPassword: { label: "Confirm new password", value: "", type: "password", icon: "Key", pattern: { fieldMatchName: "password" } }
+            };
+            const form = p.addForm( null, formData, async (value, errors, event) => {
+                
+                const r = await this.fs.account.updateRecovery({
+                    userId,
+                    secret,
+                    password: value.password
+                });
+
+                // console.log(r);
+                dialog.close();
+                Utils.toast( `✅ Password updated`, `You can now login with your new password.` );
+
+            }, { primaryActionName: "Continue", secondaryButtonClass: "ghost", secondaryActionName: "Cancel", secondaryActionCallback: () => {
+                dialog.close();
+            } });
+        }, { modal: true } );
+
+        this._lastOpenedDialog = dialog;
+    },
+
     openLoginDialog()
     {
         if( this._lastOpenedDialog )
@@ -2254,6 +2330,10 @@ export const ui = {
             }, { primaryActionName: "Login", secondaryButtonClass: "ghost", secondaryActionName: "Cancel", secondaryActionCallback: () => {
                 dialog.close();
             } });
+            p.addSeparator();
+            p.addButton( null, "Forgot my password", async () => {
+                this.openRecoverPasswordDialog();
+            }, { buttonClass: "link" } );
         }, { modal: true } );
 
         this._lastOpenedDialog = dialog;
