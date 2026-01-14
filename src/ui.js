@@ -20,7 +20,7 @@ export const ui = {
         this.fs = fs;
         this.area = await LX.init();
 
-        LX.setThemeColor( 'amber' );
+        LX.setThemeColor( 'orange' );
 
         // this.area.root.classList.add( "hub-background" );
 
@@ -132,10 +132,10 @@ export const ui = {
                 const avatar = new LX.Avatar({
                     imgSource: dbUser.avatar,
                     fallback: dbUser.user_name[ 0 ].toUpperCase(),
-                    className: 'mx-2'
+                    className: 'mx-2 size-5 ring-2 ring-secondary-foreground',
                 });
 
-                return  `<span class="decoration-none text-muted-foreground">${ user.email }</span>
+                return  `<span class="decoration-none text-secondary-foreground">${ user.email }</span>
                     ${ avatar.root.outerHTML }
                     ${ LX.makeIcon("ChevronsUpDown", { iconClass: "pl-2" } ).innerHTML }`;
             };
@@ -310,7 +310,7 @@ export const ui = {
                 <img src="images/favicon.png" class="">
                 <span class="mb-6 text-muted-foreground text-2xl sm:text-3xl font-medium">ShaderHub (beta ${ ShaderHub.version })</span>
                 <span class="text-balanced text-4xl sm:text-5xl font-medium">Create and Share Shaders using latest WebGPU!</span>
-                <a onclick='ShaderHub.openShader("6963e7bd0533036adf87")' class="flex flex-row gap-1 items-center text-sm p-1 px-4 rounded-full text-secondary-foreground decoration-none hover:bg-secondary cursor-pointer"><span class="flex bg-amber-500 w-2 h-2 rounded-full"></span>
+                <a onclick='ShaderHub.openShader("6963e7bd0533036adf87")' class="flex flex-row gap-1 items-center text-sm p-1 px-4 rounded-full text-secondary-foreground decoration-none hover:bg-secondary cursor-pointer"><span class="flex bg-orange-500 w-2 h-2 rounded-full"></span>
                 New Sound Channel, User Avatars, Shader Comments, UI Improvements${ LX.makeIcon( "ArrowRight", { svgClass: "sm" } ).innerHTML }</a>
             `, container );
 
@@ -429,7 +429,7 @@ export const ui = {
                 const shaderDesc = LX.makeContainer( ["100%", "auto"], "flex flex-row bg-card hover:bg-accent rounded-b-lg gap-6 p-4 select-none", `
                     <div class="w-full">
                         <div class="text-md font-bold">${ shader.name }</div>
-                        <div class="text-sm font-light">by ${ !shader.anonAuthor ? `<a onclick='ShaderHub.openProfile("${ shader.authorId }")' class='text-amber-500 cursor-pointer underline-offset-4 hover:underline'>` : "" }<span class="font-medium">${ shader.author }</span>${ !shader.anonAuthor ? "</a>" : "" }</div>
+                        <div class="text-sm font-light">by ${ !shader.anonAuthor ? `<a onclick='ShaderHub.openProfile("${ shader.authorId }")' class='text-orange-500 cursor-pointer underline-offset-4 hover:underline'>` : "" }<span class="font-medium">${ shader.author }</span>${ !shader.anonAuthor ? "</a>" : "" }</div>
                     </div>
                     <div class="flex flex-row gap-1 items-center">
                         ${ LX.makeIcon( "Heart", { svgClass: "fill-current text-card-foreground" } ).innerHTML }
@@ -664,10 +664,10 @@ export const ui = {
                 const shaderDesc = LX.makeContainer( ["100%", "auto"], "flex flex-row rounded-b-lg gap-6 p-4 items-center select-none", `
                     <div class="w-full">
                         <div class="text-base font-bold">${ shader.name }</div>
-                        <div class="text-xs font-light">by ${ !shader.anonAuthor ? `<a onclick='ShaderHub.openProfile("${ shader.authorId }")' class='text-amber-500 cursor-pointer underline-offset-4 hover:underline'>` : "" }<span class="font-medium">${ shader.author }</span>${ !shader.anonAuthor ? "</a>" : "" }</div>
+                        <div class="text-xs font-light">by ${ !shader.anonAuthor ? `<a onclick='ShaderHub.openProfile("${ shader.authorId }")' class='text-orange-500 cursor-pointer underline-offset-4 hover:underline'>` : "" }<span class="font-medium">${ shader.author }</span>${ !shader.anonAuthor ? "</a>" : "" }</div>
                     </div>
                     <div class="flex flex-row gap-1 items-center">
-                        ${ LX.makeIcon( "Heart", { svgClass: `${ shader.liked ? "text-amber-500" : "" } fill-current` } ).innerHTML }
+                        ${ LX.makeIcon( "Heart", { svgClass: `${ shader.liked ? "text-orange-500" : "" } fill-current` } ).innerHTML }
                         <span>${ shader.likeCount ?? 0 }</span>
                     </div>`, shaderItem );
 
@@ -1112,7 +1112,7 @@ export const ui = {
                     const shaderDesc = LX.makeContainer( ["100%", "auto"], "flex flex-row rounded-b-lg gap-6 p-4 items-center select-none", `
                         <div class="w-full">
                             <div class="text-lg font-bold"><span>${ shaderInfo.name }</span></div>
-                            <div class="text-sm font-light">by ${ !shaderInfo.anonAuthor ? `<a onclick='ShaderHub.openProfile("${ shaderInfo.authorId }")' class='text-amber-500 cursor-pointer underline-offset-4 hover:underline'>` : "" }<span class="font-bold">${ shaderInfo.author }</span>${ !shaderInfo.anonAuthor ? "</a>" : "" }</div>
+                            <div class="text-sm font-light">by ${ !shaderInfo.anonAuthor ? `<a onclick='ShaderHub.openProfile("${ shaderInfo.authorId }")' class='text-orange-500 cursor-pointer underline-offset-4 hover:underline'>` : "" }<span class="font-bold">${ shaderInfo.author }</span>${ !shaderInfo.anonAuthor ? "</a>" : "" }</div>
                         </div>
                         <div class="flex flex-row gap-1 items-center">
                             ${ LX.makeIcon( "Heart", { svgClass: "fill-current text-card-foreground" } ).innerHTML }
@@ -1253,8 +1253,8 @@ export const ui = {
                         ${ ( ownProfile || isNewShader ) ? LX.makeIcon("Edit", { svgClass: "mr-2 cursor-pointer hover:text-foreground" } ).innerHTML : "" }
                         <div class="text-foreground text-base font-semibold">${ shader.name }</div>
                     </div>
-                    <div class="text-muted-foreground text-sm">Created by ${ !shader.anonAuthor ? `<a onclick='ShaderHub.openProfile("${ shader.authorId }")' class='text-amber-500 decoration-none cursor-pointer underline-offset-4 hover:underline'>` : `` }<span class="font-medium">${ shader.author }</span>${ !shader.anonAuthor ? "</a>" : "" } on ${ shader.creationDate }
-                    ${ originalShader ? `(remixed from <a onclick='ShaderHub.openShader("${ shader.originalId }")' class='text-amber-500 decoration-none cursor-pointer underline-offset-4 hover:underline'>${ originalShader.name }</a> by <a onclick='ShaderHub.openProfile("${ originalShader.authorId }")' class='font-medium text-amber-500 decoration-none cursor-pointer underline-offset-4 hover:underline'>${ originalShader.author }</a>)` : `` }
+                    <div class="text-muted-foreground text-sm">Created by ${ !shader.anonAuthor ? `<a onclick='ShaderHub.openProfile("${ shader.authorId }")' class='text-orange-500 decoration-none cursor-pointer underline-offset-4 hover:underline'>` : `` }<span class="font-medium">${ shader.author }</span>${ !shader.anonAuthor ? "</a>" : "" } on ${ shader.creationDate }
+                    ${ originalShader ? `(remixed from <a onclick='ShaderHub.openShader("${ shader.originalId }")' class='text-orange-500 decoration-none cursor-pointer underline-offset-4 hover:underline'>${ originalShader.name }</a> by <a onclick='ShaderHub.openProfile("${ originalShader.authorId }")' class='font-medium text-orange-500 decoration-none cursor-pointer underline-offset-4 hover:underline'>${ originalShader.author }</a>)` : `` }
                     </div>
                 </div>
             `, shaderDataContainer );
@@ -1307,7 +1307,7 @@ export const ui = {
                 LX.addSignal( "@on_like_changed", ( target, likeData ) => {
                     const [ likesCount, alreadyLiked ] = likeData;
                     likeSpan.innerHTML = likesCount;
-                    likeButton.classList.toggle( "text-amber-600", alreadyLiked );
+                    likeButton.classList.toggle( "text-orange-600", alreadyLiked );
                 } );
             }
             
@@ -1315,7 +1315,7 @@ export const ui = {
             {
                 if( !ownProfile && !isNewShader )
                 {
-                    likeButton.classList.add( "hover:text-amber-600", "cursor-pointer" );
+                    likeButton.classList.add( "hover:text-orange-600", "cursor-pointer" );
                     likeButton.title = "Like Shader";
                     LX.asTooltip( likeButton, likeButton.title );
                     likeButton.addEventListener( "click", (e) => {
@@ -1373,7 +1373,7 @@ export const ui = {
             }
             else
             {
-                LX.makeContainer( [`125px`, "auto"], "text-muted-foreground text-sm", "Login to Save or Remix", shaderOptions );
+                LX.makeContainer( [`144px`, "auto"], "text-muted-foreground text-sm", "Login to Save or Remix", shaderOptions );
             }
 
             // Editable description
@@ -1490,7 +1490,7 @@ export const ui = {
                                     const dbMentionedUsers = await this.fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_name", m[2] ) ] );
                                     if( dbMentionedUsers.total === 0 ) continue;
                                     commentText = commentText.substring( 0, m.index ) + commentText.substring( m.index ).replace(m[0],
-                                    ` <span onclick='ShaderHub.openProfile("${ dbMentionedUsers.documents[0].user_id }")' class="text-amber-100 font-semibold cursor-pointer underline-offset-4 hover:underline">${m[0]}</span>` );   
+                                    ` <span onclick='ShaderHub.openProfile("${ dbMentionedUsers.documents[0].user_id }")' class="text-orange-200 font-semibold cursor-pointer underline-offset-4 hover:underline">${m[0]}</span>` );   
                                 }
                             }
 
@@ -1500,7 +1500,7 @@ export const ui = {
                                 ${ avatar.root.outerHTML }
                                 <div class="flex flex-col gap-1 flex-auto-fill">
                                     <div class="flex flex-row gap-2 items-center">
-                                        <div class="text-sm font-medium">${ `<a onclick='ShaderHub.openProfile("${ commentAuthorId }")' class='text-amber-500 cursor-pointer underline-offset-4 hover:underline'>${ commentAuthorName }</a>` }</div>
+                                        <div class="text-sm font-medium">${ `<a onclick='ShaderHub.openProfile("${ commentAuthorId }")' class='text-orange-500 cursor-pointer underline-offset-4 hover:underline'>${ commentAuthorName }</a>` }</div>
                                         <div class="text-xs text-muted-foreground">${ commentDate }</div>
                                     </div>
                                     <div class="text-sm w-full break-all">${ commentText }</div>
@@ -1564,7 +1564,7 @@ export const ui = {
                                         const dbMentionedUsers = await this.fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_name", m[2] ) ] );
                                         if( dbMentionedUsers.total === 0 ) continue;
                                         replyText = replyText.substring( 0, m.index ) + replyText.substring( m.index ).replace(m[0],
-                                        ` <span onclick='ShaderHub.openProfile("${ dbMentionedUsers.documents[0].user_id }")' class="text-amber-100 font-semibold cursor-pointer underline-offset-4 hover:underline">${m[0]}</span>` );   
+                                        ` <span onclick='ShaderHub.openProfile("${ dbMentionedUsers.documents[0].user_id }")' class="text-orange-200 font-semibold cursor-pointer underline-offset-4 hover:underline">${m[0]}</span>` );   
                                     }
                                 }
 
@@ -1582,7 +1582,7 @@ export const ui = {
                                     ${ avatar.root.outerHTML }
                                     <div class="flex flex-col gap-1 flex-auto-fill">
                                         <div class="flex flex-row gap-2 items-center">
-                                            <div class="text-sm font-medium">${ `<a onclick='ShaderHub.openProfile("${ replyAuthorId }")' class='text-amber-500 cursor-pointer underline-offset-4 hover:underline'>${ replyAuthorName }</a>` }</div>
+                                            <div class="text-sm font-medium">${ `<a onclick='ShaderHub.openProfile("${ replyAuthorId }")' class='text-orange-500 cursor-pointer underline-offset-4 hover:underline'>${ replyAuthorName }</a>` }</div>
                                             <div class="text-xs text-muted-foreground">${ replyDate }</div>
                                         </div>
                                         <div class="text-sm w-full break-all">${ replyText }</div>
@@ -2194,7 +2194,7 @@ export const ui = {
                 }, (err) => {
                     Utils.toast( `❌ Error`, err, -1 );
                 } );
-            }, { primaryActionName: "Login", secondaryButtonClass: "destructive", secondaryActionName: "Cancel", secondaryActionCallback: () => {
+            }, { primaryActionName: "Login", secondaryButtonClass: "ghost", secondaryActionName: "Cancel", secondaryActionCallback: () => {
                 dialog.close();
             } });
         }, { modal: true } );
@@ -2248,7 +2248,7 @@ export const ui = {
                 }, (err) => {
                     errorMsg.set( `❌ ${ err }` );
                 } );
-            }, { primaryActionName: "SignUp", secondaryButtonClass: "destructive", secondaryActionName: "Cancel", secondaryActionCallback: () => {
+            }, { primaryActionName: "SignUp", secondaryButtonClass: "ghost", secondaryActionName: "Cancel", secondaryActionCallback: () => {
                 dialog.close();
             } });
             const errorMsg = p.addTextArea( null, "", null, { inputClass: "text-card-foreground", disabled: true, fitHeight: true } );
