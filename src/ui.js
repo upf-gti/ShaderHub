@@ -113,7 +113,7 @@ export const ui = {
             signupContainer.id = "signupContainer";
             signupContainer.classList.toggle( "hidden", !!fs.user );
 
-            const signupOptionsButton = new LX.Button( null, "Create account", () => this.openSignUpDialog(), { buttonClass: 'ghost' } );
+            const signupOptionsButton = new LX.Button( null, "Create account", () => this.openSignUpDialog(), { buttonClass: 'ghost h-8 px-4' } );
             signupContainer.appendChild( signupOptionsButton.root );
 
             LX.makeContainer( [`auto`, "0.85rem"], "border-right border-color text-foreground self-center items-center", "", signupContainer );
@@ -158,7 +158,7 @@ export const ui = {
                 {
                     this.openLoginDialog();
                 }
-            }, { buttonClass: 'ghost' } );
+            }, { className: "mr-4", buttonClass: 'primary h-8 px-4' } );
             loginOptionsButton.root.id = "loginOptionsButton";
             menubar.root.appendChild( loginOptionsButton.root );
         }
@@ -278,7 +278,16 @@ export const ui = {
 
         // Create title/login area
         {
-            const container = LX.makeContainer( ["100%", "100%"], "bg-background-blur flex flex-col gap-8 rounded-xl box-shadow box-border place-content-center items-center overflow-scroll", "", rightSide );
+            const container = LX.makeContainer( ["100%", "100%"], "bg-background-blur flex flex-col gap-4 rounded-xl box-shadow box-border place-content-center items-center overflow-scroll", "", rightSide );
+            
+            if( this.fs.user )
+            {
+                const users = await this.fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_id", this.fs.getUserId() ) ] );
+                const dbUser = users.documents[ 0 ];
+                const welcomeMessage = LX.makeContainer( ["100%", "auto"], "p-8 text-center text-3xl text-card-foreground", `Welcome ${ dbUser.display_name ?? dbUser.user_name }!`, container );
+                welcomeMessage.id = "welcomeMessage";
+            }
+            
             const header = LX.makeContainer( [ null, "auto" ], "flex flex-col mt-8 px-10 gap-4 text-center items-center place-content-center", `
                 <span class="text-muted-foreground text-3xl">ShaderHub beta (${ ShaderHub.version })</span>
                 <span class="text-balanced text-4xl sm:text-5xl font-medium">Create and Share Shaders using latest WebGPU!</span>
@@ -306,10 +315,6 @@ export const ui = {
                     } );
                 }, { primaryActionName: "Login" });
                 loginContainer.appendChild( form.root );
-            }
-            else
-            {
-                LX.makeContainer( ["100%", "auto"], "p-8 text-center text-2xl text-card-foreground", `Welcome ${ this.fs.user.name }!`, container );
             }
         }
 
@@ -654,7 +659,7 @@ export const ui = {
 
         const user = users.documents[ 0 ];
         const userName = user[ "user_name" ];
-        const userDisplayName = user[ "name" ];
+        const userDisplayName = user[ "display_name" ];
 
         // Likes are only shown for the active user, they are private!
         const ownProfile = this.fs.user && ( userID === this.fs.getUserId() );
@@ -2097,6 +2102,9 @@ export const ui = {
     {
         await this.fs.logout();
 
+        // Remove welcome message if any
+        LX.deleteElement( document.querySelector( "#welcomeMessage" ) );
+
         // Update login info
         const loginButton = document.querySelector( "#loginOptionsButton button" );
         if( loginButton )
@@ -2133,16 +2141,20 @@ export const ui = {
         }
 
         const dialog = new LX.Dialog( "Login", ( p ) => {
-            const formData = { email: { label: "Email", value: "", icon: "AtSign" }, password: { label: "Password", icon: "Key", value: "", type: "password" } };
-            const form = p.addForm( null, formData, async (value, event) => {
+            const formData = {
+                email: { label: "Email", value: "", icon: "AtSign" },
+                password: { label: "Password", icon: "Key", value: "", type: "password" }
+            };
+            const form = p.addForm( null, formData, async (value, errors, event) => {
                 await this.fs.login( value.email, value.password, async ( user, session ) => {
                     dialog.close();
                     await this.onLogin( user );
                 }, (err) => {
                     Utils.toast( `❌ Error`, err, -1 );
                 } );
-            }, { primaryActionName: "Login" });
-            form.root.querySelector( "button" ).classList.add( "mt-2" );
+            }, { primaryActionName: "Login", secondaryButtonClass: "destructive", secondaryActionName: "Cancel", secondaryActionCallback: () => {
+                dialog.close();
+            } });
         }, { modal: true } );
 
         this._lastOpenedDialog = dialog;
@@ -2157,52 +2169,25 @@ export const ui = {
 
         const dialog = new LX.Dialog( "Create account", ( p ) => {
 
-            const namePattern = LX.buildTextPattern( { minLength: Constants.USERNAME_MIN_LENGTH } );
-            const passwordPattern = LX.buildTextPattern( { minLength: Constants.PASSWORD_MIN_LENGTH, digit: true } );
-
             const formData = {
-                name: { label: "Name", value: "", icon: "User", xpattern: namePattern },
-                email: { label: "Email", value: "", icon: "AtSign" },
-                password: { label: "Password", value: "", type: "password", icon: "Key", xpattern: passwordPattern },
-                confirmPassword: { label: "Confirm password", value: "", type: "password", icon: "Key" }
+                userName: { label: "Username", value: "", icon: "User", pattern: { minLength: Constants.USERNAME_MIN_LENGTH } },
+                name: { label: "Display Name (optional)", value: "" },
+                email: { label: "Email", value: "", icon: "AtSign", pattern: { email: true } },
+                password: { label: "Password", value: "", type: "password", icon: "Key", pattern: { minLength: Constants.PASSWORD_MIN_LENGTH, digit: true } },
+                confirmPassword: { label: "Confirm password", value: "", type: "password", icon: "Key", pattern: { fieldMatchName: "password" } }
             };
 
-            const form = p.addForm( null, formData, async (value, event) => {
+            const form = p.addForm( null, formData, async (value, errors, event) => {
 
-                errorMsg.set( "" );
-
-                if( !( value.name.match( new RegExp( namePattern ) ) ) )
+                if( errors.length > 0 )
                 {
-                    errorMsg.set( `❌ Name is too short. Please use at least ${ Constants.USERNAME_MIN_LENGTH } characters.` );
-                    return;
-                }
-                else if( /\s/g.test( value.name ) )
-                {
-                    errorMsg.set( `❌ Name contains spaces.` );
-                    return;
-                }
-                else if( !( value.email.match( /^[^\s@]+@[^\s@]+\.[^\s@]+$/ ) ) )
-                {
-                    errorMsg.set( "❌ Please enter a valid email address." );
-                    return;
-                }
-                else if( value.password.length < Constants.PASSWORD_MIN_LENGTH )
-                {
-                    errorMsg.set( `❌ Password is too short. Please use at least ${ Constants.PASSWORD_MIN_LENGTH } characters.` );
-                    return;
-                }
-                else if( !( value.password.match( new RegExp( passwordPattern ) ) ) )
-                {
-                    errorMsg.set( `❌ Password must contain at least 1 digit.` );
-                    return;
-                }
-                else if( value.password !== value.confirmPassword )
-                {
-                    errorMsg.set( "❌ The password and confirmation fields must match." );
+                    errorMsg.set( errors.map( e => `${ e.entry }: ${ e.messages.join( "\n" ) }` ).join( "\n\n" ) );
                     return;
                 }
 
-                await this.fs.createAccount( value.email, value.password, value.name, async ( user ) => {
+                Utils.toast( `✅ Account created!`, `You can now login with your email: ${ value.email }` );
+
+                await this.fs.createAccount( value.email, value.password, value.userName, async ( user ) => {
                     dialog.close();
                     document.querySelectorAll( ".lextoast" ).forEach( t => t.close() );
                     Utils.toast( `✅ Account created!`, `You can now login with your email: ${ value.email }` );
@@ -2211,7 +2196,8 @@ export const ui = {
                     {
                         const result = await this.fs.createDocument( FS.USERS_COLLECTION_ID, {
                             "user_id": user[ "$id" ],
-                            "user_name": value.name
+                            "user_name": value.userName,
+                            "display_name": value.name.length ? value.name : undefined,
                         } );
                     }
 
@@ -2220,8 +2206,9 @@ export const ui = {
                 }, (err) => {
                     errorMsg.set( `❌ ${ err }` );
                 } );
-            }, { primaryActionName: "SignUp" });
-            form.root.querySelector( "button" ).classList.add( "mt-2" );
+            }, { primaryActionName: "SignUp", secondaryButtonClass: "destructive", secondaryActionName: "Cancel", secondaryActionCallback: () => {
+                dialog.close();
+            } });
             const errorMsg = p.addTextArea( null, "", null, { inputClass: "text-card-foreground", disabled: true, fitHeight: true } );
         }, { modal: true } );
 
