@@ -332,7 +332,7 @@ export const ui = {
 
             if( !this.fs.user )
             {
-                const loginContainer = LX.makeContainer( ["90%", "auto"], "xl:w-1/2 flex flex-col gap-2 p-6 text-center text-card-foreground", "Sign in to save your shaders:", container );
+                const loginContainer = LX.makeContainer( ["100%", "auto"], "max-w-128 flex flex-col gap-2 p-6 text-center text-card-foreground", "Sign in to save your shaders:", container );
                 const formData = { email: { label: "Email", value: "", icon: "AtSign" }, password: { label: "Password", icon: "Key", value: "", type: "password" } };
                 const form = new LX.Form( null, formData, async (value, event) => {
                     await this.fs.login( value.email, value.password, async ( user, session ) => {
@@ -342,6 +342,10 @@ export const ui = {
                     } );
                 }, { primaryActionName: "Login" });
                 loginContainer.appendChild( form.root );
+                const forgotButton = new LX.Button( null, "Forgot my password", async () => {
+                    this.openRecoverPasswordDialog();
+                }, { buttonClass: "link" } );
+                loginContainer.appendChild( forgotButton.root );
             }
         }
 

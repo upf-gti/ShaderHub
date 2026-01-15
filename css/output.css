@@ -369,6 +369,9 @@
   .w-full {
     width: 100%;
   }
+  .max-w-128 {
+    max-width: calc(var(--spacing) * 128);
+  }
   .cursor-pointer {
     cursor: pointer;
   }
@@ -763,11 +766,6 @@
     @media (width >= 40rem) {
       font-size: var(--text-5xl);
       line-height: var(--tw-leading, var(--text-5xl--line-height));
-    }
-  }
-  .xl\:w-1\/2 {
-    @media (width >= 80rem) {
-      width: calc(1/2 * 100%);
     }
   }
   .\[\&_span\]\:text-xl {
