@@ -122,11 +122,16 @@ export const ui = {
 
             this.getLoginHtml = async ( user ) => {
 
-                if ( !user ) return "Login";
+                if ( !user )
+                {
+                    this._setLoginButtonClass( 'primary' );
+                    return "Login";
+                }
 
                 const users = await this.fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_id", fs.getUserId() ) ] );
                 if( users.total === 0 )
                 {
+                    this._setLoginButtonClass( 'primary' );
                     return "Login";
                 }
 
@@ -137,12 +142,14 @@ export const ui = {
                     className: 'mx-2 size-5 ring-2 ring-neutral-200',
                 });
 
+                this._setLoginButtonClass( 'ghost' );
+
                 return  `<span class="decoration-none text-neutral-200">${ user.email }</span>
                     ${ avatar.root.outerHTML }
                     ${ LX.makeIcon("ChevronsUpDown", { iconClass: "pl-2" } ).innerHTML }`;
             };
 
-            const loginOptionsButton = new LX.Button( null, await this.getLoginHtml( fs.user ), async () => {
+            const loginOptionsButton = new LX.Button( null, '', async () => {
                 if( fs.user )
                 {
                     new LX.DropdownMenu( loginOptionsButton.root, [
@@ -162,6 +169,10 @@ export const ui = {
                 }
             }, { className: "mr-4", buttonClass: 'primary h-8 px-4' } );
             loginOptionsButton.root.id = "loginOptionsButton";
+
+            const loginOptionsButtonDOM = loginOptionsButton.root.querySelector( "button" );
+            loginOptionsButtonDOM.innerHTML = await this.getLoginHtml( fs.user );
+
             menubar.root.appendChild( loginOptionsButton.root );
         }
 
@@ -217,6 +228,17 @@ export const ui = {
         {
             this.openUpdatePasswordRecoverDialog( queryPasswordRecoveryUserId, queryPasswordRecoverySecret );
         }
+    },
+
+    _setLoginButtonClass( className )
+    {
+        const loginButton = document.querySelector( "#loginOptionsButton button" );
+        if( !loginButton ) return;
+
+        loginButton.classList.remove( 'primary' );
+        loginButton.classList.remove( 'ghost' );
+
+        loginButton.classList.add( className );
     },
 
     _searchShader( v )
