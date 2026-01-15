@@ -1318,7 +1318,7 @@ export const ui = {
             if( !isNewShader )
             {
                 const shaderStats = LX.makeContainer( [`auto`, "auto"], "ml-auto flex p-1 gap-1 items-center", `
-                    ${ LX.makeIcon( "Heart", { svgClass: "lg fill-current" } ).innerHTML } <span></span>
+                    ${ LX.makeIcon( "Heart", { svgClass: "shader-like-button lg fill-current" } ).innerHTML } <span></span>
                 `, shaderOptions );
     
                 const likeSpan = shaderStats.querySelector( "span" );
@@ -1335,6 +1335,7 @@ export const ui = {
             {
                 if( !ownProfile && !isNewShader )
                 {
+                    const likeButton = shaderOptions.querySelector( "svg.shader-like-button" );
                     likeButton.classList.add( "hover:text-orange-600", "cursor-pointer" );
                     likeButton.title = "Like Shader";
                     LX.asTooltip( likeButton, likeButton.title );
@@ -1347,7 +1348,7 @@ export const ui = {
                 const shaderOptionsButton = new LX.Button( null, "ShaderOptions", async () => {
 
                     const result    = await ShaderHub.shaderExists();
-                    const editable  = ( ownProfile || isNewShader );
+                    const editable  = ( ownProfile || !isNewShader );
                     let dmOptions = [];
 
                     if( editable )
