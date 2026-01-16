@@ -1370,14 +1370,14 @@ export const ui = {
                 const shaderOptionsButton = new LX.Button( null, "ShaderOptions", async () => {
 
                     const result    = await ShaderHub.shaderExists();
-                    const editable  = ( ownProfile || !isNewShader );
+                    const editable  = ( ownProfile || isNewShader );
                     let dmOptions = [];
 
                     if( editable )
                     {
                         dmOptions.push(
                             mobile ? 0 : { name: "Save Shader", icon: "Save", callback: () => ShaderHub.saveShader( result ) },
-                            (isNewShader || mobile) ? 0 : { name: "Settings", icon: "Settings", callback: () => this.openShaderSettingsDialog( result ) }
+                            ( isNewShader || mobile ) ? 0 : { name: "Settings", icon: "Settings", callback: () => this.openShaderSettingsDialog( result ) }
                         );
 
                         if( result )
