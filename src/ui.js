@@ -158,7 +158,7 @@ export const ui = {
                         { name: "Profile", icon: "User", callback: () => ShaderHub.openProfile( fs.getUserId() ) },
                         { name: "Liked Shaders", icon: "Heart", callback: () => ShaderHub.openProfileLikes( fs.getUserId() ) },
                         null,
-                        { name: "Logout", icon: "LogOut", className: "text-destructive", callback: async () => {
+                        { name: "Logout", icon: "LogOut", className: "destructive", callback: async () => {
                             await this.onLogout();
                         } },
                     ], { side: "bottom", align: "end", alignOffset: -12 });
@@ -167,11 +167,11 @@ export const ui = {
                 {
                     this.openLoginDialog();
                 }
-            }, { className: "mr-4", buttonClass: 'primary h-8 px-4' } );
+            }, { className: "mr-4", buttonClass: 'ghost h-8 px-4' } );
             loginOptionsButton.root.id = "loginOptionsButton";
 
             const loginOptionsButtonDOM = loginOptionsButton.root.querySelector( "button" );
-            loginOptionsButtonDOM.innerHTML = await this.getLoginHtml( fs.user );
+            LX.doAsync( async () => { loginOptionsButtonDOM.innerHTML = await this.getLoginHtml( fs.user ) }, 10 );
 
             menubar.root.appendChild( loginOptionsButton.root );
         }
@@ -982,7 +982,7 @@ export const ui = {
                                     LX.downloadFile( `${ shaderInfo.name.replaceAll( " ", "" ) }.wgsl`, code );
                                 } },
                                 null,
-                                { name: "Delete", icon: "Trash2", className: "text-destructive", callback: () => ShaderHub.deleteShader( { uid, name } ) },
+                                { name: "Delete", icon: "Trash2", className: "destructive", callback: () => ShaderHub.deleteShader( { uid, name } ) },
                             ], { side: "bottom", align: "end" });
                         } );
                     }
@@ -1400,7 +1400,7 @@ export const ui = {
                     {
                         dmOptions.push(
                             mobile ? 0 : null,
-                            { name: "Delete Shader", icon: "Trash2", className: "text-destructive", callback: () => ShaderHub.deleteShader() },
+                            { name: "Delete Shader", icon: "Trash2", className: "destructive", callback: () => ShaderHub.deleteShader() },
                         );
                     }
 
@@ -1595,7 +1595,7 @@ export const ui = {
                                         options.push( null, {
                                             name: "Delete",
                                             icon: "Trash2",
-                                            className: "text-destructive",
+                                            className: "destructive",
                                             callback: async () => {
                                                 // Remove comment interaction from DB
                                                 await this.fs.deleteDocument( FS.INTERACTIONS_COLLECTION_ID, comment[ "$id" ] );
@@ -1668,7 +1668,7 @@ export const ui = {
                                             options.push( {
                                                 name: "Delete",
                                                 icon: "Trash2",
-                                                className: "text-destructive",
+                                                className: "destructive",
                                                 callback: async () => {
                                                     // Remove reply interaction from DB
                                                     await this.fs.deleteDocument( FS.INTERACTIONS_COLLECTION_ID, reply[ "$id" ] );
@@ -2053,7 +2053,7 @@ export const ui = {
                                 { name: "color4", icon: "Pipette", callback: iUpdateUniformType.bind( this ) },
                             ] },
                             null,
-                            { name: "Delete", icon: "Trash2", className: "text-destructive", callback: () => {
+                            { name: "Delete", icon: "Trash2", className: "destructive", callback: () => {
                                 ShaderHub.removeUniform( pass, i );
                                 this.customParametersPanel.refresh( overridePanel );
                             }}
@@ -2356,6 +2356,7 @@ export const ui = {
                 password: { label: "Password", icon: "Key", value: "", type: "password" }
             };
             const form = p.addForm( null, formData, async (value, errors, event) => {
+                form.syncInputs(); // Force sync
                 await this.fs.login( value.email, value.password, async ( user, session ) => {
                     dialog.close();
                     await this.onLogin( user );
@@ -2743,7 +2744,7 @@ export const ui = {
                         //     { name: `${ channel.wrap === "repeat" ? LX.makeIcon( "Circle", { svgClass } ).innerHTML : "" }Repeat`, callback: async () => ShaderHub.updateUniformChannelWrap( pass, channelIndex, "repeat" ) },
                         // ] },
                         // null,
-                        { name: "Remove", className: "text-destructive", callback: async () => await ShaderHub.removeUniformChannel( channelIndex ) },
+                        { name: "Remove", className: "destructive", callback: async () => await ShaderHub.removeUniformChannel( channelIndex ) },
                     ], { side: "top", align: "end" });
                 }, { icon: "Settings", title: "Channel Options", tooltip: true, className: "p-0", buttonClass: "pointer-events-auto sm ghost" } );
 
