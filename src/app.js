@@ -312,13 +312,9 @@ const ShaderHub =
         ] );
 
         // Check if the user already liked this shader
-        const shaderLikesByUser = await fs.listDocuments( FS.INTERACTIONS_COLLECTION_ID, [
-            Query.equal( "type", "like" ),
-            Query.equal( "shader_id", this.shader.uid ?? "" ),
-            Query.equal( "author_id", fs.user ? fs.getUserId() : "" )
-        ] );
+        const shaderLikesByUser = shaderLikes.documents.filter( d => d['author_id'] === ( fs.user ? fs.getUserId() : '' ) );
 
-        const alreadyLiked = ( fs?.user && shaderLikesByUser.total > 0 ) ?? false;
+        const alreadyLiked = ( fs?.user && shaderLikesByUser.length > 0 ) ?? false;
         LX.emitSignal( '@on_like_changed', [ shaderLikes.total, alreadyLiked ] );
 
         this.currentPass = this.shader.passes.at( -1 );
@@ -371,16 +367,21 @@ const ShaderHub =
             } );
         }
 
-        // this is not the user id, it's the id of the user row in the users DB
-        await fs.updateDocument( FS.USERS_COLLECTION_ID, user[ "$id" ], {
-            "liked_shaders": userLikes
-        } );
-
         // Get the total like count for the shader
         const shaderLikes = await fs.listDocuments( FS.INTERACTIONS_COLLECTION_ID, [
             Query.equal( "type", "like" ),
             Query.equal( "shader_id", this.shader.uid )
         ] );
+
+        // save shader like-count
+        await fs.updateDocument( FS.SHADERS_COLLECTION_ID, this.shader.uid, {
+            "like_count": shaderLikes.total
+        } );
+
+        // this is not the user id, it's the id of the user row in the users DB
+        await fs.updateDocument( FS.USERS_COLLECTION_ID, user[ "$id" ], {
+            "liked_shaders": userLikes
+        } );
 
         LX.emitSignal( "@on_like_changed", [ shaderLikes.total, !wasLiked ] );
     },
