@@ -144,7 +144,7 @@ export const ui = {
 
                 this._setLoginButtonClass( 'ghost' );
 
-                return  `<span class="decoration-none text-neutral-200">${ user.email }</span>
+                return  `<span class="decoration-none">${ user.email }</span>
                     ${ avatar.root.outerHTML }
                     ${ LX.makeIcon("ChevronsUpDown", { iconClass: "pl-2" } ).innerHTML }`;
             };
@@ -235,10 +235,8 @@ export const ui = {
         const loginButton = document.querySelector( "#loginOptionsButton button" );
         if( !loginButton ) return;
 
-        loginButton.classList.remove( 'primary' );
-        loginButton.classList.remove( 'ghost' );
-
-        loginButton.classList.add( className );
+        LX.removeClass( loginButton, 'primary ghost' );
+        LX.addClass( loginButton, className );
     },
 
     _searchShader( v )
@@ -1293,7 +1291,7 @@ export const ui = {
                 <div class="flex flex-col gap-1">
                     <div class="flex flex-row items-center">
                         ${ ( ownProfile || isNewShader ) ? LX.makeIcon("Edit", { svgClass: "mr-2 cursor-pointer hover:text-foreground" } ).innerHTML : "" }
-                        <div class="text-foreground text-base font-semibold">${ shader.name }</div>
+                        <div class="text-foreground text-lg font-semibold">${ shader.name }</div>
                     </div>
                     <div class="text-muted-foreground text-sm">Created by ${ !shader.anonAuthor ? `<a onclick='ShaderHub.openProfile("${ shader.authorId }")' class='text-orange-500 decoration-none cursor-pointer underline-offset-4 hover:underline'>` : `` }<span class="font-medium">${ shader.author }</span>${ !shader.anonAuthor ? "</a>" : "" } on ${ shader.creationDate }
                     ${ originalShader ? `(remixed from <a onclick='ShaderHub.openShader("${ shader.originalId }")' class='text-orange-500 decoration-none cursor-pointer underline-offset-4 hover:underline'>${ originalShader.name }</a> by <a onclick='ShaderHub.openProfile("${ originalShader.authorId }")' class='font-medium text-orange-500 decoration-none cursor-pointer underline-offset-4 hover:underline'>${ originalShader.author }</a>)` : `` }
@@ -1328,7 +1326,7 @@ export const ui = {
                     const textDiv = e.target.parentElement.children[ 1 ]; // get non-editable text
                     const input = new LX.TextInput( null, textDiv.textContent, async ( v ) => {
                         iSaveName( v, textDiv, input );
-                    }, { inputClass: "text-foreground text-2xl font-semibold", pattern: LX.buildTextPattern( { minLength: 3 } ) } );
+                    }, { inputClass: "text-foreground text-lg font-semibold", pattern: LX.buildTextPattern( { minLength: 3 } ) } );
                     textDiv.replaceWith( input.root );
                     LX.doAsync( () => input.root.focus() );
                     this._editingName = true;
@@ -1705,8 +1703,8 @@ export const ui = {
 
             const panel = canvasControlsArea.addPanel( { className: "flex flex-row" } );
             panel.sameLine();
-            panel.addButton( null, "ResetTime", () => ShaderHub.onShaderTimeReset(), { icon: "SkipBack", title: "Reset time", tooltip: true } );
-            panel.addButton( null, "PauseTime", () => ShaderHub.onShaderTimePaused(), { icon: "Pause", title: "Pause/Resume", tooltip: true, swap: "Play" } );
+            panel.addButton( null, "ResetTime", () => ShaderHub.onShaderTimeReset(), { className: 'flex-auto-keep', icon: "SkipBack", title: "Reset time", tooltip: true } );
+            panel.addButton( null, "PauseTime", () => ShaderHub.onShaderTimePaused(), { className: 'flex-auto-keep', icon: "Pause", title: "Pause/Resume", tooltip: true, swap: "Play" } );
             panel.addLabel( "0.0", { signal: "@elapsed-time", inputClass: "size-content" } );
             panel.addLabel( "0 FPS", { signal: "@fps", inputClass: "size-content" } );
             panel.addLabel( "0x0", { signal: "@resolution", inputClass: "size-content" } );

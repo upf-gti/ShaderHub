@@ -12,6 +12,7 @@
     --color-orange-500: oklch(70.5% 0.213 47.604);
     --color-orange-600: oklch(64.6% 0.222 41.116);
     --color-neutral-200: oklch(92.2% 0 0);
+    --color-white: #fff;
     --spacing: 0.25rem;
     --text-xs: 0.75rem;
     --text-xs--line-height: calc(1 / 0.75);
@@ -626,9 +627,6 @@
   }
   .text-muted-foreground {
     color: var(--color-muted-foreground);
-  }
-  .text-neutral-200 {
-    color: var(--color-neutral-200);
   }
   .text-orange-200 {
     color: var(--color-orange-200);
