@@ -1173,7 +1173,6 @@ export const ui = {
         this.area.root.style.height = "100dvh";
 
         const shader = await ShaderHub.getShaderById( shaderUid );
-        const isNewShader = ( shaderUid === "new" );
         this.shader = shader;
 
         let [ leftArea, rightArea ] = this.area.split({ sizes: ["50%", "50%"] });
@@ -1264,22 +1263,24 @@ export const ui = {
             onSelectTab: async ( name, editor ) => {
                 ShaderHub.onShaderPassSelected( name );
             },
-            onReady: ( editor ) => {
-                // Force this, why?
-                LX.doAsync( () => {
-                    editor.charWidth = editor._measureChar();
-                }, 100 );
+            onReady: async ( editor ) => {
+                await this.onCodeEditorReady( editor, leftArea );
             }
         });
+    },
 
-        var [ graphicsArea, shaderDataArea ] = leftArea.split({ type: "vertical", sizes: ["auto", "auto"], resize: false });
+    async onCodeEditorReady( editor, area )
+    {
+        let [ graphicsArea, shaderDataArea ] = area.split({ type: "vertical", sizes: ["auto", "auto"], resize: false });
         graphicsArea.root.className += " bg-none box-shadow box-border rounded-xl overflow-hidden flex-auto-keep";
         shaderDataArea.root.className += " bg-none box-shadow box-border rounded-xl items-center justify-center flex-auto-fill";
+
+        const shader = this.shader;
+        const isNewShader = ( shader.uid === "new" );
 
         // Add Shader data
         this._createShaderDataView = async () =>
         {
-            const shader = this.shader;
             const ownProfile = this.fs.user && ( shader.authorId === this.fs.getUserId() );
             const originalShader = shader.originalId ? await ShaderHub.getShaderById( shader.originalId ) : null;
 
@@ -1420,7 +1421,7 @@ export const ui = {
             // Editable description
             {
                 const descContainer = LX.makeContainer( [`auto`, "auto"], "text-foreground mt-2 flex flex-row items-center", `
-                    <div class="w-auto self-start">${ ( ownProfile || ( shaderUid === "new" ) ) ? LX.makeIcon("Edit", { svgClass: "mr-3 cursor-pointer hover:text-foreground" } ).innerHTML : "" }</div>
+                    <div class="w-auto self-start">${ ( ownProfile || ( shader.uid === "new" ) ) ? LX.makeIcon("Edit", { svgClass: "mr-3 cursor-pointer hover:text-foreground" } ).innerHTML : "" }</div>
                     <div class="desc-content w-full text-sm break-all">${ shader.description }</div>
                     `, shaderDataContainer );
 
@@ -1467,7 +1468,7 @@ export const ui = {
                 {
                     const shaderComments  = await this.fs.listDocuments( FS.INTERACTIONS_COLLECTION_ID, [
                         Query.equal( "type", [ "comment", "comment-reply" ] ),
-                        Query.equal( "shader_id", shaderUid ),
+                        Query.equal( "shader_id", shader.uid ),
                         Query.limit( 300 ),
                         Query.orderDesc( "$createdAt" )
                     ] );
@@ -1492,7 +1493,7 @@ export const ui = {
                         const submitButton = new LX.Button( null, "SubmitComment", async () => {
                             const commentText = Utils.formatMD( commentInput.value().trim() );
                             if( commentText.length === 0 ) return;
-                            await ShaderHub.saveComment( shaderUid, commentText );
+                            await ShaderHub.saveComment( shader.uid, commentText );
                             refreshComments();
                         }, { className: "flex-auto-keep", buttonClass: "primary self-start", icon: "Send", title: "Submit Comment" } );
                         newCommentItem.appendChild( submitButton.root );
@@ -1574,7 +1575,7 @@ export const ui = {
                                                     {
                                                         await this.fs.createDocument( FS.INTERACTIONS_COLLECTION_ID, {
                                                             type: "comment-reply",
-                                                            shader_id: shaderUid,
+                                                            shader_id: shader.uid,
                                                             author_id: this.fs.getUserId(),
                                                             comment_id: comment[ "$id" ], 
                                                             text: replyText
@@ -1770,6 +1771,8 @@ export const ui = {
                 panel.addButton( null, "Fullscreen", () => ShaderHub.requestFullscreen(), { icon: "Fullscreen", title: "Fullscreen", tooltip: true } );
                 panel.endLine( "items-center h-full ml-auto" );
             }
+            
+            editor.charWidth = editor._measureChar();
 
             ShaderHub.onShaderEditorCreated( shader, canvas );
         }
@@ -1790,13 +1793,12 @@ export const ui = {
         headerButtons.appendChild( getStartedButton.root );
 
         const docMaker = new DocMaker();
+        const collapsibleClass = 'my-0 bg-accent/30 hover:bg-accent/50! rounded-xl border-color cursor-pointer [&_svg]:w-5! [&_svg]:h-5!';
 
-        const content = LX.makeContainer( [ null, "calc(100% - 200px)" ], "help-content flex flex-col gap-2 px-10 pt-4 overflow-scroll", "", viewContainer );
+        const content = LX.makeContainer( [ null, "calc(100% - 200px)" ], "lexdocs-content flex flex-col gap-2 px-10 pt-4 overflow-scroll", "", viewContainer );
         docMaker.setDomTarget( content );
 
         docMaker.header( "Creating Shaders.", "h1", "creating-shaders" );
-
-        docMaker.lineBreak();
 
         docMaker.paragraph( `ShaderHub lets you create and run shaders right in your browser using WebGPU. You can write code, plug in textures or uniforms, and instantly see the results on the canvas. No setup, no downloads, just shaders that run on the web.` );
         docMaker.paragraph( `To create a new shader, simply click on the "New" button in the top menu bar. This will open a new shader editor where you can start coding your shader. The editor supports multiple passes, allowing you to create complex effects by layering different shaders together.
@@ -1804,34 +1806,32 @@ export const ui = {
         Once the shader is compiled, you will see the results in real-time on the canvas.` );
 
         docMaker.lineBreak();
+        docMaker.header( "Shader Passes.", "h2", "shader-passes", { collapsable: true, className: collapsibleClass, collapsed: true, collapsableContentCallback: () => {
+            docMaker.root.classList.add( 'py-4' );
+            docMaker.paragraph( `ShaderHub supports multiple shader passes, which are essentially different stages of rendering that can be combined to create complex visual effects. There are 3 types of passes you can create:` );
+            docMaker.bulletList( [
+                `<span class='font-bold underline underline-offset-4'>Buffers</span>: Offscreen render targets that can be used to store intermediate results. You can create up to four buffer passes, which can be referenced in subsequent passes using the iChannel uniforms (iChannel0, iChannel1, etc.). This allows you to build effects step by step, using the output of one pass as the input for another.`,
+                `<span class='font-bold underline underline-offset-4'>Compute</span>: A compute pass that runs independently of the render pipeline and writes directly to buffers or textures. This is useful for general-purpose GPU computations such as simulations, particle updates, procedural data generation, or precomputing values that will later be used by render or buffer passes.`,
+                `<span class='font-bold underline underline-offset-4'>Common</span>: Used for shared code that can be included in other passes. This is useful for defining functions or variables that you want to reuse across multiple shader passes. You can only have one Common pass per shader.`
+            ] );
+            docMaker.paragraph( `To create a new pass, click on the "+" button in the editor's tab bar and select the type of pass you want to create. You can then write your shader code in the new tab that appears.` );
+        } } );
 
-        docMaker.header( "Shader Passes.", "h2", "shader-passes" );
+        docMaker.header( "Uniforms, Textures and Sounds.", "h2", "uniforms", { collapsable: true, className: collapsibleClass, collapsed: true, collapsableContentCallback: () => {
+            docMaker.root.classList.add( 'py-4' );
+            docMaker.paragraph( `Uniforms are global variables that can be passed to your shader code. ShaderHub provides a set of default uniforms, such as <span class='font-bold'>iTime</span> (elapsed time), <span class='font-bold'>iResolution</span> (canvas resolution), and <span class='font-bold'>iMouse</span> (mouse position), which you can use to create dynamic effects.
+                In addition to the default uniforms, you can also create custom uniforms to pass additional data to your shaders. To add a custom uniform, first open the Custom Uniforms popover using the button at the status bar (bottom of the editor), then click on the "+" button. You can specify the name and type of the uniform, and it will be available for use in your shader code.` );
+            docMaker.lineBreak();
+            docMaker.paragraph( `Textures and Sounds can be used in your shaders by assigning them to the iChannel uniforms. You must use existing assets from the ShaderHub library. To assign texture/sounds to an iChannel, click on the corresponding channel in the status bar and select the asset you want to use.` );
+        } } );
 
-        docMaker.paragraph( `ShaderHub supports multiple shader passes, which are essentially different stages of rendering that can be combined to create complex visual effects. There are 3 types of passes you can create:` );
-        docMaker.bulletList( [
-            `<span class='font-bold underline underline-offset-4'>Buffers</span>: Offscreen render targets that can be used to store intermediate results. You can create up to four buffer passes, which can be referenced in subsequent passes using the iChannel uniforms (iChannel0, iChannel1, etc.). This allows you to build effects step by step, using the output of one pass as the input for another.`,
-            `<span class='font-bold underline underline-offset-4'>Compute</span>: A compute pass that runs independently of the render pipeline and writes directly to buffers or textures. This is useful for general-purpose GPU computations such as simulations, particle updates, procedural data generation, or precomputing values that will later be used by render or buffer passes.`,
-            `<span class='font-bold underline underline-offset-4'>Common</span>: Used for shared code that can be included in other passes. This is useful for defining functions or variables that you want to reuse across multiple shader passes. You can only have one Common pass per shader.`
-        ] );
-        docMaker.paragraph( `To create a new pass, click on the "+" button in the editor's tab bar and select the type of pass you want to create. You can then write your shader code in the new tab that appears.` );
-
-        docMaker.lineBreak();
-
-        docMaker.header( "Uniforms and Textures.", "h2", "uniforms-and-textures" );
-
-        docMaker.paragraph( `Uniforms are global variables that can be passed to your shader code. ShaderHub provides a set of default uniforms, such as <span class='font-bold'>iTime</span> (elapsed time), <span class='font-bold'>iResolution</span> (canvas resolution), and <span class='font-bold'>iMouse</span> (mouse position), which you can use to create dynamic effects.` );
-        docMaker.paragraph( `In addition to the default uniforms, you can also create custom uniforms to pass additional data to your shaders. To add a custom uniform, first open the Custom Uniforms popover using the button at the status bar (bottom of the editor), then click on the "+" button. You can specify the name and type of the uniform, and it will be available for use in your shader code.` );
-        docMaker.paragraph( `Textures can be used in your shaders by assigning them to the iChannel uniforms. You must use existing textures from the ShaderHub library. To assign a texture to an iChannel, click on the corresponding channel in the status bar and select the texture you want to use.` );
-
-        docMaker.lineBreak();
-
-        docMaker.header( "Saving and Sharing Shaders.", "h2", "saving-and-sharing-shaders" );
-
-        docMaker.paragraph( `Once you've created a shader that you're happy with, you can save it to your ShaderHub account by clicking the "Save" button in the shader options menu. If your shader is public, it will be visible to everyone.` );
-        docMaker.paragraph( `You can also share your shaders with others by providing them with a direct link. Simply copy the URL from your browser's address bar and send it to anyone you want to share your shader with. They will be able to view, edit and run your shader in their own browser (not save it!).` );
-        docMaker.paragraph( `If you want to allow others to remix your shader, you can enable the remix option in the shader settings. This will let other users create their own versions of your shader while still giving you credit as the original author.` );
-
-        docMaker.lineBreak();
+        docMaker.header( "Saving and Sharing Shaders.", "h2", "saving-and-sharing-shaders", { collapsable: true, className: collapsibleClass, collapsed: true, collapsableContentCallback: () => {
+            docMaker.root.classList.add( 'py-4' );
+            docMaker.paragraph( `Once you've created a shader that you're happy with, you can save it to your ShaderHub account by clicking the "Save" button in the shader options menu. If your shader is public, it will be visible to everyone.
+                You can also share your shaders with others by providing them with a direct link. Simply copy the URL from your browser's address bar and send it to anyone you want to share your shader with. They will be able to view, edit and run your shader in their own browser (not save it!).` );
+            docMaker.lineBreak();
+            docMaker.paragraph( `If you want to allow others to remix your shader, you can enable the remix option in the shader settings. This will let other users create their own versions of your shader while still giving you credit as the original author.` );
+        } } );
 
         docMaker.header( "Source Code.", "h1", "source-code" );
 

@@ -305,6 +305,8 @@ const ShaderHub =
             }
         }
 
+        this.currentPass = this.shader.passes.at( -1 );
+
         // Get the total like count for the shader
         const shaderLikes = await fs.listDocuments( FS.INTERACTIONS_COLLECTION_ID, [
             Query.equal( "type", "like" ),
@@ -316,8 +318,6 @@ const ShaderHub =
 
         const alreadyLiked = ( fs?.user && shaderLikesByUser.length > 0 ) ?? false;
         LX.emitSignal( '@on_like_changed', [ shaderLikes.total, alreadyLiked ] );
-
-        this.currentPass = this.shader.passes.at( -1 );
 
         ui.editor.loadTab( this.currentPass.name );
     },

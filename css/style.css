@@ -132,11 +132,10 @@
 	grid-template-columns:repeat(4, 1fr);
 }
 
-.help-content {
+.lexdocs-content {
 	margin-left: auto;
     margin-right: auto;
     max-width: 1400px;
-	/* https://pqina.nl/blog/fade-out-overflow-using-css-mask-image/ */
     --scrollbar-width: 8px;
     --mask-height: 64px;
 	padding-bottom: var(--mask-height);
@@ -148,26 +147,6 @@
     mask-size: var(--mask-size-content), var(--mask-size-scrollbar);
     mask-position: 0 0, 100% 0;
     mask-repeat: no-repeat, no-repeat;
-}
-
-.help-content p, .help-content li {
-	color: var(--secondary-foreground);
-	list-style: initial;
-}
-
-.help-content ul {
-	padding-inline-start: 2rem;
-	list-style: initial;
-}
-
-.help-content h1 {
-	font-weight: 600;
-	font-size: 1.75rem;
-}
-
-.help-content h2 {
-	font-weight: 600;
-	font-size: 1.5rem;
 }
 
 .hub-background {
