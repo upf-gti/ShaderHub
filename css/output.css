@@ -255,8 +255,8 @@
   .mx-2 {
     margin-inline: calc(var(--spacing) * 2);
   }
-  .my-2 {
-    margin-block: calc(var(--spacing) * 2);
+  .my-0 {
+    margin-block: calc(var(--spacing) * 0);
   }
   .my-8 {
     margin-block: calc(var(--spacing) * 8);
@@ -353,6 +353,9 @@
   }
   .h-full {
     height: 100%;
+  }
+  .max-h-64 {
+    max-height: calc(var(--spacing) * 64);
   }
   .w-1\/2 {
     width: calc(1/2 * 100%);

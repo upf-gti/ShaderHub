@@ -15,7 +15,7 @@ const Query =   Appwrite.Query;
 
 const ShaderHub =
 {
-    version:            "1.1",
+    version:            "1.2",
 
     keyState:           new Map(),
     keyToggleState:     new Map(),

@@ -1279,7 +1279,7 @@ export const ui = {
         shaderDataArea.root.className += " bg-none box-shadow box-border rounded-xl items-center justify-center flex-auto-fill";
 
         const shader = this.shader;
-        const isNewShader = ( shader.uid === "new" );
+        const isNewShader = ( shader.uid === "EMPTY_ID" );
 
         // Add Shader data
         this._createShaderDataView = async () =>
@@ -1297,13 +1297,13 @@ export const ui = {
                         ${ ( ownProfile || isNewShader ) ? LX.makeIcon("Edit", { svgClass: "mr-2 cursor-pointer hover:text-foreground" } ).innerHTML : "" }
                         <div class="text-foreground text-lg font-semibold">${ shader.name }</div>
                     </div>
-                    <div class="text-muted-foreground text-sm">Created by ${ !shader.anonAuthor ? `<a onclick='ShaderHub.openProfile("${ shader.authorId }")' class='text-orange-500 decoration-none cursor-pointer underline-offset-4 hover:underline'>` : `` }<span class="font-medium">${ shader.author }</span>${ !shader.anonAuthor ? "</a>" : "" } on ${ shader.creationDate }
-                    ${ originalShader ? `(remixed from <a onclick='ShaderHub.openShader("${ shader.originalId }")' class='text-orange-500 decoration-none cursor-pointer underline-offset-4 hover:underline'>${ originalShader.name }</a> by <a onclick='ShaderHub.openProfile("${ originalShader.authorId }")' class='font-medium text-orange-500 decoration-none cursor-pointer underline-offset-4 hover:underline'>${ originalShader.author }</a>)` : `` }
+                    ${ isNewShader ? '' : `<div class="text-muted-foreground text-sm">Created by ${ !shader.anonAuthor ? `<a onclick='ShaderHub.openProfile("${ shader.authorId }")' class='text-orange-500 decoration-none cursor-pointer underline-offset-4 hover:underline'>` : `` }<span class="font-medium">${ shader.author }</span>${ !shader.anonAuthor ? "</a>" : "" } on ${ shader.creationDate }
+                    ${ originalShader ? `(remixed from <a onclick='ShaderHub.openShader("${ shader.originalId }")' class='text-orange-500 decoration-none cursor-pointer underline-offset-4 hover:underline'>${ originalShader.name }</a> by <a onclick='ShaderHub.openProfile("${ originalShader.authorId }")' class='font-medium text-orange-500 decoration-none cursor-pointer underline-offset-4 hover:underline'>${ originalShader.author }</a>)` : `` } ` }
                     </div>
                 </div>
             `, shaderDataContainer );
 
-            // editable shader name
+            // Dditable shader name
             const editButton = shaderNameAuthorOptionsContainer.querySelector( "svg" );
             if( editButton )
             {
@@ -1338,37 +1338,9 @@ export const ui = {
             }
 
             const shaderOptions = LX.makeContainer( [`auto`, "auto"], "ml-auto flex flex-row p-1 gap-1 self-start content-center items-center", ``, shaderNameAuthorOptionsContainer );
-
-            if( !isNewShader )
-            {
-                const shaderStats = LX.makeContainer( [`auto`, "auto"], "ml-auto flex p-1 gap-1 items-center", `
-                    ${ LX.makeIcon( "Heart", { svgClass: "shader-like-button lg fill-current" } ).innerHTML } <span></span>
-                `, shaderOptions );
-    
-                const likeSpan = shaderStats.querySelector( "span" );
-                const likeButton = shaderStats.querySelector( "svg" );
-    
-                LX.addSignal( "@on_like_changed", ( target, likeData ) => {
-                    const [ likesCount, alreadyLiked ] = likeData;
-                    likeSpan.innerHTML = likesCount;
-                    likeButton.classList.toggle( "text-orange-600", alreadyLiked );
-                } );
-            }
             
             if( this.fs.user )
             {
-                if( !ownProfile && !isNewShader )
-                {
-                    const likeButton = shaderOptions.querySelector( "svg.shader-like-button" );
-                    likeButton.classList.add( "hover:text-orange-600", "cursor-pointer" );
-                    likeButton.title = "Like Shader";
-                    LX.asTooltip( likeButton, likeButton.title );
-                    likeButton.addEventListener( "click", (e) => {
-                        e.preventDefault();
-                        ShaderHub.onShaderLike();
-                    } );
-                }
-
                 const shaderOptionsButton = new LX.Button( null, "ShaderOptions", async () => {
 
                     const result    = await ShaderHub.shaderExists();
@@ -1421,276 +1393,318 @@ export const ui = {
                 LX.makeContainer( [`144px`, "auto"], "text-muted-foreground text-sm", "Login to Save or Remix", shaderOptions );
             }
 
-            // Editable description
+            if( !isNewShader )
             {
-                const descContainer = LX.makeContainer( [`auto`, "auto"], "text-foreground mt-2 flex flex-row items-center", `
-                    <div class="w-auto self-start">${ ( ownProfile || ( shader.uid === "new" ) ) ? LX.makeIcon("Edit", { svgClass: "mr-3 cursor-pointer hover:text-foreground" } ).innerHTML : "" }</div>
-                    <div class="desc-content w-full text-sm break-all">${ shader.description }</div>
-                    `, shaderDataContainer );
-
-                const editButton = descContainer.querySelector( "svg" );
-                if( editButton )
+                // Like click events
                 {
-                    const iSaveDescription = async ( text, textDiv, input ) =>
-                    {
-                        shader.description = Utils.formatMD( text );
-                        textDiv.innerHTML = shader.description;
-                        input.root.replaceWith( textDiv );
-                        this._editingDescription = false;
-
-                        let r = await ShaderHub.shaderExists();
-                        if( r && r.description !== shader.description )
-                        {
-                            await this.fs.updateDocument( FS.SHADERS_COLLECTION_ID, r[ "$id" ], {
-                                "description": shader.description
-                            } );
-                            Utils.toast( `✅ Shader updated`, `Shader: ${ r.name } by ${ this.fs.user.name }` );
-                        }
-                    };
-
-                    editButton.addEventListener( "click", (e) => {
-                        if( this._editingDescription ) return;
-                        e.preventDefault();
-                        const textDiv = descContainer.querySelector( ".desc-content" );
-                        const input = new LX.TextArea( null, Utils.unformatMD( textDiv.innerHTML ), async (v) => {
-                            iSaveDescription( v, textDiv, input );
-                        }, { resize: false, placeholder: "Enter your shader description here", className: "w-full h-full", inputClass: "bg-accent/50! h-full" , fitHeight: true } );
-                        textDiv.replaceWith( input.root );
-                        LX.doAsync( () => input.root.focus() );
-                        this._editingDescription = true;
+                    const shaderStats = LX.makeContainer( [`auto`, "auto"], "ml-auto flex p-1 gap-1 items-center", `
+                        ${ LX.makeIcon( "Heart", { svgClass: "shader-like-button lg fill-current" } ).innerHTML } <span></span>
+                    ` );
+                    shaderOptions.prepend( shaderStats );
+        
+                    const likeSpan = shaderStats.querySelector( "span" );
+                    const likeButton = shaderOptions.querySelector( "svg.shader-like-button" );
+                    likeButton.classList.add( "hover:text-orange-600", "cursor-pointer" );
+        
+                    LX.addSignal( "@on_like_changed", ( target, likeData ) => {
+                        const [ likesCount, alreadyLiked ] = likeData;
+                        likeSpan.innerHTML = likesCount;
+                        likeButton.classList.toggle( "text-orange-600", alreadyLiked );
                     } );
-                }
-            }
 
-            // Comments
-            {
-                const canComment = this.fs.user && !isNewShader;
-                const commentsContainer = LX.makeContainer( [`auto`, "auto"], "text-foreground mt-4 flex flex-col gap-2", "", shaderDataContainer );
-
-                const refreshComments = async () =>
-                {
-                    const shaderComments  = await this.fs.listDocuments( FS.INTERACTIONS_COLLECTION_ID, [
-                        Query.equal( "type", [ "comment", "comment-reply" ] ),
-                        Query.equal( "shader_id", shader.uid ),
-                        Query.limit( 300 ),
-                        Query.orderDesc( "$createdAt" )
-                    ] );
-                    commentsContainer.innerHTML = `Comments (${ shaderComments.total })`;
-
-                    if( canComment )
+                    // Like action
+                    if( !ownProfile )
                     {
-                        const users = await this.fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_id", this.fs.getUserId() ) ] );
-                        const dbUser = users.documents[ 0 ];
-                        const avatar = new LX.Avatar({
-                            imgSource: dbUser.avatar,
-                            fallback: dbUser.user_name[ 0 ].toUpperCase(),
-                            className: 'mx-2 flex-auto-keep mt-1'
-                        });
-
-                        const newCommentItem = LX.makeContainer( [`100%`, "auto"], "flex flex-row mt-2 p-2 gap-2 bg-muted/75 rounded-lg items-start content-center", `
-                                ${ avatar.root.outerHTML }
-                        `, commentsContainer );
-
-                        const commentInput = new LX.TextArea( null, "", null, { placeholder: "Add a comment...", className: "flex w-full flex-auto-fill", inputClass: "bg-background/50!", fitHeight: true } );
-                        newCommentItem.appendChild( commentInput.root );
-                        const submitButton = new LX.Button( null, "SubmitComment", async () => {
-                            const commentText = Utils.formatMD( commentInput.value().trim() );
-                            if( commentText.length === 0 ) return;
-                            await ShaderHub.saveComment( shader.uid, commentText );
-                            refreshComments();
-                        }, { className: "flex-auto-keep", buttonClass: "primary self-start", icon: "Send", title: "Submit Comment" } );
-                        newCommentItem.appendChild( submitButton.root );
+                        likeButton.title = "Like Shader";
+                        LX.asTooltip( likeButton, likeButton.title );
+                        likeButton.addEventListener( "click", (e) => {
+                            e.preventDefault();
+                            ShaderHub.onShaderLike();
+                        } );
                     }
-
-                    if( shaderComments.total > 0 )
+                    // Check likes
+                    else
                     {
-                        const authorIds = Array.from( new Set( shaderComments.documents.map( c => c["author_id"] ) ) );
-                        const usersWithComments = await this.fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_id", authorIds ) ] );
-                        const revReplies = LX.deepCopy( shaderComments.documents ).reverse();
+                        likeButton.title = "Check Likes";
+                        LX.asTooltip( likeButton, likeButton.title );
+                        likeButton.addEventListener( "click", (e) => {
+                            e.preventDefault();
+                            this.openCurrentShaderLikesDialog( shader );
+                        } );
+                    }
+                }
 
-                        for( const comment of shaderComments.documents )
+                // Editable description
+                {
+                    const descContainer = LX.makeContainer( [`auto`, "auto"], "text-foreground mt-2 flex flex-row items-center", `
+                        <div class="w-auto self-start">${ ( ownProfile || ( shader.uid === "new" ) ) ? LX.makeIcon("Edit", { svgClass: "mr-3 cursor-pointer hover:text-foreground" } ).innerHTML : "" }</div>
+                        <div class="desc-content w-full text-sm break-all">${ shader.description }</div>
+                        `, shaderDataContainer );
+
+                    const editButton = descContainer.querySelector( "svg" );
+                    if( editButton )
+                    {
+                        const iSaveDescription = async ( text, textDiv, input ) =>
                         {
-                            if( comment["type"] !== "comment" )
-                            {
-                                continue;
-                            }
+                            shader.description = Utils.formatMD( text );
+                            textDiv.innerHTML = shader.description;
+                            input.root.replaceWith( textDiv );
+                            this._editingDescription = false;
 
-                            const commentAuthorId = comment[ "author_id" ];
-                            const dbUser = usersWithComments.documents.find( u => u["user_id"] === commentAuthorId );
-                            const commentAuthorName = dbUser.user_name;
+                            let r = await ShaderHub.shaderExists();
+                            if( r && r.description !== shader.description )
+                            {
+                                await this.fs.updateDocument( FS.SHADERS_COLLECTION_ID, r[ "$id" ], {
+                                    "description": shader.description
+                                } );
+                                Utils.toast( `✅ Shader updated`, `Shader: ${ r.name } by ${ this.fs.user.name }` );
+                            }
+                        };
+
+                        editButton.addEventListener( "click", (e) => {
+                            if( this._editingDescription ) return;
+                            e.preventDefault();
+                            const textDiv = descContainer.querySelector( ".desc-content" );
+                            const input = new LX.TextArea( null, Utils.unformatMD( textDiv.innerHTML ), async (v) => {
+                                iSaveDescription( v, textDiv, input );
+                            }, { resize: false, placeholder: "Enter your shader description here", className: "w-full h-full", inputClass: "bg-accent/50! h-full" , fitHeight: true } );
+                            textDiv.replaceWith( input.root );
+                            LX.doAsync( () => input.root.focus() );
+                            this._editingDescription = true;
+                        } );
+                    }
+                }
+
+                // Comments
+                {
+                    const canComment = this.fs.user && !isNewShader;
+                    const commentsContainer = LX.makeContainer( [`auto`, "auto"], "text-foreground mt-4 flex flex-col gap-2", "", shaderDataContainer );
+
+                    const refreshComments = async () =>
+                    {
+                        const shaderComments = await this.fs.listDocuments( FS.INTERACTIONS_COLLECTION_ID, [
+                            Query.equal( "type", [ "comment", "comment-reply" ] ),
+                            Query.equal( "shader_id", shader.uid ),
+                            Query.limit( 300 ),
+                            Query.orderDesc( "$createdAt" )
+                        ] );
+                        commentsContainer.innerHTML = `Comments (${ shaderComments.total })`;
+
+                        if( canComment )
+                        {
+                            const users = await this.fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_id", this.fs.getUserId() ) ] );
+                            const dbUser = users.documents[ 0 ];
                             const avatar = new LX.Avatar({
                                 imgSource: dbUser.avatar,
-                                fallback: commentAuthorName[ 0 ].toUpperCase(),
-                                className: 'mx-2 flex-auto-keep'
+                                fallback: dbUser.user_name[ 0 ].toUpperCase(),
+                                className: 'mx-2 flex-auto-keep mt-1'
                             });
 
-                            let commentText = ( comment[ "text" ] ?? "" );
-
-                            const regex = /(^|\s)@([a-zA-Z0-9._]+)/g;
-                            const users = [ ...commentText.matchAll(regex)];
-                            if( users.length )
-                            {
-                                for (const m of users )
-                                {
-                                    const dbMentionedUsers = await this.fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_name", m[2] ) ] );
-                                    if( dbMentionedUsers.total === 0 ) continue;
-                                    commentText = commentText.substring( 0, m.index ) + commentText.substring( m.index ).replace(m[0],
-                                    ` <span onclick='ShaderHub.openProfile("${ dbMentionedUsers.documents[0].user_id }")' class="text-orange-200 font-semibold cursor-pointer underline-offset-4 hover:underline">${m[0]}</span>` );   
-                                }
-                            }
-
-                            const commentDate = ( new Date( comment[ "$createdAt" ] ) ).toLocaleDateString( undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: 'numeric' } );
-                            const commentItemContainer = LX.makeContainer( [`100%`, "auto"], "flex flex-col bg-muted/75 rounded-lg", "", commentsContainer );
-                            const commentItem = LX.makeContainer( [`100%`, "auto"], "flex flex-row p-2 gap-2 items-center content-center", `
+                            const newCommentItem = LX.makeContainer( [`100%`, "auto"], "flex flex-row mt-2 p-2 gap-2 bg-muted/75 rounded-lg items-start content-center", `
                                 ${ avatar.root.outerHTML }
-                                <div class="flex flex-col gap-1 flex-auto-fill">
-                                    <div class="flex flex-row gap-2 items-center">
-                                        <div class="text-sm font-medium">${ `<a onclick='ShaderHub.openProfile("${ commentAuthorId }")' class='text-orange-500 cursor-pointer underline-offset-4 hover:underline'>${ commentAuthorName }</a>` }</div>
-                                        <div class="text-xs text-muted-foreground">${ commentDate }</div>
-                                    </div>
-                                    <div class="text-sm w-full break-all">${ commentText }</div>
-                                </div>
-                            `, commentItemContainer );
+                            `, commentsContainer );
 
-                            if( canComment )
+                            const commentInput = new LX.TextArea( null, "", null, { placeholder: "Add a comment...", className: "flex w-full flex-auto-fill", inputClass: "bg-background/50!", fitHeight: true } );
+                            newCommentItem.appendChild( commentInput.root );
+                            const submitButton = new LX.Button( null, "SubmitComment", async () => {
+                                const commentText = Utils.formatMD( commentInput.value().trim() );
+                                if( commentText.length === 0 ) return;
+                                await ShaderHub.saveComment( shader.uid, commentText );
+                                refreshComments();
+                            }, { className: "flex-auto-keep", buttonClass: "primary self-start", icon: "Send", title: "Submit Comment" } );
+                            newCommentItem.appendChild( submitButton.root );
+                        }
+
+                        if( shaderComments.total > 0 )
+                        {
+                            const authorIds = Array.from( new Set( shaderComments.documents.map( c => c["author_id"] ) ) );
+                            const usersWithComments = await this.fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_id", authorIds ) ] );
+                            const revReplies = LX.deepCopy( shaderComments.documents ).reverse();
+
+                            for( const comment of shaderComments.documents )
                             {
-                                const commentActionsButton = new LX.Button( null, "ActionsButton", async () => {
-    
-                                    const options = [
-                                        {
-                                            name: "Reply",
-                                            icon: "Reply",
-                                            callback: () => {
-                                                document.querySelectorAll( ".shader-comment-reply-item" ).forEach( e => e.remove() );
-        
-                                                const newReplyItem = LX.makeContainer( [`100%`, "auto"], "shader-comment-reply-item flex flex-row mt-2 p-2 gap-2 bg-muted/75 rounded-lg items-start content-center",
-                                                    ``, commentItemContainer );
-                
-                                                const replyInput = new LX.TextArea( null, "", (v) => {
-                                                    if( v.length === 0 ) newReplyItem.remove();
-                                                }, { placeholder: `Replying to ${commentAuthorName}...`, className: "flex w-full flex-auto-fill", inputClass: "bg-background/50!", fitHeight: true } );
-                                                newReplyItem.appendChild( replyInput.root );
-                                                const submitButton = new LX.Button( null, "SubmitReply", async () => {
-                                                    const replyText = Utils.formatMD( replyInput.value().trim() );
-                                                    if( replyText.length === 0 ) return;
-                                                    
-                                                    // Add reply interaction to DB
-                                                    {
-                                                        await this.fs.createDocument( FS.INTERACTIONS_COLLECTION_ID, {
-                                                            type: "comment-reply",
-                                                            shader_id: shader.uid,
-                                                            author_id: this.fs.getUserId(),
-                                                            comment_id: comment[ "$id" ], 
-                                                            text: replyText
-                                                        } );
-                                                    }
-                                                    
-                                                    refreshComments();
-                                                }, { buttonClass: "primary self-start", icon: "Send", title: "Submit Reply" } );
-                                                newReplyItem.appendChild( submitButton.root );
-                                            }
-                                        }
-                                    ]
-
-                                    if( this.fs.getUserId() === commentAuthorId )
-                                    {
-                                        options.push( null, {
-                                            name: "Delete",
-                                            icon: "Trash2",
-                                            className: "destructive",
-                                            callback: async () => {
-                                                // Remove comment interaction from DB
-                                                await this.fs.deleteDocument( FS.INTERACTIONS_COLLECTION_ID, comment[ "$id" ] );
-                                                // Remove DOM el
-                                                commentItemContainer.remove();
-                                            }
-                                        });
-                                    }
-
-                                    LX.addDropdownMenu( commentActionsButton.root, options, { side: "bottom", align: "end" });
-    
-                                }, { buttonClass: "h-7 p-0 ghost self-center ml-auto flex-auto-keep", icon: "EllipsisVertical" } );
-                                commentItem.appendChild( commentActionsButton.root );
-                            }
-
-                            const repliesContainer = LX.makeContainer( [`100%`, "auto"], "flex flex-col bg-accent/50! rounded-b-lg", "", commentItemContainer );
-
-                            // Add replies to Comment
-                            for( const reply of revReplies )
-                            {
-                                // Discard replies to other comments!
-                                if( ( reply["type"] !== "comment-reply" ) || ( reply["comment_id"] !== comment["$id"] ) )
+                                if( comment["type"] !== "comment" )
                                 {
                                     continue;
                                 }
 
-                                let replyText = ( reply[ "text" ] ?? "" );
+                                const commentAuthorId = comment[ "author_id" ];
+                                const dbUser = usersWithComments.documents.find( u => u["user_id"] === commentAuthorId );
+                                const commentAuthorName = dbUser.user_name;
+                                const avatar = new LX.Avatar({
+                                    imgSource: dbUser.avatar,
+                                    fallback: commentAuthorName[ 0 ].toUpperCase(),
+                                    className: 'mx-2 flex-auto-keep'
+                                });
+
+                                let commentText = ( comment[ "text" ] ?? "" );
+
                                 const regex = /(^|\s)@([a-zA-Z0-9._]+)/g;
-                                const users = [ ...replyText.matchAll(regex)];
+                                const users = [ ...commentText.matchAll(regex)];
                                 if( users.length )
                                 {
                                     for (const m of users )
                                     {
                                         const dbMentionedUsers = await this.fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_name", m[2] ) ] );
                                         if( dbMentionedUsers.total === 0 ) continue;
-                                        replyText = replyText.substring( 0, m.index ) + replyText.substring( m.index ).replace(m[0],
+                                        commentText = commentText.substring( 0, m.index ) + commentText.substring( m.index ).replace(m[0],
                                         ` <span onclick='ShaderHub.openProfile("${ dbMentionedUsers.documents[0].user_id }")' class="text-orange-200 font-semibold cursor-pointer underline-offset-4 hover:underline">${m[0]}</span>` );   
                                     }
                                 }
 
-                                const replyAuthorId = reply[ "author_id" ];
-                                const dbUser = usersWithComments.documents.find( u => u["user_id"] === replyAuthorId );
-                                const replyAuthorName = dbUser.user_name;
-                                const avatar = new LX.Avatar({
-                                    imgSource: dbUser.avatar,
-                                    fallback: replyAuthorName[ 0 ].toUpperCase(),
-                                    className: 'mx-2 flex-auto-keep'
-                                });
-                                const replyDate = ( new Date( reply[ "$createdAt" ] ) ).toLocaleDateString( undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: 'numeric' } );
-                                const replyItem = LX.makeContainer( [`95%`, "auto"], "flex flex-row p-2 gap-2 items-center content-center ml-auto", `
-                                    ${ LX.makeIcon( "CornerDownRight", { svgClass: "text-muted-foreground" } ).innerHTML }
+                                const commentDate = ( new Date( comment[ "$createdAt" ] ) ).toLocaleDateString( undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: 'numeric' } );
+                                const commentItemContainer = LX.makeContainer( [`100%`, "auto"], "flex flex-col bg-muted/75 rounded-lg", "", commentsContainer );
+                                const commentItem = LX.makeContainer( [`100%`, "auto"], "flex flex-row p-2 gap-2 items-center content-center", `
                                     ${ avatar.root.outerHTML }
                                     <div class="flex flex-col gap-1 flex-auto-fill">
                                         <div class="flex flex-row gap-2 items-center">
-                                            <div class="text-sm font-medium">${ `<a onclick='ShaderHub.openProfile("${ replyAuthorId }")' class='text-orange-500 cursor-pointer underline-offset-4 hover:underline'>${ replyAuthorName }</a>` }</div>
-                                            <div class="text-xs text-muted-foreground">${ replyDate }</div>
+                                            <div class="text-sm font-medium">${ `<a onclick='ShaderHub.openProfile("${ commentAuthorId }")' class='text-orange-500 cursor-pointer underline-offset-4 hover:underline'>${ commentAuthorName }</a>` }</div>
+                                            <div class="text-xs text-muted-foreground">${ commentDate }</div>
                                         </div>
-                                        <div class="text-sm w-full break-all">${ replyText }</div>
+                                        <div class="text-sm w-full break-all">${ commentText }</div>
                                     </div>
-                                `, repliesContainer );
+                                `, commentItemContainer );
 
                                 if( canComment )
                                 {
                                     const commentActionsButton = new LX.Button( null, "ActionsButton", async () => {
         
-                                        const options = [];
-    
-                                        if( this.fs.getUserId() === replyAuthorId )
+                                        const options = [
+                                            {
+                                                name: "Reply",
+                                                icon: "Reply",
+                                                callback: () => {
+                                                    document.querySelectorAll( ".shader-comment-reply-item" ).forEach( e => e.remove() );
+            
+                                                    const newReplyItem = LX.makeContainer( [`100%`, "auto"], "shader-comment-reply-item flex flex-row mt-2 p-2 gap-2 bg-muted/75 rounded-lg items-start content-center",
+                                                        ``, commentItemContainer );
+                    
+                                                    const replyInput = new LX.TextArea( null, "", (v) => {
+                                                        if( v.length === 0 ) newReplyItem.remove();
+                                                    }, { placeholder: `Replying to ${commentAuthorName}...`, className: "flex w-full flex-auto-fill", inputClass: "bg-background/50!", fitHeight: true } );
+                                                    newReplyItem.appendChild( replyInput.root );
+                                                    const submitButton = new LX.Button( null, "SubmitReply", async () => {
+                                                        const replyText = Utils.formatMD( replyInput.value().trim() );
+                                                        if( replyText.length === 0 ) return;
+                                                        
+                                                        // Add reply interaction to DB
+                                                        {
+                                                            await this.fs.createDocument( FS.INTERACTIONS_COLLECTION_ID, {
+                                                                type: "comment-reply",
+                                                                shader_id: shader.uid,
+                                                                author_id: this.fs.getUserId(),
+                                                                comment_id: comment[ "$id" ], 
+                                                                text: replyText
+                                                            } );
+                                                        }
+                                                        
+                                                        refreshComments();
+                                                    }, { buttonClass: "primary self-start", icon: "Send", title: "Submit Reply" } );
+                                                    newReplyItem.appendChild( submitButton.root );
+                                                }
+                                            }
+                                        ]
+
+                                        if( this.fs.getUserId() === commentAuthorId )
                                         {
-                                            options.push( {
+                                            options.push( null, {
                                                 name: "Delete",
                                                 icon: "Trash2",
                                                 className: "destructive",
                                                 callback: async () => {
-                                                    // Remove reply interaction from DB
-                                                    await this.fs.deleteDocument( FS.INTERACTIONS_COLLECTION_ID, reply[ "$id" ] );
+                                                    // Remove comment interaction from DB
+                                                    await this.fs.deleteDocument( FS.INTERACTIONS_COLLECTION_ID, comment[ "$id" ] );
                                                     // Remove DOM el
-                                                    replyItem.remove();
+                                                    commentItemContainer.remove();
                                                 }
-                                            } );
+                                            });
                                         }
-    
+
                                         LX.addDropdownMenu( commentActionsButton.root, options, { side: "bottom", align: "end" });
         
                                     }, { buttonClass: "h-7 p-0 ghost self-center ml-auto flex-auto-keep", icon: "EllipsisVertical" } );
-                                    replyItem.appendChild( commentActionsButton.root );
+                                    commentItem.appendChild( commentActionsButton.root );
+                                }
+
+                                const repliesContainer = LX.makeContainer( [`100%`, "auto"], "flex flex-col bg-accent/50! rounded-b-lg", "", commentItemContainer );
+
+                                // Add replies to Comment
+                                for( const reply of revReplies )
+                                {
+                                    // Discard replies to other comments!
+                                    if( ( reply["type"] !== "comment-reply" ) || ( reply["comment_id"] !== comment["$id"] ) )
+                                    {
+                                        continue;
+                                    }
+
+                                    let replyText = ( reply[ "text" ] ?? "" );
+                                    const regex = /(^|\s)@([a-zA-Z0-9._]+)/g;
+                                    const users = [ ...replyText.matchAll(regex)];
+                                    if( users.length )
+                                    {
+                                        for (const m of users )
+                                        {
+                                            const dbMentionedUsers = await this.fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_name", m[2] ) ] );
+                                            if( dbMentionedUsers.total === 0 ) continue;
+                                            replyText = replyText.substring( 0, m.index ) + replyText.substring( m.index ).replace(m[0],
+                                            ` <span onclick='ShaderHub.openProfile("${ dbMentionedUsers.documents[0].user_id }")' class="text-orange-200 font-semibold cursor-pointer underline-offset-4 hover:underline">${m[0]}</span>` );   
+                                        }
+                                    }
+
+                                    const replyAuthorId = reply[ "author_id" ];
+                                    const dbUser = usersWithComments.documents.find( u => u["user_id"] === replyAuthorId );
+                                    const replyAuthorName = dbUser.user_name;
+                                    const avatar = new LX.Avatar({
+                                        imgSource: dbUser.avatar,
+                                        fallback: replyAuthorName[ 0 ].toUpperCase(),
+                                        className: 'mx-2 flex-auto-keep'
+                                    });
+                                    const replyDate = ( new Date( reply[ "$createdAt" ] ) ).toLocaleDateString( undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: 'numeric' } );
+                                    const replyItem = LX.makeContainer( [`95%`, "auto"], "flex flex-row p-2 gap-2 items-center content-center ml-auto", `
+                                        ${ LX.makeIcon( "CornerDownRight", { svgClass: "text-muted-foreground" } ).innerHTML }
+                                        ${ avatar.root.outerHTML }
+                                        <div class="flex flex-col gap-1 flex-auto-fill">
+                                            <div class="flex flex-row gap-2 items-center">
+                                                <div class="text-sm font-medium">${ `<a onclick='ShaderHub.openProfile("${ replyAuthorId }")' class='text-orange-500 cursor-pointer underline-offset-4 hover:underline'>${ replyAuthorName }</a>` }</div>
+                                                <div class="text-xs text-muted-foreground">${ replyDate }</div>
+                                            </div>
+                                            <div class="text-sm w-full break-all">${ replyText }</div>
+                                        </div>
+                                    `, repliesContainer );
+
+                                    if( canComment )
+                                    {
+                                        const commentActionsButton = new LX.Button( null, "ActionsButton", async () => {
+            
+                                            const options = [];
+        
+                                            if( this.fs.getUserId() === replyAuthorId )
+                                            {
+                                                options.push( {
+                                                    name: "Delete",
+                                                    icon: "Trash2",
+                                                    className: "destructive",
+                                                    callback: async () => {
+                                                        // Remove reply interaction from DB
+                                                        await this.fs.deleteDocument( FS.INTERACTIONS_COLLECTION_ID, reply[ "$id" ] );
+                                                        // Remove DOM el
+                                                        replyItem.remove();
+                                                    }
+                                                } );
+                                            }
+        
+                                            LX.addDropdownMenu( commentActionsButton.root, options, { side: "bottom", align: "end" });
+            
+                                        }, { buttonClass: "h-7 p-0 ghost self-center ml-auto flex-auto-keep", icon: "EllipsisVertical" } );
+                                        replyItem.appendChild( commentActionsButton.root );
+                                    }
                                 }
                             }
                         }
                     }
-                }
 
-                await refreshComments();
+                    await refreshComments();
+                }
             }
         }
 
@@ -2468,6 +2482,52 @@ export const ui = {
             }, { width: "50%", buttonClass: "primary" } );
 
         }, { modal: false } );
+
+        this._lastOpenedDialog = dialog;
+    },
+
+    async openCurrentShaderLikesDialog( shader )
+    {
+        if( this._lastOpenedDialog )
+        {
+            this._lastOpenedDialog.close();
+        }
+
+        const shaderLikes = await this.fs.listDocuments( FS.INTERACTIONS_COLLECTION_ID, [
+            Query.equal( "type", "like" ),
+            Query.equal( "shader_id", shader.uid ),
+            Query.limit( 300 ),
+            Query.orderDesc( "$createdAt" )
+        ] );
+
+        const authorIds = Array.from( new Set( shaderLikes.documents.map( c => c["author_id"] ) ) );
+        const usersWithLikes = await this.fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_id", authorIds ) ] );
+
+        const dialog = new LX.Dialog( `${shaderLikes.total} like${shaderLikes.total > 1 ? "s" : ""}`, ( p ) => {
+
+            const container = LX.makeContainer( ["100%", "auto"], "flex flex-col p-2 gap-2 max-h-64 overflow-scroll", "", p );
+
+            for( const like of shaderLikes.documents )
+            {
+                const authorId = like[ "author_id" ];
+                const dbUser = usersWithLikes.documents.find( u => u["user_id"] === authorId );
+                const commentAuthorName = dbUser.user_name;
+                const avatar = new LX.Avatar({
+                    imgSource: dbUser.avatar,
+                    fallback: commentAuthorName[ 0 ].toUpperCase(),
+                    className: 'mx-2 flex-auto-keep'
+                });
+
+                const cont = LX.makeContainer( ["100%", "auto"], "flex flex-row items-center gap-1", `
+                    ${ avatar.root.outerHTML }
+                    <span>${ dbUser.user_name }</span>
+                `, container );
+            }
+
+            p.addSeparator();
+            p.addButton( null, "Close", () => dialog.close(), { buttonClass: "h-8 ghost" } );
+
+        }, { modal: true } );
 
         this._lastOpenedDialog = dialog;
     },
