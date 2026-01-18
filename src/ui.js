@@ -55,9 +55,9 @@ export const ui = {
         const menubar = this.area.addMenubar( menubarOptions, { parentClass: "bg-none" } );
 
         const querySearch = params.get( "search" );
-        const searchShaderInput = new LX.TextInput(null, querySearch ?? '',
-            v => this._searchShader( v ),
-            { placeholder: "Search...", width: "256px", className: "right" }
+        const searchShaderInput = new LX.TextInput(null, querySearch ?? '', v => {
+            if( v.length ) this._searchShader( v )
+        }, { placeholder: "Search shaders...", width: "256px", className: "right" }
         );
         menubar.root.appendChild( searchShaderInput.root );
 
@@ -139,7 +139,7 @@ export const ui = {
                 const avatar = new LX.Avatar({
                     imgSource: dbUser.avatar,
                     fallback: dbUser.user_name[ 0 ].toUpperCase(),
-                    className: 'mx-2 size-5 ring-2 ring-neutral-200',
+                    className: 'mx-2 size-5',
                 });
 
                 this._setLoginButtonClass( 'ghost' );
@@ -471,7 +471,7 @@ export const ui = {
                 const shaderDesc = LX.makeContainer( ["100%", "auto"], "flex flex-row bg-card hover:bg-accent rounded-b-lg gap-6 p-4 select-none", `
                     <div class="w-full">
                         <div class="text-md font-bold">${ shader.name }</div>
-                        <div class="text-sm font-light">by ${ !shader.anonAuthor ? `<a onclick='ShaderHub.openProfile("${ shader.authorId }")' class='text-orange-500 cursor-pointer underline-offset-4 hover:underline'>` : "" }<span class="font-medium">${ shader.author }</span>${ !shader.anonAuthor ? "</a>" : "" }</div>
+                        <div class="text-sm font-light">by ${ !shader.anonAuthor ? `<a onclick='ShaderHub.openProfile("${ shader.authorId }")' class='hub-link font-medium'>` : "" }<span>${ shader.author }</span>${ !shader.anonAuthor ? "</a>" : "" }</div>
                     </div>
                     <div class="flex flex-row gap-1 items-center">
                         ${ LX.makeIcon( "Heart", { svgClass: "fill-current text-card-foreground" } ).innerHTML }
@@ -707,10 +707,10 @@ export const ui = {
                 const shaderDesc = LX.makeContainer( ["100%", "auto"], "flex flex-row rounded-b-lg gap-6 p-4 items-center select-none", `
                     <div class="w-full">
                         <div class="text-base font-bold">${ shader.name }</div>
-                        <div class="text-xs font-light">by ${ !shader.anonAuthor ? `<a onclick='ShaderHub.openProfile("${ shader.authorId }")' class='text-orange-500 cursor-pointer underline-offset-4 hover:underline'>` : "" }<span class="font-medium">${ shader.author }</span>${ !shader.anonAuthor ? "</a>" : "" }</div>
+                        <div class="text-sm font-light">by ${ !shader.anonAuthor ? `<a onclick='ShaderHub.openProfile("${ shader.authorId }")' class='hub-link font-medium'>` : "" }<span>${ shader.author }</span>${ !shader.anonAuthor ? "</a>" : "" }</div>
                     </div>
                     <div class="flex flex-row gap-1 items-center">
-                        ${ LX.makeIcon( "Heart", { svgClass: `${ shader.liked ? "text-orange-500" : "" } fill-current` } ).innerHTML }
+                        ${ LX.makeIcon( "Heart", { svgClass: `${ shader.liked ? "text-orange-600" : "" } fill-current` } ).innerHTML }
                         <span>${ shader.likeCount ?? 0 }</span>
                     </div>`, shaderItem );
 
@@ -1155,7 +1155,7 @@ export const ui = {
                     const shaderDesc = LX.makeContainer( ["100%", "auto"], "flex flex-row rounded-b-lg gap-6 p-4 items-center select-none", `
                         <div class="w-full">
                             <div class="text-lg font-bold"><span>${ shaderInfo.name }</span></div>
-                            <div class="text-sm font-light">by ${ !shaderInfo.anonAuthor ? `<a onclick='ShaderHub.openProfile("${ shaderInfo.authorId }")' class='text-orange-500 cursor-pointer underline-offset-4 hover:underline'>` : "" }<span class="font-bold">${ shaderInfo.author }</span>${ !shaderInfo.anonAuthor ? "</a>" : "" }</div>
+                            <div class="text-sm font-light">by ${ !shaderInfo.anonAuthor ? `<a onclick='ShaderHub.openProfile("${ shaderInfo.authorId }")' class='hub-link font-medium'>` : "" }<span>${ shaderInfo.author }</span>${ !shaderInfo.anonAuthor ? "</a>" : "" }</div>
                         </div>
                         <div class="flex flex-row gap-1 items-center">
                             ${ LX.makeIcon( "Heart", { svgClass: "fill-current text-card-foreground" } ).innerHTML }
@@ -1297,8 +1297,8 @@ export const ui = {
                         ${ ( ownProfile || isNewShader ) ? LX.makeIcon("Edit", { svgClass: "mr-2 cursor-pointer hover:text-foreground" } ).innerHTML : "" }
                         <div class="text-foreground text-lg font-semibold">${ shader.name }</div>
                     </div>
-                    ${ isNewShader ? '' : `<div class="text-muted-foreground text-sm">Created by ${ !shader.anonAuthor ? `<a onclick='ShaderHub.openProfile("${ shader.authorId }")' class='text-orange-500 decoration-none cursor-pointer underline-offset-4 hover:underline'>` : `` }<span class="font-medium">${ shader.author }</span>${ !shader.anonAuthor ? "</a>" : "" } on ${ shader.creationDate }
-                    ${ originalShader ? `(remixed from <a onclick='ShaderHub.openShader("${ shader.originalId }")' class='text-orange-500 decoration-none cursor-pointer underline-offset-4 hover:underline'>${ originalShader.name }</a> by <a onclick='ShaderHub.openProfile("${ originalShader.authorId }")' class='font-medium text-orange-500 decoration-none cursor-pointer underline-offset-4 hover:underline'>${ originalShader.author }</a>)` : `` } ` }
+                    ${ isNewShader ? '' : `<div class="text-muted-foreground text-sm">Created by ${ !shader.anonAuthor ? `<a onclick='ShaderHub.openProfile("${ shader.authorId }")' class='hub-link font-medium'>` : `` }<span>${ shader.author }</span>${ !shader.anonAuthor ? "</a>" : "" } on ${ shader.creationDate }
+                    ${ originalShader ? `(remixed from <a onclick='ShaderHub.openShader("${ shader.originalId }")' class='hub-link font-medium'>${ originalShader.name }</a> by <a onclick='ShaderHub.openProfile("${ originalShader.authorId }")' class='hub-link font-medium'>${ originalShader.author }</a>)` : `` } ` }
                     </div>
                 </div>
             `, shaderDataContainer );
@@ -1338,13 +1338,14 @@ export const ui = {
             }
 
             const shaderOptions = LX.makeContainer( [`auto`, "auto"], "ml-auto flex flex-row p-1 gap-1 self-start content-center items-center", ``, shaderNameAuthorOptionsContainer );
-            
+            const editable  = ( ownProfile || isNewShader );
+
             if( this.fs.user )
             {
                 const shaderOptionsButton = new LX.Button( null, "ShaderOptions", async () => {
 
                     const result    = await ShaderHub.shaderExists();
-                    const editable  = ( ownProfile || isNewShader );
+                    
                     let dmOptions = [];
 
                     if( editable )
@@ -1396,89 +1397,114 @@ export const ui = {
             if( !isNewShader )
             {
                 // Like click events
+                const shaderStats = LX.makeContainer( [`auto`, "auto"], "ml-auto flex p-1 gap-1 items-center", `
+                    ${ LX.makeIcon( "Heart", { svgClass: "shader-like-button lg fill-current transition duration-150 ease-in-out" } ).innerHTML } <span></span>
+                ` );
+                shaderOptions.prepend( shaderStats );
+    
+                const likeSpan = shaderStats.querySelector( "span" );
+                const likeButton = shaderOptions.querySelector( "svg.shader-like-button" );
+                likeButton.classList.add( "hover:text-orange-600", "cursor-pointer" );
+    
+                LX.addSignal( "@on_like_changed", ( target, likeData ) => {
+                    const [ likesCount, alreadyLiked ] = likeData;
+                    likeSpan.innerHTML = likesCount;
+                    likeButton.classList.toggle( "text-orange-600", alreadyLiked );
+                } );
+
+                // Like action
+                if( !ownProfile )
                 {
-                    const shaderStats = LX.makeContainer( [`auto`, "auto"], "ml-auto flex p-1 gap-1 items-center", `
-                        ${ LX.makeIcon( "Heart", { svgClass: "shader-like-button lg fill-current" } ).innerHTML } <span></span>
-                    ` );
-                    shaderOptions.prepend( shaderStats );
-        
-                    const likeSpan = shaderStats.querySelector( "span" );
-                    const likeButton = shaderOptions.querySelector( "svg.shader-like-button" );
-                    likeButton.classList.add( "hover:text-orange-600", "cursor-pointer" );
-        
-                    LX.addSignal( "@on_like_changed", ( target, likeData ) => {
-                        const [ likesCount, alreadyLiked ] = likeData;
-                        likeSpan.innerHTML = likesCount;
-                        likeButton.classList.toggle( "text-orange-600", alreadyLiked );
+                    likeButton.title = "Like Shader";
+                    LX.asTooltip( likeButton, likeButton.title );
+                    likeButton.addEventListener( "click", (e) => {
+                        e.preventDefault();
+                        ShaderHub.onShaderLike();
                     } );
-
-                    // Like action
-                    if( !ownProfile )
-                    {
-                        likeButton.title = "Like Shader";
-                        LX.asTooltip( likeButton, likeButton.title );
-                        likeButton.addEventListener( "click", (e) => {
-                            e.preventDefault();
-                            ShaderHub.onShaderLike();
-                        } );
-                    }
-                    // Check likes
-                    else
-                    {
-                        likeButton.title = "Check Likes";
-                        LX.asTooltip( likeButton, likeButton.title );
-                        likeButton.addEventListener( "click", (e) => {
-                            e.preventDefault();
-                            this.openCurrentShaderLikesDialog( shader );
-                        } );
-                    }
                 }
-
-                // Editable description
+                // Check likes
+                else
                 {
-                    const descContainer = LX.makeContainer( [`auto`, "auto"], "text-foreground mt-2 flex flex-row items-center", `
-                        <div class="w-auto self-start">${ ( ownProfile || ( shader.uid === "new" ) ) ? LX.makeIcon("Edit", { svgClass: "mr-3 cursor-pointer hover:text-foreground" } ).innerHTML : "" }</div>
-                        <div class="desc-content w-full text-sm break-all">${ shader.description }</div>
-                        `, shaderDataContainer );
-
-                    const editButton = descContainer.querySelector( "svg" );
-                    if( editButton )
-                    {
-                        const iSaveDescription = async ( text, textDiv, input ) =>
-                        {
-                            shader.description = Utils.formatMD( text );
-                            textDiv.innerHTML = shader.description;
-                            input.root.replaceWith( textDiv );
-                            this._editingDescription = false;
-
-                            let r = await ShaderHub.shaderExists();
-                            if( r && r.description !== shader.description )
-                            {
-                                await this.fs.updateDocument( FS.SHADERS_COLLECTION_ID, r[ "$id" ], {
-                                    "description": shader.description
-                                } );
-                                Utils.toast( `✅ Shader updated`, `Shader: ${ r.name } by ${ this.fs.user.name }` );
-                            }
-                        };
-
-                        editButton.addEventListener( "click", (e) => {
-                            if( this._editingDescription ) return;
-                            e.preventDefault();
-                            const textDiv = descContainer.querySelector( ".desc-content" );
-                            const input = new LX.TextArea( null, Utils.unformatMD( textDiv.innerHTML ), async (v) => {
-                                iSaveDescription( v, textDiv, input );
-                            }, { resize: false, placeholder: "Enter your shader description here", className: "w-full h-full", inputClass: "bg-accent/50! h-full" , fitHeight: true } );
-                            textDiv.replaceWith( input.root );
-                            LX.doAsync( () => input.root.focus() );
-                            this._editingDescription = true;
-                        } );
-                    }
+                    likeButton.title = "Check Likes";
+                    LX.asTooltip( likeButton, likeButton.title );
+                    likeButton.addEventListener( "click", (e) => {
+                        e.preventDefault();
+                        this.openCurrentShaderLikesDialog( shader );
+                    } );
                 }
+            }
 
+            // Shader tags
+            {
+                if( editable || shader.tags.length )
+                {
+                    const tags = new LX.Tags( null, "", async (v) => {
+                    
+                        shader.tags = v;
+
+                        let r = await ShaderHub.shaderExists();
+                        if( r )
+                        {
+                            await this.fs.updateDocument( FS.SHADERS_COLLECTION_ID, r[ "$id" ], {
+                                "tags": shader.tags
+                            } );
+                            Utils.toast( `✅ Shader updated`, `Shader: ${ r.name } by ${ this.fs.user.name }` );
+                        }
+                        
+                    }, { disabled: !editable, tagClass: 'text-xs' } );
+                    tags.set( shader.tags );
+                    shaderDataContainer.appendChild( tags.root );
+                }
+            }
+
+            // Editable description
+            if( editable || ( shader.description ?? '' ).length )
+            {
+                const descContainer = LX.makeContainer( [`auto`, "auto"], "text-foreground mt-2 flex flex-row items-center", `
+                    <div class="w-auto self-start">${ editable ? LX.makeIcon("Edit", { svgClass: "mr-3 cursor-pointer hover:text-foreground" } ).innerHTML : "" }</div>
+                    <div class="desc-content w-full text-sm break-all">${ shader.description }</div>
+                    `, shaderDataContainer );
+
+                const editButton = descContainer.querySelector( "svg" );
+                if( editButton )
+                {
+                    const iSaveDescription = async ( text, textDiv, input ) =>
+                    {
+                        shader.description = Utils.formatMD( text );
+                        textDiv.innerHTML = shader.description;
+                        input.root.replaceWith( textDiv );
+                        this._editingDescription = false;
+
+                        let r = await ShaderHub.shaderExists();
+                        if( r && r.description !== shader.description )
+                        {
+                            await this.fs.updateDocument( FS.SHADERS_COLLECTION_ID, r[ "$id" ], {
+                                "description": shader.description
+                            } );
+                            Utils.toast( `✅ Shader updated`, `Shader: ${ r.name } by ${ this.fs.user.name }` );
+                        }
+                    };
+
+                    editButton.addEventListener( "click", (e) => {
+                        if( this._editingDescription ) return;
+                        e.preventDefault();
+                        const textDiv = descContainer.querySelector( ".desc-content" );
+                        const input = new LX.TextArea( null, Utils.unformatMD( textDiv.innerHTML ), async (v) => {
+                            iSaveDescription( v, textDiv, input );
+                        }, { resize: false, placeholder: "Enter your shader description here", className: "w-full h-full", inputClass: "bg-accent/50! h-full" , fitHeight: true } );
+                        textDiv.replaceWith( input.root );
+                        LX.doAsync( () => input.root.focus() );
+                        this._editingDescription = true;
+                    } );
+                }
+            }
+
+            if( !isNewShader )
+            {
                 // Comments
                 {
                     const canComment = this.fs.user && !isNewShader;
-                    const commentsContainer = LX.makeContainer( [`auto`, "auto"], "text-foreground mt-4 flex flex-col gap-2", "", shaderDataContainer );
+                    const commentsContainer = LX.makeContainer( [`auto`, "auto"], "text-foreground mt-2 flex flex-col gap-2", "", shaderDataContainer );
 
                     const refreshComments = async () =>
                     {
@@ -1548,7 +1574,7 @@ export const ui = {
                                         const dbMentionedUsers = await this.fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_name", m[2] ) ] );
                                         if( dbMentionedUsers.total === 0 ) continue;
                                         commentText = commentText.substring( 0, m.index ) + commentText.substring( m.index ).replace(m[0],
-                                        ` <span onclick='ShaderHub.openProfile("${ dbMentionedUsers.documents[0].user_id }")' class="text-orange-200 font-semibold cursor-pointer underline-offset-4 hover:underline">${m[0]}</span>` );   
+                                        ` <span onclick='ShaderHub.openProfile("${ dbMentionedUsers.documents[0].user_id }")' class="hub-mention">${m[0]}</span>` );   
                                     }
                                 }
 
@@ -1558,7 +1584,7 @@ export const ui = {
                                     ${ avatar.root.outerHTML }
                                     <div class="flex flex-col gap-1 flex-auto-fill">
                                         <div class="flex flex-row gap-2 items-center">
-                                            <div class="text-sm font-medium">${ `<a onclick='ShaderHub.openProfile("${ commentAuthorId }")' class='text-orange-500 cursor-pointer underline-offset-4 hover:underline'>${ commentAuthorName }</a>` }</div>
+                                            <div class="text-sm font-medium">${ `<a onclick='ShaderHub.openProfile("${ commentAuthorId }")' class='hub-link font-medium'>${ commentAuthorName }</a>` }</div>
                                             <div class="text-xs text-muted-foreground">${ commentDate }</div>
                                         </div>
                                         <div class="text-sm w-full break-all">${ commentText }</div>
@@ -1647,7 +1673,7 @@ export const ui = {
                                             const dbMentionedUsers = await this.fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_name", m[2] ) ] );
                                             if( dbMentionedUsers.total === 0 ) continue;
                                             replyText = replyText.substring( 0, m.index ) + replyText.substring( m.index ).replace(m[0],
-                                            ` <span onclick='ShaderHub.openProfile("${ dbMentionedUsers.documents[0].user_id }")' class="text-orange-200 font-semibold cursor-pointer underline-offset-4 hover:underline">${m[0]}</span>` );   
+                                            ` <span onclick='ShaderHub.openProfile("${ dbMentionedUsers.documents[0].user_id }")' class="hub-mention">${m[0]}</span>` );   
                                         }
                                     }
 
@@ -1665,7 +1691,7 @@ export const ui = {
                                         ${ avatar.root.outerHTML }
                                         <div class="flex flex-col gap-1 flex-auto-fill">
                                             <div class="flex flex-row gap-2 items-center">
-                                                <div class="text-sm font-medium">${ `<a onclick='ShaderHub.openProfile("${ replyAuthorId }")' class='text-orange-500 cursor-pointer underline-offset-4 hover:underline'>${ replyAuthorName }</a>` }</div>
+                                                <div class="text-sm font-medium">${ `<a onclick='ShaderHub.openProfile("${ replyAuthorId }")' class='hub-link font-medium'>${ replyAuthorName }</a>` }</div>
                                                 <div class="text-xs text-muted-foreground">${ replyDate }</div>
                                             </div>
                                             <div class="text-sm w-full break-all">${ replyText }</div>
@@ -1789,7 +1815,7 @@ export const ui = {
                 panel.endLine( "items-center h-full ml-auto" );
             }
             
-            LX.doAsync( () => editor.charWidth = editor._measureChar(), 150 );
+            LX.doAsync( () => editor.charWidth = editor._measureChar(), 250 );
 
             ShaderHub.onShaderEditorCreated( shader, canvas );
         }
@@ -2499,6 +2525,25 @@ export const ui = {
             Query.limit( 300 ),
             Query.orderDesc( "$createdAt" )
         ] );
+
+        if( shaderLikes.total === 0 )
+        {
+            const dialog = new LX.Dialog( null, ( p ) => {
+
+                // As the AlertDialog
+                p.root.className = LX.mergeClass( p.root.className, 'pad-2xl flex flex-col gap-2' );
+                LX.makeContainer( [ '100%', '100%' ], 'text-lg font-medium text-foreground p-2', `This shader doesn't have likes yet.`, p );
+
+                p.addTextArea( null, `Share this shader so other people can check it and leave a like!`, null, { disabled: true, fitHeight: true, inputClass: 'bg-none text-sm text-muted-foreground' } );
+                p.addSeparator();
+                p.addButton( null, 'Close', () => {
+                    dialog.destroy();
+                }, { buttonClass: 'h-8 ghost' } );
+
+            }, { modal: true } );
+
+            return;
+        }
 
         const authorIds = Array.from( new Set( shaderLikes.documents.map( c => c["author_id"] ) ) );
         const usersWithLikes = await this.fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_id", authorIds ) ] );

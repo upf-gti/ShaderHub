@@ -1550,6 +1550,7 @@ class Shader {
         this.url = data.url;
         this.passes = data.passes ?? [];
         this.type = "render";
+        this.tags = data.tags ?? [];
 
         this.author = data.author ?? "anonymous";
         this.authorId = data.authorId;

@@ -171,6 +171,23 @@
     backdrop-filter: blur(96px);
 }
 
+.hub-link {
+	color: light-dark(var(--color-orange-600), var(--color-orange-500));
+	text-decoration: none;
+}
+
+.hub-mention {
+	color: light-dark(var(--color-indigo-600), var(--color-indigo-400));
+}
+
+.hub-link, .hub-mention {
+	cursor: pointer;
+	text-underline-offset: 4px;
+	&:hover {
+		text-decoration: underline;
+	}
+}
+
 @media (min-width: 0px) {
 	.shader-list {
 		grid-template-columns:repeat(1, 1fr);

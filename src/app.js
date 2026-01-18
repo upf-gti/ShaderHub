@@ -548,7 +548,8 @@ const ShaderHub =
                 url: await fs.getFileUrl( result[ "file_id" ] ),
                 description: result.description ?? "",
                 creationDate: Utils.toESDate( result[ "$createdAt" ] ),
-                originalId: result[ "original_id" ]
+                originalId: result[ "original_id" ],
+                tags: result[ "tags" ],
             };
 
             const authorId = result[ "author_id" ];
@@ -572,7 +573,8 @@ const ShaderHub =
                 uid: "EMPTY_ID",
                 author: fs.user?.name ?? "Anonymous",
                 anonAuthor: true,
-                creationDate: Utils.getDate()
+                creationDate: Utils.getDate(),
+                tags: []
             };
         }
 
@@ -801,7 +803,8 @@ const ShaderHub =
                     "like_count": 0,
                     "features": this.shader.getFeatures(),
                     "remixable": isShaderRemixable,
-                    "public": isShaderPublic
+                    "public": isShaderPublic,
+                    "tags": this.shader.tags
                 } );
 
                 this.shader.uid = result[ "$id" ];
