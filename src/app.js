@@ -315,7 +315,6 @@ const ShaderHub =
 
         // Check if the user already liked this shader
         const shaderLikesByUser = shaderLikes.documents.filter( d => d['author_id'] === ( fs.user ? fs.getUserId() : '' ) );
-
         const alreadyLiked = ( fs?.user && shaderLikesByUser.length > 0 ) ?? false;
         LX.emitSignal( '@on_like_changed', [ shaderLikes.total, alreadyLiked ] );
 

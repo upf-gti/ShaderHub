@@ -10,17 +10,23 @@ const Query = Appwrite.Query;
 
 const ShaderHub =
 {
-    keyState: new Map(),
-    keyToggleState: new Map(),
-    keyPressed: new Map(),
-    mousePosition: [ 0, 0 ],
-    lastMousePosition: [ 0, 0 ],
-    generateKbTexture: true,
+    version:            "1.2",
 
-    frameCount: 0,
-    lastTime: 0,
-    elapsedTime: 0,
-    timePaused: false,
+    keyState:           new Map(),
+    keyToggleState:     new Map(),
+    keyPressed:         new Map(),
+    audioPlaying:       {},
+    mousePosition:      [ 0, 0 ],
+    lastMousePosition:  [ 0, 0 ],
+
+    frameCount:         0,
+    lastTime:           0,
+    elapsedTime:        0,
+    capturer:           null,
+    generateKbTexture:  true,
+    timePaused:         false,
+    manualCompile:      false,
+    previewNamePrefix:  '_preview_',
 
     async init()
     {
@@ -134,12 +140,16 @@ const ShaderHub =
                 finalCanvasControlsArea.root.className += " px-2 rounded-b-lg bg-card";
                 const panel = finalCanvasControlsArea.addPanel( { className: "flex flex-row" } );
                 panel.sameLine();
-                panel.addButton( null, "ResetTime", () => this.onShaderTimeReset(), { icon: "SkipBack", title: "Reset time", tooltip: true } );
-                panel.addButton( null, "PauseTime", () => this.onShaderTimePaused(), { icon: "Pause", title: "Pause/Resume", tooltip: true, swap: "Play" } );
+                panel.addButton( null, "ResetTime", () => this.onShaderTimeReset(), { className: 'flex-auto-keep', icon: "SkipBack", title: "Reset time", tooltip: true } );
+                panel.addButton( null, "PauseTime", () => this.onShaderTimePaused(), { className: 'flex-auto-keep', icon: "Pause", title: "Pause/Resume", tooltip: true, swap: "Play" } );
                 panel.addLabel( "0.0", { signal: "@elapsed-time", inputClass: "size-content" } );
                 panel.addLabel( "0 FPS", { signal: "@fps", inputClass: "size-content" } );
                 panel.addLabel( "0x0", { signal: "@resolution", inputClass: "size-content" } );
                 panel.endLine( "items-center h-full" );
+
+                panel.sameLine();
+                panel.addButton( null, "Fullscreen", () => ShaderHub.requestFullscreen(), { className: 'flex-auto-keep', icon: "Fullscreen", title: "Fullscreen", tooltip: true } );
+                panel.endLine( "items-center h-full ml-auto" );
             }
 
             this.onShaderEditorCreated( shader, canvas );
@@ -162,8 +172,8 @@ const ShaderHub =
 
             this.frameCount++;
 
-            LX.emit( "@elapsed-time", `${ this.elapsedTime.toFixed( 2 ) }s` );
-            LX.emit( "@fps", `${ fps.get() } FPS` );
+            LX.emitSignal( "@elapsed-time", `${ this.elapsedTime.toFixed( 2 ) }s` );
+            LX.emitSignal( "@fps", `${ fps.get() } FPS` );
         }
 
         this.renderer.updateResolution( this.resolutionX, this.resolutionY );
@@ -193,26 +203,27 @@ const ShaderHub =
             // Fill buffers and textures for each pass channel
             for( let c = 0; c < pass.channels?.length ?? 0; ++c )
             {
-                const channelName = pass.channels[ c ];
-                if( !channelName ) continue;
+                const channel = pass.channels[ c ];
+                if( !channel ) continue;
+                const channelId = channel.id;
 
-                if( !this.renderer.gpuTextures[ channelName ] )
+                if( !this.renderer.gpuTextures[ channelId ] )
                 {
-                    if( channelName === "Keyboard" )
+                    if( channelId === "Keyboard" )
                     {
                         await this.createKeyboardTexture( c );
                     }
-                    else if( channelName.startsWith( "Buffer" ) )
+                    else if( channelId.startsWith( "Buffer" ) )
                     {
-                        await this.loadBufferChannel( pass, channelName, c )
+                        await this.loadBufferChannel( pass, channelId, c )
                     }
-                    else // Texture from file
+                    else // Texture, cubemap or sound
                     {
-                        await this.createTextureFromFile( channelName );
+                        await this.createTextureFromFile( channelId );
                     }
                 }
 
-                pass.setChannelTexture( c, this.renderer.gpuTextures[ channelName ] );
+                pass.setChannelTexture( c, this.renderer.gpuTextures[ channelId ] );
             }
 
             if( pass.uniformsDirty )
@@ -239,11 +250,32 @@ const ShaderHub =
             this._anyKeyPressed = false;
         }
 
+        for( const idx in this.audioPlaying )
+        {
+            const audioData = this.audioPlaying[ idx ];
+            const audio = audioData.audio;
+            const id = audio.id ?? '';
+            if( audio.paused ) continue;
+
+            for( let i = 0; i < this.shader.passes.length; ++i )
+            {
+                // Buffers and images draw
+                const pass = this.shader.passes[ i ];
+                if( pass.type === "common" ) continue;
+
+                const usedChannel = pass.channels.findIndex( c => c?.id === id );
+                if( usedChannel > -1 )
+                {
+                    await this.createAudioTexture( null, id, audio.name );
+                }
+            }
+        }
+
         this._mousePressed = false;
 
         if( this.capturer )
         {
-            this.capturer.capture( this.gpuCanvas );
+            this.capturer.capture( this.renderer.canvas );
 
             this.captureFrameCount++;
 
@@ -273,11 +305,11 @@ const ShaderHub =
         this.generateKbTexture = true;
     },
 
-    async onMouseDown( e )
+    async onMouseDown( x, y, button )
     {
-        this._mouseDown = parseInt( e.button );
+        this._mouseDown = parseInt( button );
         this._mousePressed = this._mouseDown;
-        this.mousePosition = [ e.offsetX, e.offsetY ];
+        this.mousePosition = [ x, y ];
         this.lastMousePosition = [ ...this.mousePosition ];
     },
 
@@ -286,12 +318,12 @@ const ShaderHub =
         this._mouseDown = undefined;
     },
 
-    async onMouseMove( e )
+    async onMouseMove( x, y )
     {
-        if( this._mouseDown !== undefined )
-        {
-            this.mousePosition = [ e.offsetX, e.offsetY ];
-        }
+       if( this._mouseDown !== undefined )
+    {
+        this.mousePosition = [ x, y ];
+    }
     },
 
     async onShaderCanvasResized( xResolution, yResolution )
@@ -300,7 +332,7 @@ const ShaderHub =
 
         this.renderer.updateResolution( xResolution, yResolution );
 
-        LX.emit( '@resolution', `${ xResolution }x${ yResolution }` );
+        LX.emitSignal( '@resolution', `${ xResolution }x${ yResolution }` );
 
         this.resolutionX = xResolution;
         this.resolutionY = yResolution;
@@ -346,7 +378,6 @@ const ShaderHub =
 
             const shaderPass = new ShaderPass( shader, this.renderer.device, pass );
             this.shader.passes.push( shaderPass );
-            this.shader.likes = [];
         }
         else
         {
@@ -354,7 +385,6 @@ const ShaderHub =
             console.assert( json, "DB: No JSON Shader data available!" );
 
             this.shader._json = LX.deepCopy( json );
-            this.shader.likes = [ ...( json.likes ?? [] ) ];
 
             for( const pass of json.passes ?? [] )
             {
@@ -382,15 +412,27 @@ const ShaderHub =
             }
         }
 
-        const alreadyLiked = fs?.user && this.shader.likes.includes( fs.getUserId() );
-        LX.emit( "@on_like_changed", [ this.shader.likes.length, alreadyLiked ] );
-
         this.currentPass = this.shader.passes.at( -1 );
     },
 
     onShaderTimePaused()
     {
         this.timePaused = !this.timePaused;
+
+        for( const idx in this.audioPlaying )
+        {
+            const audioData = this.audioPlaying[ idx ];
+            const audio = audioData.audio;
+
+            if( this.timePaused )
+            {
+                audio.pause();
+            }
+            else
+            {
+                audio.play();
+            }
+        }
     },
 
     onShaderTimeReset()
@@ -431,7 +473,7 @@ const ShaderHub =
             this.currentPass.resetExecution();
         }
 
-        LX.emit( "@elapsed-time", `${ this.elapsedTime.toFixed( 2 ) }s` );
+        LX.emitSignal( "@elapsed-time", `${ this.elapsedTime.toFixed( 2 ) }s` );
     },
 
     async getShaderById( id )
@@ -499,6 +541,19 @@ const ShaderHub =
         }
     },
 
+    requestFullscreen( element )
+    {
+        element = element ?? this.renderer.canvas;
+
+        if( element == null ) element = document.documentElement;
+        if( element.requestFullscreen ) element.requestFullscreen();
+        else if( element.msRequestFullscreen ) element.msRequestFullscreen();
+        else if( element.mozRequestFullScreen ) element.mozRequestFullScreen();
+        else if( element.webkitRequestFullscreen ) element.webkitRequestFullscreen( Element.ALLOW_KEYBOARD_INPUT );
+
+        if( element.focus ) element.focus();
+    },
+
     async initGraphics( canvas )
     {
         this.renderer = new Renderer( canvas );
@@ -511,7 +566,8 @@ const ShaderHub =
     async createTextureFromFile( channelName )
     {
         const result = await fs.listDocuments( FS.ASSETS_COLLECTION_ID, [ Query.equal( "file_id", channelName ) ] );
-        console.assert( result.total == 1, `Inconsistent asset list for file id ${ channelName }` );
+        // console.assert( result.total == 1, `Inconsistent asset list for file id ${ channelName }` );
+        if( result.total == 0 ) return;
 
         const url = await fs.getFileUrl( channelName );
         const data = await fs.requestFile( url );
@@ -522,6 +578,10 @@ const ShaderHub =
         if( asset.category === "cubemap" )
         {
             texture = await this.renderer.createCubemapTexture( data, channelName, asset.name );
+        }
+        else if( asset.category === "sound" )
+        {
+            texture = await this.createAudioTexture( data, channelName, asset.name );
         }
         else
         {
@@ -578,7 +638,7 @@ const ShaderHub =
         this.renderer.gpuTextures[ imageName ] = imageTexture;
 
         const pass = this.currentPass;
-        const usedChannel = pass.channels.indexOf( imageName );
+        const usedChannel = pass.channels.findIndex( c => c?.id === imageName );
         if( ( channel === undefined ) && usedChannel > -1 )
         {
             channel = usedChannel;
@@ -586,7 +646,7 @@ const ShaderHub =
 
         if( channel !== undefined )
         {
-            pass.channels[ channel ] = imageName;
+            pass.channels[ channel ] = { id: imageName, category: 'misc' };
 
             if( updatePreview )
             {
@@ -629,7 +689,7 @@ const ShaderHub =
 
     async loadBufferChannel( pass, bufferName, channel, updatePreview = false, forceCompile = false )
     {
-        pass.channels[ channel ] = bufferName;
+        pass.channels[ channel ] = { id: bufferName, category: 'misc' };
 
         if( forceCompile )
         {
