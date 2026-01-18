@@ -1789,7 +1789,7 @@ export const ui = {
                 panel.endLine( "items-center h-full ml-auto" );
             }
             
-            editor.charWidth = editor._measureChar();
+            LX.doAsync( () => editor.charWidth = editor._measureChar(), 150 );
 
             ShaderHub.onShaderEditorCreated( shader, canvas );
         }
