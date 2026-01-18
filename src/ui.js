@@ -251,7 +251,10 @@ export const ui = {
             url.searchParams.delete( 'search' );
         }
         url.searchParams.delete( 'shader' ); // Remove shader param if any since this can be done from any view
-        url.hash = window.location.hash;
+        const pageHashMapping = {
+            "#help": "browse"
+        };
+        url.hash = window.location.hash !== '' ? ( pageHashMapping[ window.location.hash ] ?? window.location.hash ) : "browse";
         window.location.href = url.toString();
     },
 
