@@ -684,11 +684,6 @@ const ShaderHub =
         window.open( `${ this.getFullPath() }?profile=${ userID }`, e?.button !== 1 ? "_self" : undefined );
     },
 
-    openProfileLikes( userID, e )
-    {
-        window.open( `${ this.getFullPath() }?profile=${ userID }&show_likes=true`, e?.button !== 1 ? "_self" : undefined );
-    },
-
     openShader( shaderID, e )
     {
         window.open( `${ this.getFullPath() }?shader=${ shaderID }`, e?.button !== 1 ? "_self" : undefined );
@@ -930,6 +925,38 @@ const ShaderHub =
 
         // Go to shader edit view with the new shader
         this.openShader( result[ "$id" ] );
+    },
+
+    filterShaders( shaderList, querySearch )
+    {
+        const isTagSearch = querySearch && querySearch[ 0 ] === '#';
+        return shaderList.map( d => {
+            let score = 1;
+
+            if( isTagSearch )
+            {
+                const tag = querySearch.substring( 1 );
+                score = ( d.tags ?? [] ).includes( tag ) ? 1 : 0;
+            }
+            else if( querySearch )
+            {
+                score = 0;
+
+                const name = d.name.toLowerCase();
+                const desc = ( d.description || "" ).toLowerCase();
+                const author = ( d.author_name || "" ).toLowerCase();
+                const terms = querySearch.toLowerCase().split( /\s+/ );
+
+                for( const term of terms )
+                {
+                    if( name.includes( term ) ) score += 6;
+                    if( desc.includes( term ) ) score += 3;
+                    if( author.includes( term ) ) score += 1;
+                }
+            }
+
+            return { ...d, score };
+        }).filter( d => d.score > 0 );
     },
 
     async updateShaderPreview( shaderUid, showFeedback = true )

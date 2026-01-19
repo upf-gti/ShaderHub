@@ -82,6 +82,10 @@
 	field-sizing: content;
 }
 
+.lexmenubutton.main {
+	flex: 0 0 auto;
+}
+
 .shader-list-initial {
 	grid-template-columns:repeat(2, 1fr);
 }

@@ -22,8 +22,6 @@ export const ui = {
 
         LX.setThemeColor( 'orange' );
 
-        // this.area.root.classList.add( "hub-background" );
-
         const params = new URLSearchParams( document.location.search );
         const starterMode = LX.getMode();
 
@@ -57,8 +55,7 @@ export const ui = {
         const querySearch = params.get( "search" );
         const searchShaderInput = new LX.TextInput(null, querySearch ?? '', v => {
             if( v.length ) this._searchShader( v )
-        }, { placeholder: "Search shaders...", width: "256px", className: "right" }
-        );
+        }, { placeholder: "Search shaders...", width: "256px", className: "hidden md:flex right" });
         menubar.root.appendChild( searchShaderInput.root );
 
         if( mobile )
@@ -84,7 +81,6 @@ export const ui = {
                 if( fs.user )
                 {
                     m.add( "Profile", { icon: "User", callback: () => ShaderHub.openProfile( fs.getUserId() ) } );
-                    m.add( "Liked Shaders", { icon: "Heart", callback: () => ShaderHub.openProfileLikes( fs.getUserId() ) } );
                     m.add( "Browse", { icon: "Search", callback: () => ShaderHub.openPage( "browse" ) } );
                     m.add( "Help", { icon: "HelpCircle", callback: () => ShaderHub.openPage( "help" ) } );
                     m.add( "Logout", { icon: "LogOut", callback: async () => {
@@ -144,7 +140,7 @@ export const ui = {
 
                 this._setLoginButtonClass( 'ghost' );
 
-                return  `<span class="decoration-none">${ user.email }</span>
+                return  `<span class="hidden md:block decoration-none">${ user.email }</span>
                     ${ avatar.root.outerHTML }
                     ${ LX.makeIcon("ChevronsUpDown", { iconClass: "pl-2" } ).innerHTML }`;
             };
@@ -156,7 +152,6 @@ export const ui = {
                         fs.user.name,
                         null,
                         { name: "Profile", icon: "User", callback: () => ShaderHub.openProfile( fs.getUserId() ) },
-                        { name: "Liked Shaders", icon: "Heart", callback: () => ShaderHub.openProfileLikes( fs.getUserId() ) },
                         null,
                         { name: "Logout", icon: "LogOut", className: "destructive", callback: async () => {
                             await this.onLogout();
@@ -195,7 +190,6 @@ export const ui = {
 
         const queryShader = params.get( "shader" );
         const queryProfile = params.get( "profile" );
-        const queryLikes = params.get( "show_likes" );
 
         if( queryShader )
         {
@@ -203,7 +197,7 @@ export const ui = {
         }
         else if( queryProfile )
         {
-            await this.makeProfileView( queryProfile, queryLikes );
+            await this.makeProfileView( queryProfile );
         }
         else
         {
@@ -250,11 +244,10 @@ export const ui = {
         {
             url.searchParams.delete( 'search' );
         }
-        url.searchParams.delete( 'shader' ); // Remove shader param if any since this can be done from any view
-        const pageHashMapping = {
-            "#help": "browse"
-        };
-        url.hash = window.location.hash !== '' ? ( pageHashMapping[ window.location.hash ] ?? window.location.hash ) : "browse";
+        // Remove shader params if any since this can be done from any view
+        url.searchParams.delete( 'shader' );
+        url.searchParams.delete( 'profile' );
+        url.hash = 'browse';
         window.location.href = url.toString();
     },
 
@@ -498,8 +491,8 @@ export const ui = {
         const params = new URLSearchParams( document.location.search );
         const queryFeature = params.get( "feature" );
         const queryOrderBy = params.get( "order_by" );
-        const querySearch = params.get( "search" );
         const queryPage = params.get( "page" );
+        const querySearch = params.get( "search" );
 
         var [ topArea, bottomArea ] = this.area.split({ type: "vertical", sizes: ["calc(100% - 48px)", null], resize: false });
         topArea.root.parentElement.classList.add( "hub-background" )
@@ -559,7 +552,7 @@ export const ui = {
 
         const PAGE_LIMIT = 25;
         const page = queryPage ? parseInt( queryPage ) : 1;
-        const orderBy = queryOrderBy ? Constants.ORDER_BY_MAPPING[ queryOrderBy ] : Constants.ORDER_BY_MAPPING[ "name" ];
+        const orderBy = queryOrderBy ? Constants.ORDER_BY_MAPPING[ queryOrderBy ] : Constants.ORDER_BY_MAPPING[ "recent" ];
         console.log( "Order by:", orderBy );
 
         const shaderQueries = [
@@ -579,30 +572,7 @@ export const ui = {
         this.paginator.setPages( Math.ceil( result.total / PAGE_LIMIT ) );
         this.paginator.setPage( page );
 
-        const dbShaders = result.documents.map( d =>
-        {
-            let score = 1;
-
-            if( querySearch )
-            {
-                score = 0;
-
-                const name = d.name.toLowerCase();
-                const desc = ( d.description || "" ).toLowerCase();
-                const author = ( d.author_name || "" ).toLowerCase();
-                const terms = querySearch.toLowerCase().split( /\s+/ );
-
-                for( const term of terms )
-                {
-                    if( name.includes( term ) ) score += 6;
-                    if( desc.includes( term ) ) score += 3;
-                    if( author.includes( term ) ) score += 1;
-                }
-            }
-
-            return { ...d, score }
-        }).filter( d => d.score > 0 );
-
+        const dbShaders = ShaderHub.filterShaders( result.documents, querySearch );
         if( dbShaders.length === 0 )
         {
             LX.makeContainer( ["100%", "auto"], "mt-8 text-2xl font-medium justify-center text-center", "No shaders found.", topArea );
@@ -724,451 +694,6 @@ export const ui = {
 
             this.shaderList = shaderList;
         }, 10 );
-    },
-
-    async makeProfileView( userID, showLikes )
-    {
-        let [ topArea, bottomArea ] = this.area.split({ type: "vertical", sizes: ["calc(100% - 48px)", null], resize: false });
-        topArea.root.parentElement.classList.add( "hub-background" )
-        topArea.root.className += " p-6 hub-background-blur overflow-scroll";
-        bottomArea.root.className += " items-center content-center";
-
-        this._makeFooter( bottomArea );
-
-        const users = await this.fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_id", userID ) ] );
-        if( users.total === 0 )
-        {
-            LX.makeContainer( ["100%", "auto"], "mt-8 text-2xl font-medium justify-center text-center", "No user found.", topArea );
-            return;
-        }
-
-        const user = users.documents[ 0 ];
-        const userName = user[ "user_name" ];
-        const userDisplayName = user[ "display_name" ];
-
-        // Likes are only shown for the active user, they are private!
-        const ownProfile = this.fs.user && ( userID === this.fs.getUserId() );
-        showLikes = JSON.parse( showLikes ) && ownProfile;
-
-        const usersDocuments = await this.fs.listDocuments( FS.USERS_COLLECTION_ID );
-        const params = new URLSearchParams( document.location.search );
-        const querySearch = params.get( "search" );
-        const queryPage = params.get( "page" );
-        const PAGE_LIMIT = 25;
-
-        // Show profile
-        if( !showLikes )
-        {
-            document.title = `${ userName } - ShaderHub`;
-
-            const avatar = new LX.Avatar({ imgSource: user["avatar"], fallback: userName[0].toUpperCase(), className: `size-12 [&_span]:text-xl [&_span]:leading-12 ${ownProfile ? `cursor-pointer hover:brightness-125` : `pointer-events-none`}` });
-            if( ownProfile )
-            {
-                avatar.root.addEventListener( 'click', () => {
-                    const popPanel = new LX.Panel( { height: 'h-fit', className: '' } );
-                    popPanel.addText( 'URL', user.avatar, async ( v ) => {
-                        if( user.avatar === v )
-                        {
-                            popover.destroy();
-                            return;
-                        }
-                        const r = await this.fs.updateDocument( FS.USERS_COLLECTION_ID, user[ "$id" ], {
-                            "avatar": v
-                        } );
-                        if( r )
-                        {
-                            popover.destroy();
-                            avatar.root.querySelector( 'img' ).src = v;
-                            Utils.toast( `✅ Avatar updated`, `User: ${ userName }` );
-                        }
-                    }, { width: '400px', nameWidth: '10%', skipReset: true } );
-                    const popover = new LX.Popover( avatar.root, [ popPanel ], { side: 'bottom', align: 'start' } );
-                } );
-            }
-
-            const infoContainer = LX.makeContainer( ["100%", "auto"], "flex flex-col gap-4 p-2 my-8 justify-center", `
-                <div class="avatar-container flex flex-row gap-3 text-3xl font-bold content-center items-center">
-                    ${ userDisplayName ? `${ userDisplayName } <span class="text-xl font-normal text-muted-foreground">(${ userName })</span>` : userName }
-                </div>
-                <div class="flex flex-row gap-2">
-                    <div class="w-auto self-start mt-1">${ ownProfile && !mobile ? LX.makeIcon("Edit", { svgClass: "mr-3 cursor-pointer hover:text-foreground" } ).innerHTML : "" }</div>
-                    <div style="max-width: 600px; overflow-wrap: break-word;" class="desc-content text-lg font-medium text-card-foreground">${ user[ "description" ] ?? "" }</div>
-                </div>
-            `, topArea );
-
-            const avatarContainer = infoContainer.querySelector( ".avatar-container" );
-            avatarContainer.prepend( avatar.root );
-
-            const editButton = infoContainer.querySelector( "svg" );
-            if( editButton )
-            {
-                editButton.addEventListener( "click", (e) => {
-                    if( this._editingDescription ) return;
-                    e.preventDefault();
-                    const text = infoContainer.querySelector( ".desc-content" );
-                    const input = new LX.TextArea( null, text.innerHTML, async (v) => {
-                        v = v.substring( 0, 512 ); // CAP TO 512 chars
-                        text.innerHTML = v;
-                        input.root.replaceWith( text );
-                        await this.fs.updateDocument( FS.USERS_COLLECTION_ID, user[ "$id" ], {
-                            "description": v
-                        } );
-                        this._editingDescription = false;
-                    }, { width: "600px", resize: false, placeholder: "Enter your description here", className: "h-full", inputClass: "text-lg font-medium text-card-foreground bg-card!", fitHeight: true } );
-                    text.replaceWith( input.root );
-                    LX.doAsync( () => input.root.focus() );
-                    this._editingDescription = true;
-                } );
-            }
-
-            {
-                this.paginator = new LX.Pagination({
-                    maxButtons: 4,
-                    useEllipsis: true,
-                    alwaysShowEdges: false,
-                    xallowChangeItemsPerPage: true,
-                    onChange: (page) => {
-                        this._browsePage( page.toString() );
-                    }
-                });
-                infoContainer.appendChild( this.paginator.root );
-            }
-
-            const page = queryPage ? parseInt( queryPage ) : 1;
-            const queries = [
-                Query.equal( "author_id", userID ),
-                Query.orderAsc( 'name' ),
-                Query.offset( ( page - 1 ) * PAGE_LIMIT ),
-                Query.limit( PAGE_LIMIT )
-            ];
-
-            if( !ownProfile )
-            {
-                queries.push( Query.or( [ Query.equal( "public", true ), Query.isNull( "public" ) ] ) );
-            }
-
-            const result = await this.fs.listDocuments( FS.SHADERS_COLLECTION_ID, queries );
-
-            this.paginator.setPages( Math.ceil( result.total / PAGE_LIMIT ) );
-            this.paginator.setPage( page );
-
-            const dbShaders = result.documents.map( d =>
-            {
-                let score = 1;
-
-                if( querySearch )
-                {
-                    score = 0;
-
-                    const name = d.name.toLowerCase();
-                    const desc = ( d.description || "" ).toLowerCase();
-                    const author = ( d.author_name || "" ).toLowerCase();
-                    const terms = querySearch.toLowerCase().split( /\s+/ );
-
-                    for( const term of terms )
-                    {
-                        if( name.includes( term ) ) score += 6;
-                        if( desc.includes( term ) ) score += 3;
-                        if( author.includes( term ) ) score += 1;
-                    }
-                }
-
-                return { ...d, score }
-            }).filter( d => d.score > 0 );
-
-            if( dbShaders.length === 0 )
-            {
-                LX.makeContainer( ["100%", "auto"], "mt-8 text-2xl font-medium justify-center text-center", "No shaders found.", topArea );
-                return;
-            }
-
-            let skeletonHtml = "";
-
-            for( let i = 0; i < dbShaders.length; ++i )
-            {
-                const shaderItem = LX.makeElement( "li", `shader-item lexskeletonpart relative bg-background-blur hover:bg-accent overflow-hidden flex flex-col h-auto`, "" );
-                const shaderPreview = LX.makeElement( "img", "opacity-0 rounded-lg bg-background-blur hover:bg-accent border-none cursor-pointer self-center mt-2", "", shaderItem );
-                shaderPreview.style.width = "calc(100% - 1rem)";
-                shaderPreview.style.height = "calc(100% - 1rem)";
-                shaderPreview.src = "images/shader_preview.png";
-                LX.makeContainer( ["100%", "auto"], "absolute bottom-0 bg-background-blur flex flex-row rounded-b-lg gap-6 p-4 select-none", `
-                    <div class="w-full flex flex-col gap-1">
-                        <div class="w-3/4 h-3 lexskeletonpart"></div>
-                        <div class="w-1/2 h-3 lexskeletonpart"></div>
-                    </div>`, shaderItem );
-
-                skeletonHtml += shaderItem.outerHTML;
-            }
-
-            const skeleton = new LX.Skeleton( skeletonHtml );
-            skeleton.root.classList.add( "grid", "shader-list", "gap-6", "justify-center" );
-            topArea.attach( skeleton.root );
-
-            const previewFiles = await this.fs.listFiles( [
-                Query.startsWith( "name", ShaderHub.previewNamePrefix ),
-                Query.endsWith( "name", ".png" ),
-                Query.contains( "name", dbShaders.map( d => d[ "$id" ] ) ),
-                Query.limit( PAGE_LIMIT )
-            ] );
-
-            LX.doAsync( async () => {
-
-                // Instead of destroying it, convert to normal container
-                skeleton.root.querySelectorAll( ".lexskeletonpart" ).forEach( i => i.classList.remove( "lexskeletonpart" ) );
-
-                for( let i = 0; i < dbShaders.length; ++i )
-                {
-                    const document = dbShaders[ i ];
-                    const uid = document[ "$id" ];
-                    const name = document.name;
-
-                    const shaderInfo = {
-                        name,
-                        uid,
-                        likeCount: document[ "like_count" ] ?? 0,
-                        public: document[ "public" ] ?? true,
-                        url: await this.fs.getFileUrl( document[ "file_id" ] ),
-                    };
-
-                    const previewName = ShaderHub.getShaderPreviewName( shaderInfo.uid );
-                    const previewFile = previewFiles.files.find( f => f.name === previewName );
-                    if( previewFile )
-                    {
-                        shaderInfo.preview = await this.fs.getFileUrl( previewFile[ "$id" ] );
-                    }
-
-                    const shaderItem = skeleton.root.children[ i ];
-                    const shaderPreview = shaderItem.querySelector( "img" );
-                    shaderPreview.style.width = "calc(100% - 1rem)";
-                    shaderPreview.src = shaderInfo.preview ?? "images/shader_preview.png";
-                    shaderPreview.onload = () => shaderPreview.classList.remove( "opacity-0" );
-                    shaderItem.querySelector( "div" ).remove();
-                    const shaderDesc = LX.makeContainer( ["100%", "auto"], "flex flex-row rounded-b-lg gap-6 p-4 items-center select-none", `
-                        <div class="w-full">
-                            <div class="text-lg font-bold"><span>${ shaderInfo.name }</span></div>
-                        </div>
-                        <div class="flex flex-row gap-2 items-center">
-                            ${ ownProfile ? LX.makeIcon( shaderInfo.public ? "Eye" : "EyeOff", { svgClass: "viz-icon text-card-foreground" } ).innerHTML : "" }
-                            <div class="flex flex-row gap-1 items-center">
-                                ${ LX.makeIcon( "Heart", { svgClass: "fill-current text-card-foreground" } ).innerHTML }
-                                <span>${ shaderInfo.likeCount ?? 0 }</span>
-                            </div>
-                            ${ ownProfile ? `<span class="h-3 mx-2 border-right border-colored text-muted-foreground self-center items-center"></span>` : "" }
-                            ${ ownProfile ? LX.makeIcon( "EllipsisVertical", { svgClass: "shader-prof-opt text-card-foreground cursor-pointer" } ).innerHTML : "" }
-                        </div>`, shaderItem );
-
-                    let vizIcon = shaderDesc.querySelector( ".viz-icon" );
-                    const optButton = shaderDesc.querySelector( ".shader-prof-opt" );
-                    if( optButton )
-                    {
-                        optButton.addEventListener( "click", ( e ) => {
-                            new LX.DropdownMenu( optButton, [
-                                { name: shaderInfo.public ? "Make Private" : "Make Public", icon: shaderInfo.public ? "EyeOff" : "Eye", callback: async () => {
-                                    shaderInfo.public = !shaderInfo.public;
-                                    const newIcon = LX.makeIcon( shaderInfo.public ? "Eye" : "EyeOff", { svgClass: "viz-icon text-card-foreground" } ).querySelector( "svg" );
-                                    vizIcon.replaceWith( newIcon );
-                                    vizIcon = newIcon;
-                                    await this.fs.updateDocument( FS.SHADERS_COLLECTION_ID, uid, {
-                                        "public": shaderInfo.public,
-                                    } );
-                                } },
-                                { name: "Export", icon: "Download", callback: async () => {
-                                    const json = JSON.parse( await this.fs.requestFile( shaderInfo.url, "text" ) );
-                                    const code = json.passes.map( (p, i) => {
-                                        const lines = [];
-                                        if( i !== 0 ) lines.push( "" );
-                                        lines.push( `// ${ p.name }`, "", ...p.codeLines );
-                                        return lines.join( "\n" );
-                                    } ).join( "\n" );
-                                    LX.downloadFile( `${ shaderInfo.name.replaceAll( " ", "" ) }.wgsl`, code );
-                                } },
-                                null,
-                                { name: "Delete", icon: "Trash2", className: "destructive", callback: () => ShaderHub.deleteShader( { uid, name } ) },
-                            ], { side: "bottom", align: "end" });
-                        } );
-                    }
-
-                    shaderPreview.addEventListener( "mousedown", e => e.preventDefault() );
-                    shaderPreview.addEventListener( "mouseup", ( e ) => {
-                        ShaderHub.openShader( shaderInfo.uid, e );
-                    } );
-                }
-            }, 10 );
-        }
-        // Show liked shaders
-        else
-        {
-            document.title = `${ userName } Likes - ShaderHub`;
-
-            this.paginator = new LX.Pagination({
-                maxButtons: 4,
-                useEllipsis: true,
-                alwaysShowEdges: false,
-                xallowChangeItemsPerPage: true,
-                onChange: (page) => {
-                    this._browsePage( page.toString() );
-                }
-            });
-
-            const page = queryPage ? parseInt( queryPage ) : 1;
-
-            const queries = [
-                Query.or( [ Query.equal( "public", true ), Query.isNull( "public" ) ] ),
-                Query.offset( ( page - 1 ) * PAGE_LIMIT ),
-                Query.limit( PAGE_LIMIT )
-            ];
-
-            const likes = user[ "liked_shaders" ];
-            const qOrs = [];
-            likes.forEach( l => {
-                qOrs.push( Query.equal( "$id", l ) );
-            } )
-
-            if( qOrs.length )
-            {
-                queries.push( qOrs.length === 1 ? qOrs[ 0 ] : Query.or( qOrs ) );
-            }
-            else
-            {
-                LX.makeContainer( ["100%", "auto"], "mt-8 text-2xl font-medium justify-center text-center", `
-                    No liked shaders found. <br>
-                    Start browsing now to discover new shaders!`, topArea );
-                return;
-            }
-
-            const result = await this.fs.listDocuments( FS.SHADERS_COLLECTION_ID, queries );
-
-            this.paginator.setPages( Math.ceil( result.total / PAGE_LIMIT ) );
-            this.paginator.setPage( page );
-
-            let dbShaders = result.documents.map( d =>
-            {
-                let score = 1;
-
-                if( querySearch )
-                {
-                    score = 0;
-
-                    const name = d.name.toLowerCase();
-                    const desc = ( d.description || "" ).toLowerCase();
-                    const author = ( d.author_name || "" ).toLowerCase();
-                    const terms = querySearch.toLowerCase().split( /\s+/ );
-
-                    for( const term of terms )
-                    {
-                        if( name.includes( term ) ) score += 6;
-                        if( desc.includes( term ) ) score += 3;
-                        if( author.includes( term ) ) score += 1;
-                    }
-                }
-
-                return { ...d, score }
-            }).filter( d => d.score > 0 );
-
-            if( dbShaders.length === 0 )
-            {
-                LX.makeContainer( ["100%", "auto"], "mt-8 text-2xl font-medium justify-center text-center", "No shaders found.", topArea );
-                return;
-            }
-
-            const infoContainer = LX.makeContainer( ["100%", "auto"], "flex flex-col gap-2 p-2 my-8 justify-center", `
-                <div style="font-size: 2.5rem" class="font-bold">${ dbShaders.length } Liked Shaders</div>
-                <div style="font-size: 1rem;" class="font-medium text-card-foreground">Order: Most recent</div>
-            `, topArea );
-            infoContainer.appendChild( this.paginator.root );
-
-            let skeletonHtml = "";
-
-            for( let i = 0; i < dbShaders.length; ++i )
-            {
-                const shaderItem = LX.makeElement( "li", `shader-item lexskeletonpart relative bg-background-blur hover:bg-accent overflow-hidden flex flex-col h-auto`, "" );
-                const shaderPreview = LX.makeElement( "img", "opacity-0 rounded-lg bg-background-blur hover:bg-accent border-none cursor-pointer self-center mt-2", "", shaderItem );
-                shaderPreview.style.width = "calc(100% - 1rem)";
-                shaderPreview.style.height = "calc(100% - 1rem)";
-                shaderPreview.src = "images/shader_preview.png";
-                LX.makeContainer( ["100%", "auto"], "absolute bottom-0 bg-background-blur flex flex-row rounded-b-lg gap-6 p-4 select-none", `
-                    <div class="w-full flex flex-col gap-1">
-                        <div class="w-3/4 h-3 lexskeletonpart"></div>
-                        <div class="w-1/2 h-3 lexskeletonpart"></div>
-                    </div>`, shaderItem );
-
-                skeletonHtml += shaderItem.outerHTML;
-            }
-
-            const skeleton = new LX.Skeleton( skeletonHtml );
-            skeleton.root.classList.add( "grid", "shader-list", "gap-6", "justify-center" );
-            topArea.attach( skeleton.root );
-
-            const previewFiles = await this.fs.listFiles( [
-                Query.startsWith( "name", ShaderHub.previewNamePrefix ),
-                Query.endsWith( "name", ".png" ),
-                Query.contains( "name", dbShaders.map( d => d[ "$id" ] ) ),
-                Query.limit( PAGE_LIMIT )
-            ] );
-
-            LX.doAsync( async () => {
-
-                // Instead of destroying it, convert to normal container
-                skeleton.root.querySelectorAll( ".lexskeletonpart" ).forEach( i => i.classList.remove( "lexskeletonpart" ) );
-
-                const indexMap = new Map( likes.map( ( id, i ) => [ id, i ] ) );
-                dbShaders = dbShaders.sort( ( a, b ) => indexMap.get( a ) - indexMap.get( b ) ).reverse();
-
-                for( let i = 0; i < dbShaders.length; ++i )
-                {
-                    const document = dbShaders[ i ];
-                    const name = document.name;
-
-                    const shaderInfo = {
-                        name,
-                        uid: document[ "$id" ],
-                        likeCount: document[ "like_count" ] ?? 0,
-                    };
-
-                    const authorId = document[ "author_id" ];
-                    if( authorId )
-                    {
-                        const userDocument = usersDocuments.documents.find( d => d[ "user_id" ] === authorId );
-                        const author = userDocument[ "user_name" ];
-                        shaderInfo.author = author;
-                        shaderInfo.authorId = authorId;
-                    }
-                    else
-                    {
-                        shaderInfo.author = document[ "author_name" ];
-                        shaderInfo.anonAuthor = true;
-                    }
-
-                    const previewName = ShaderHub.getShaderPreviewName( shaderInfo.uid );
-                    const previewFile = previewFiles.files.find( f => f.name === previewName );
-                    if( previewFile )
-                    {
-                        shaderInfo.preview = await this.fs.getFileUrl( previewFile[ "$id" ] );
-                    }
-
-                    const shaderItem = skeleton.root.children[ i ];
-                    const shaderPreview = shaderItem.querySelector( "img" );
-                    shaderPreview.style.width = "calc(100% - 1rem)";
-                    shaderPreview.src = shaderInfo.preview ?? "images/shader_preview.png";
-                    shaderPreview.onload = () => shaderPreview.classList.remove( "opacity-0" );
-                    shaderItem.querySelector( "div" ).remove();
-                    const shaderDesc = LX.makeContainer( ["100%", "auto"], "flex flex-row rounded-b-lg gap-6 p-4 items-center select-none", `
-                        <div class="w-full">
-                            <div class="text-lg font-bold"><span>${ shaderInfo.name }</span></div>
-                            <div class="text-sm font-light">by ${ !shaderInfo.anonAuthor ? `<a onclick='ShaderHub.openProfile("${ shaderInfo.authorId }")' class='hub-link font-medium'>` : "" }<span>${ shaderInfo.author }</span>${ !shaderInfo.anonAuthor ? "</a>" : "" }</div>
-                        </div>
-                        <div class="flex flex-row gap-1 items-center">
-                            ${ LX.makeIcon( "Heart", { svgClass: "fill-current text-card-foreground" } ).innerHTML }
-                            <span>${ shaderInfo.likeCount ?? 0 }</span>
-                        </div>`, shaderItem );
-
-                    shaderPreview.addEventListener( "mousedown", e => e.preventDefault() );
-                    shaderPreview.addEventListener( "mouseup", ( e ) => {
-                        ShaderHub.openShader( shaderInfo.uid, e );
-                    } );
-                }
-            }, 10 );
-        }
     },
 
     async makeShaderView( shaderUid )
@@ -1818,6 +1343,460 @@ export const ui = {
             LX.doAsync( () => editor.charWidth = editor._measureChar(), 250 );
 
             ShaderHub.onShaderEditorCreated( shader, canvas );
+        }
+    },
+
+    async makeProfileView( userID )
+    {
+        let [ topArea, bottomArea ] = this.area.split({ type: "vertical", sizes: ["calc(100% - 48px)", null], resize: false });
+        topArea.root.parentElement.classList.add( "hub-background" )
+        topArea.root.className += " p-6 hub-background-blur overflow-scroll";
+        bottomArea.root.className += " items-center content-center";
+
+        this._makeFooter( bottomArea );
+
+        const users = await this.fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_id", userID ) ] );
+        if( users.total === 0 )
+        {
+            LX.makeContainer( ["100%", "auto"], "mt-8 text-2xl font-medium justify-center text-center", "No user found.", topArea );
+            return;
+        }
+
+        const user = users.documents[ 0 ];
+        const userName = user[ "user_name" ];
+        const userDisplayName = user[ "display_name" ];
+
+        // Likes are only shown for the active user, they are private!
+        const ownProfile = this.fs.user && ( userID === this.fs.getUserId() );
+        const usersDocuments = await this.fs.listDocuments( FS.USERS_COLLECTION_ID );
+        const PAGE_LIMIT = 8;
+
+        const avatar = new LX.Avatar({ imgSource: user["avatar"], fallback: userName[0].toUpperCase(), className: `size-12 [&_span]:text-xl [&_span]:leading-12 ${ownProfile ? `cursor-pointer hover:brightness-125` : `pointer-events-none`}` });
+        if( ownProfile )
+        {
+            avatar.root.addEventListener( 'click', () => {
+                const popPanel = new LX.Panel( { height: 'h-fit', className: '' } );
+                popPanel.addText( 'URL', user.avatar, async ( v ) => {
+                    if( user.avatar === v )
+                    {
+                        popover.destroy();
+                        return;
+                    }
+                    const r = await this.fs.updateDocument( FS.USERS_COLLECTION_ID, user[ "$id" ], {
+                        "avatar": v
+                    } );
+                    if( r )
+                    {
+                        popover.destroy();
+                        avatar.root.querySelector( 'img' ).src = v;
+                        Utils.toast( `✅ Avatar updated`, `User: ${ userName }` );
+                    }
+                }, { width: '400px', nameWidth: '10%', skipReset: true } );
+                const popover = new LX.Popover( avatar.root, [ popPanel ], { side: 'bottom', align: 'start' } );
+            } );
+        }
+
+        const infoContainer = LX.makeContainer( ["100%", "auto"], "flex flex-col gap-4 p-2 my-8 justify-center", `
+            <div class="avatar-container flex flex-row gap-3 text-3xl font-bold content-center items-center">
+                ${ userDisplayName ? `${ userDisplayName } <span class="text-xl font-normal text-muted-foreground">(${ userName })</span>` : userName }
+            </div>
+            <div class="flex flex-row gap-2">
+                <div class="w-auto self-start mt-1">${ ownProfile && !mobile ? LX.makeIcon("Edit", { svgClass: "mr-3 cursor-pointer hover:text-foreground" } ).innerHTML : "" }</div>
+                <div style="max-width: 600px; overflow-wrap: break-word;" class="desc-content text-lg font-medium text-card-foreground">${ user[ "description" ] ?? "" }</div>
+            </div>
+        `, topArea );
+
+        const avatarContainer = infoContainer.querySelector( ".avatar-container" );
+        avatarContainer.prepend( avatar.root );
+
+        const editButton = infoContainer.querySelector( "svg" );
+        if( editButton )
+        {
+            editButton.addEventListener( "click", (e) => {
+                if( this._editingDescription ) return;
+                e.preventDefault();
+                const text = infoContainer.querySelector( ".desc-content" );
+                const input = new LX.TextArea( null, text.innerHTML, async (v) => {
+                    v = v.substring( 0, 512 ); // CAP TO 512 chars
+                    text.innerHTML = v;
+                    input.root.replaceWith( text );
+                    await this.fs.updateDocument( FS.USERS_COLLECTION_ID, user[ "$id" ], {
+                        "description": v
+                    } );
+                    this._editingDescription = false;
+                }, { width: "600px", resize: false, placeholder: "Enter your description here", className: "h-full", inputClass: "text-lg font-medium text-card-foreground bg-card!", fitHeight: true } );
+                text.replaceWith( input.root );
+                LX.doAsync( () => input.root.focus() );
+                this._editingDescription = true;
+            } );
+        }
+
+        const tabs = topArea.addTabs( { parentClass: 'bg-transparent', sizes: [ 'auto', 'auto' ], contentClass: 'p-4 my-2 bg-transparent rounded-xl border-color h-auto!' } );
+
+        document.title = `${ userName } - ShaderHub`;
+
+        // Shader list
+        {
+            const shadersContainer = LX.makeContainer( [ null, 'auto' ], 'flex flex-col relative p-1 pt-0 rounded-lg overflow-hidden' );
+            tabs.add( 'Shaders', shadersContainer, { selected: true, onSelect: ( event, name ) => {
+                document.title = `${ userName } - ShaderHub`;
+            } } );
+
+            const listHeader = LX.makeContainer( [ "100%", 'auto' ], 'flex flex-row', '', shadersContainer );
+
+            const searchShaderInput = new LX.TextInput(null, '', v => {
+                this._refreshOwnShaders( v );
+            }, { placeholder: "Filter shaders...", width: "256px" });
+            listHeader.appendChild( searchShaderInput.root );
+
+            // Add pagination for shader list
+            const paginator = new LX.Pagination({
+                className: "ml-auto",
+                maxButtons: 4,
+                useEllipsis: true,
+                alwaysShowEdges: false,
+                xallowChangeItemsPerPage: true,
+                onChange: (page) => {
+                    this._refreshOwnShaders( undefined, page.toString() );
+                }
+            });
+            listHeader.appendChild( paginator.root );
+
+            const listContent = LX.makeContainer( [ "100%", 'auto' ], 'flex p-1 my-2', '', shadersContainer );
+
+            this._refreshOwnShaders = async ( filterSearch, filterPage ) => {
+
+                listContent.innerHTML = "";
+
+                this._lastFilterSearch = filterSearch ?? '';
+                this._lastFilteredPage = filterPage ? parseInt( filterPage ) : 1;
+
+                const queries = [
+                    Query.equal( "author_id", userID ),
+                    Query.orderAsc( 'name' ),
+                    Query.offset( ( this._lastFilteredPage - 1 ) * PAGE_LIMIT ),
+                    Query.limit( PAGE_LIMIT )
+                ];
+
+                if( !ownProfile )
+                {
+                    queries.push( Query.or( [ Query.equal( "public", true ), Query.isNull( "public" ) ] ) );
+                }
+
+                const result = await this.fs.listDocuments( FS.SHADERS_COLLECTION_ID, queries );
+
+                paginator.setPages( Math.ceil( result.total / PAGE_LIMIT ) );
+                paginator.setPage( this._lastFilteredPage );
+
+                const dbShaders = ShaderHub.filterShaders( result.documents, this._lastFilterSearch );
+                if( dbShaders.length === 0 )
+                {
+                    LX.makeContainer( ["100%", "auto"], "mt-8 text-2xl font-medium justify-center text-center", "No shaders found.", listContent );
+                    return;
+                }
+
+                let skeletonHtml = "";
+
+                for( let i = 0; i < dbShaders.length; ++i )
+                {
+                    const shaderItem = LX.makeElement( "li", `shader-item lexskeletonpart relative bg-background-blur hover:bg-accent overflow-hidden flex flex-col h-auto`, "" );
+                    const shaderPreview = LX.makeElement( "img", "opacity-0 rounded-lg bg-background-blur hover:bg-accent border-none cursor-pointer self-center mt-2", "", shaderItem );
+                    shaderPreview.style.width = "calc(100% - 1rem)";
+                    shaderPreview.style.height = "calc(100% - 1rem)";
+                    shaderPreview.src = "images/shader_preview.png";
+                    LX.makeContainer( ["100%", "auto"], "absolute bottom-0 bg-background-blur flex flex-row rounded-b-lg gap-6 p-4 select-none", `
+                        <div class="w-full flex flex-col gap-1">
+                            <div class="w-3/4 h-3 lexskeletonpart"></div>
+                            <div class="w-1/2 h-3 lexskeletonpart"></div>
+                        </div>`, shaderItem );
+
+                    skeletonHtml += shaderItem.outerHTML;
+                }
+
+                const skeleton = new LX.Skeleton( skeletonHtml );
+                skeleton.root.classList.add( "grid", "shader-list", "gap-6", "justify-center" );
+                listContent.appendChild( skeleton.root );
+
+                const previewFiles = await this.fs.listFiles( [
+                    Query.startsWith( "name", ShaderHub.previewNamePrefix ),
+                    Query.endsWith( "name", ".png" ),
+                    Query.contains( "name", dbShaders.map( d => d[ "$id" ] ) ),
+                    Query.limit( PAGE_LIMIT )
+                ] );
+
+                LX.doAsync( async () => {
+
+                    // Instead of destroying it, convert to normal container
+                    skeleton.root.querySelectorAll( ".lexskeletonpart" ).forEach( i => i.classList.remove( "lexskeletonpart" ) );
+
+                    for( let i = 0; i < dbShaders.length; ++i )
+                    {
+                        const document = dbShaders[ i ];
+                        const uid = document[ "$id" ];
+                        const name = document.name;
+
+                        const shaderInfo = {
+                            name,
+                            uid,
+                            likeCount: document[ "like_count" ] ?? 0,
+                            public: document[ "public" ] ?? true,
+                            url: await this.fs.getFileUrl( document[ "file_id" ] ),
+                        };
+
+                        const previewName = ShaderHub.getShaderPreviewName( shaderInfo.uid );
+                        const previewFile = previewFiles.files.find( f => f.name === previewName );
+                        if( previewFile )
+                        {
+                            shaderInfo.preview = await this.fs.getFileUrl( previewFile[ "$id" ] );
+                        }
+
+                        const shaderItem = skeleton.root.children[ i ];
+                        const shaderPreview = shaderItem.querySelector( "img" );
+                        shaderPreview.style.width = "calc(100% - 1rem)";
+                        shaderPreview.src = shaderInfo.preview ?? "images/shader_preview.png";
+                        shaderPreview.onload = () => shaderPreview.classList.remove( "opacity-0" );
+                        shaderItem.querySelector( "div" ).remove();
+                        const shaderDesc = LX.makeContainer( ["100%", "auto"], "flex flex-row rounded-b-lg gap-6 p-4 items-center select-none", `
+                            <div class="w-full flex-auto-fill overflow-hidden">
+                                <div class="text-base sm:text-lg font-bold"><span class="truncate max-w-full block">${ shaderInfo.name }</span></div>
+                            </div>
+                            <div class="flex flex-row gap-2 flex-auto-keep items-center">
+                                ${ ownProfile ? LX.makeIcon( shaderInfo.public ? "Eye" : "EyeOff", { svgClass: "viz-icon text-card-foreground" } ).innerHTML : "" }
+                                <div class="flex flex-row gap-1 items-center">
+                                    ${ LX.makeIcon( "Heart", { svgClass: "fill-current text-card-foreground" } ).innerHTML }
+                                    <span>${ shaderInfo.likeCount ?? 0 }</span>
+                                </div>
+                                ${ ownProfile ? `<span class="h-4 mx-2 border-right border-color text-muted-foreground self-center items-center"></span>` : "" }
+                                ${ ownProfile ? LX.makeIcon( "EllipsisVertical", { svgClass: "shader-prof-opt text-card-foreground cursor-pointer" } ).innerHTML : "" }
+                            </div>`, shaderItem );
+
+                        let vizIcon = shaderDesc.querySelector( ".viz-icon" );
+                        const optButton = shaderDesc.querySelector( ".shader-prof-opt" );
+                        if( optButton )
+                        {
+                            optButton.addEventListener( "click", ( e ) => {
+                                new LX.DropdownMenu( optButton, [
+                                    { name: shaderInfo.public ? "Make Private" : "Make Public", icon: shaderInfo.public ? "EyeOff" : "Eye", callback: async () => {
+                                        shaderInfo.public = !shaderInfo.public;
+                                        const newIcon = LX.makeIcon( shaderInfo.public ? "Eye" : "EyeOff", { svgClass: "viz-icon text-card-foreground" } ).querySelector( "svg" );
+                                        vizIcon.replaceWith( newIcon );
+                                        vizIcon = newIcon;
+                                        await this.fs.updateDocument( FS.SHADERS_COLLECTION_ID, uid, {
+                                            "public": shaderInfo.public,
+                                        } );
+                                    } },
+                                    { name: "Export", icon: "Download", callback: async () => {
+                                        const json = JSON.parse( await this.fs.requestFile( shaderInfo.url, "text" ) );
+                                        const code = json.passes.map( (p, i) => {
+                                            const lines = [];
+                                            if( i !== 0 ) lines.push( "" );
+                                            lines.push( `// ${ p.name }`, "", ...p.codeLines );
+                                            return lines.join( "\n" );
+                                        } ).join( "\n" );
+                                        LX.downloadFile( `${ shaderInfo.name.replaceAll( " ", "" ) }.wgsl`, code );
+                                    } },
+                                    null,
+                                    { name: "Delete", icon: "Trash2", className: "destructive", callback: () => ShaderHub.deleteShader( { uid, name } ) },
+                                ], { side: "bottom", align: "end" });
+                            } );
+                        }
+
+                        shaderPreview.addEventListener( "mousedown", e => e.preventDefault() );
+                        shaderPreview.addEventListener( "mouseup", ( e ) => {
+                            ShaderHub.openShader( shaderInfo.uid, e );
+                        } );
+                    }
+                }, 10 );
+            }
+
+            await this._refreshOwnShaders();
+        }
+
+        // Show likes only for account owner
+        if( !ownProfile )
+        {
+            return;
+        }
+
+        // Likes
+        {
+            let likesOpened = false;
+            const likesContainer = LX.makeContainer( [ null, 'auto' ], 'flex flex-col relative p-1 pt-0 rounded-lg overflow-hidden' );
+            tabs.add( 'Likes', likesContainer, { xselected: true, onSelect: async ( event, name ) => {
+                document.title = `${ userName } Likes - ShaderHub`;
+
+                if( likesOpened )
+                {
+                    return;
+                }
+
+                likesOpened = true;
+
+                const listHeader = LX.makeContainer( [ "100%", 'auto' ], 'flex flex-row', '', likesContainer );
+
+                const searchShaderInput = new LX.TextInput(null, '', v => {
+                    this._refreshLikedShaders( v );
+                }, { placeholder: "Filter shaders...", width: "256px" });
+                listHeader.appendChild( searchShaderInput.root );
+
+                const paginator = new LX.Pagination({
+                    className: "ml-auto",
+                    maxButtons: 4,
+                    useEllipsis: true,
+                    alwaysShowEdges: false,
+                    xallowChangeItemsPerPage: true,
+                    onChange: (page) => {
+                        this._refreshLikedShaders( undefined, page.toString() );
+                    }
+                });
+                listHeader.appendChild( paginator.root );
+
+                const listContent = LX.makeContainer( [ "100%", 'auto' ], 'flex p-1 my-2', '', likesContainer );
+
+                this._refreshLikedShaders = async ( filterSearch, filterPage ) => {
+
+                    listContent.innerHTML = "";
+
+                    this._lastFilterSearch = filterSearch ?? '';
+                    this._lastFilteredPage = filterPage ? parseInt( filterPage ) : 1;
+
+                    const queries = [
+                        Query.or( [ Query.equal( "public", true ), Query.isNull( "public" ) ] ),
+                        Query.offset( ( this._lastFilteredPage - 1 ) * PAGE_LIMIT ),
+                        Query.limit( PAGE_LIMIT )
+                    ];
+
+                    const likes = user[ "liked_shaders" ];
+                    const qOrs = [];
+                    likes.forEach( l => {
+                        qOrs.push( Query.equal( "$id", l ) );
+                    } )
+
+                    if( qOrs.length )
+                    {
+                        queries.push( qOrs.length === 1 ? qOrs[ 0 ] : Query.or( qOrs ) );
+                    }
+                    else
+                    {
+                        LX.makeContainer( ["100%", "auto"], "mt-2 text-2xl font-medium justify-center text-center", `
+                            No liked shaders found. <br>
+                            Start browsing now to discover new shaders!`, likesContainer );
+                        return;
+                    }
+
+                    const result = await this.fs.listDocuments( FS.SHADERS_COLLECTION_ID, queries );
+
+                    paginator.setPages( Math.ceil( result.total / PAGE_LIMIT ) );
+                    paginator.setPage( this._lastFilteredPage );
+
+                    let dbShaders = ShaderHub.filterShaders( result.documents, this._lastFilterSearch );
+                    if( dbShaders.length === 0 )
+                    {
+                        LX.makeContainer( ["100%", "auto"], "mt-2 text-2xl font-medium justify-center text-center", "No shaders found.", listContent );
+                        return;
+                    }
+
+                    let skeletonHtml = "";
+
+                    for( let i = 0; i < dbShaders.length; ++i )
+                    {
+                        const shaderItem = LX.makeElement( "li", `shader-item lexskeletonpart relative bg-background-blur hover:bg-accent overflow-hidden flex flex-col h-auto`, "" );
+                        const shaderPreview = LX.makeElement( "img", "opacity-0 rounded-lg bg-background-blur hover:bg-accent border-none cursor-pointer self-center mt-2", "", shaderItem );
+                        shaderPreview.style.width = "calc(100% - 1rem)";
+                        shaderPreview.style.height = "calc(100% - 1rem)";
+                        shaderPreview.src = "images/shader_preview.png";
+                        LX.makeContainer( ["100%", "auto"], "absolute bottom-0 bg-background-blur flex flex-row rounded-b-lg gap-6 p-4 select-none", `
+                            <div class="w-full flex flex-col gap-1">
+                                <div class="w-3/4 h-3 lexskeletonpart"></div>
+                                <div class="w-1/2 h-3 lexskeletonpart"></div>
+                            </div>`, shaderItem );
+
+                        skeletonHtml += shaderItem.outerHTML;
+                    }
+
+                    const skeleton = new LX.Skeleton( skeletonHtml );
+                    skeleton.root.classList.add( "grid", "shader-list", "gap-6", "justify-center" );
+                    listContent.appendChild( skeleton.root );
+
+                    const previewFiles = await this.fs.listFiles( [
+                        Query.startsWith( "name", ShaderHub.previewNamePrefix ),
+                        Query.endsWith( "name", ".png" ),
+                        Query.contains( "name", dbShaders.map( d => d[ "$id" ] ) ),
+                        Query.limit( PAGE_LIMIT )
+                    ] );
+
+                    LX.doAsync( async () => {
+
+                        // Instead of destroying it, convert to normal container
+                        skeleton.root.querySelectorAll( ".lexskeletonpart" ).forEach( i => i.classList.remove( "lexskeletonpart" ) );
+
+                        const indexMap = new Map( likes.map( ( id, i ) => [ id, i ] ) );
+                        dbShaders = dbShaders.sort( ( a, b ) => indexMap.get( a ) - indexMap.get( b ) ).reverse();
+
+                        for( let i = 0; i < dbShaders.length; ++i )
+                        {
+                            const document = dbShaders[ i ];
+                            const name = document.name;
+
+                            const shaderInfo = {
+                                name,
+                                uid: document[ "$id" ],
+                                likeCount: document[ "like_count" ] ?? 0,
+                            };
+
+                            const authorId = document[ "author_id" ];
+                            if( authorId )
+                            {
+                                const userDocument = usersDocuments.documents.find( d => d[ "user_id" ] === authorId );
+                                const author = userDocument[ "user_name" ];
+                                shaderInfo.author = author;
+                                shaderInfo.authorId = authorId;
+                            }
+                            else
+                            {
+                                shaderInfo.author = document[ "author_name" ];
+                                shaderInfo.anonAuthor = true;
+                            }
+
+                            const previewName = ShaderHub.getShaderPreviewName( shaderInfo.uid );
+                            const previewFile = previewFiles.files.find( f => f.name === previewName );
+                            if( previewFile )
+                            {
+                                shaderInfo.preview = await this.fs.getFileUrl( previewFile[ "$id" ] );
+                            }
+
+                            const shaderItem = skeleton.root.children[ i ];
+                            const shaderPreview = shaderItem.querySelector( "img" );
+                            shaderPreview.style.width = "calc(100% - 1rem)";
+                            shaderPreview.src = shaderInfo.preview ?? "images/shader_preview.png";
+                            shaderPreview.onload = () => shaderPreview.classList.remove( "opacity-0" );
+                            shaderItem.querySelector( "div" ).remove();
+                            const shaderDesc = LX.makeContainer( ["100%", "auto"], "flex flex-row rounded-b-lg gap-6 p-4 items-center select-none", `
+                                <div class="w-full">
+                                    <div class="text-lg font-bold"><span>${ shaderInfo.name }</span></div>
+                                    <div class="text-sm font-light">by ${ !shaderInfo.anonAuthor ? `<a onclick='ShaderHub.openProfile("${ shaderInfo.authorId }")' class='hub-link font-medium'>` : "" }<span>${ shaderInfo.author }</span>${ !shaderInfo.anonAuthor ? "</a>" : "" }</div>
+                                </div>
+                                <div class="flex flex-row gap-1 items-center">
+                                    ${ LX.makeIcon( "Heart", { svgClass: "fill-current text-card-foreground" } ).innerHTML }
+                                    <span>${ shaderInfo.likeCount ?? 0 }</span>
+                                </div>`, shaderItem );
+
+                            shaderPreview.addEventListener( "mousedown", e => e.preventDefault() );
+                            shaderPreview.addEventListener( "mouseup", ( e ) => {
+                                ShaderHub.openShader( shaderInfo.uid, e );
+                            } );
+                        }
+                    }, 10 );
+                }
+
+                await this._refreshLikedShaders();
+            } } );
+        }
+
+        // Account
+        {
+            const accountContainer = LX.makeContainer( [ null, 'auto' ], 'flex flex-col relative p-1 pt-0 rounded-lg overflow-hidden' );
+            tabs.add( 'Account', accountContainer, { xselected: true, onSelect: ( event, name ) => {} } );
         }
     },
 
