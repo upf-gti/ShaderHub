@@ -216,9 +216,23 @@ export const ui = {
             }
         }
 
+        const isPasswordRecovery = params.get( "verifyEmail" ) === "true";
         const queryPasswordRecoverySecret = params.get( "secret" );
         const queryPasswordRecoveryUserId = params.get( "userId" );
-        if( queryPasswordRecoverySecret )
+        if( isPasswordRecovery )
+        {
+            // use data for email verification
+            const result = await fs.account.updateEmailVerification({
+                userId: queryPasswordRecoveryUserId,
+                secret: queryPasswordRecoverySecret
+            });
+            if( result )
+            {
+                Utils.toast( `✅ Email verified successfully!`, `User: ${ fs.user.name }` );
+            }
+            
+        }
+        else if( queryPasswordRecoverySecret && queryPasswordRecoveryUserId )
         {
             this.openUpdatePasswordRecoverDialog( queryPasswordRecoveryUserId, queryPasswordRecoverySecret );
         }
@@ -938,7 +952,30 @@ export const ui = {
                 } );
 
                 // Like action
-                if( !ownProfile )
+                if( !this.fs.user )
+                {
+                    likeButton.title = "Like Shader";
+                    LX.asTooltip( likeButton, likeButton.title );
+                    likeButton.addEventListener( "click", (e) => {
+                        e.preventDefault();
+                       
+                        if( this._lastOpenedDialog )
+                        {
+                            this._lastOpenedDialog.close();
+                        }
+
+                        const dialog = new LX.Dialog( null, ( p ) => {
+                            p.root.className = LX.mergeClass( p.root.className, 'pad-2xl flex flex-col gap-2' );
+                            LX.makeContainer( [ '100%', '100%' ], 'text-lg font-medium text-foreground p-2', `Login to like this shader.`, p );
+                            p.addButton( null, 'Close', () => {
+                                dialog.destroy();
+                            }, { buttonClass: 'h-8 ghost' } );
+                        }, { modal: true } );
+
+                        this._lastOpenedDialog = dialog;
+                    } );
+                }
+                else if( !ownProfile )
                 {
                     likeButton.title = "Like Shader";
                     LX.asTooltip( likeButton, likeButton.title );
@@ -1364,72 +1401,24 @@ export const ui = {
 
         const user = users.documents[ 0 ];
         const userName = user[ "user_name" ];
-        const userDisplayName = user[ "display_name" ];
 
         // Likes are only shown for the active user, they are private!
         const ownProfile = this.fs.user && ( userID === this.fs.getUserId() );
         const usersDocuments = await this.fs.listDocuments( FS.USERS_COLLECTION_ID );
         const PAGE_LIMIT = 8;
 
-        const avatar = new LX.Avatar({ imgSource: user["avatar"], fallback: userName[0].toUpperCase(), className: `size-12 [&_span]:text-xl [&_span]:leading-12 ${ownProfile ? `cursor-pointer hover:brightness-125` : `pointer-events-none`}` });
-        if( ownProfile )
-        {
-            avatar.root.addEventListener( 'click', () => {
-                const popPanel = new LX.Panel( { height: 'h-fit', className: '' } );
-                popPanel.addText( 'URL', user.avatar, async ( v ) => {
-                    if( user.avatar === v )
-                    {
-                        popover.destroy();
-                        return;
-                    }
-                    const r = await this.fs.updateDocument( FS.USERS_COLLECTION_ID, user[ "$id" ], {
-                        "avatar": v
-                    } );
-                    if( r )
-                    {
-                        popover.destroy();
-                        avatar.root.querySelector( 'img' ).src = v;
-                        Utils.toast( `✅ Avatar updated`, `User: ${ userName }` );
-                    }
-                }, { width: '400px', nameWidth: '10%', skipReset: true } );
-                const popover = new LX.Popover( avatar.root, [ popPanel ], { side: 'bottom', align: 'start' } );
-            } );
-        }
-
+        const avatar = new LX.Avatar({ imgSource: user["avatar"], fallback: userName[0].toUpperCase(), className: `size-12 [&_span]:text-xl [&_span]:leading-12` });
         const infoContainer = LX.makeContainer( ["100%", "auto"], "flex flex-col gap-4 p-2 my-8 justify-center", `
             <div class="avatar-container flex flex-row gap-3 text-3xl font-bold content-center items-center">
-                ${ userDisplayName ? `${ userDisplayName } <span class="text-xl font-normal text-muted-foreground">(${ userName })</span>` : userName }
+                ${ user[ "display_name" ] ? `${ user[ "display_name" ] } <span class="text-xl font-normal text-muted-foreground">(${ userName })</span>` : userName }
             </div>
             <div class="flex flex-row gap-2">
-                <div class="w-auto self-start mt-1">${ ownProfile && !mobile ? LX.makeIcon("Edit", { svgClass: "mr-3 cursor-pointer hover:text-foreground" } ).innerHTML : "" }</div>
                 <div style="max-width: 600px; overflow-wrap: break-word;" class="desc-content text-lg font-medium text-card-foreground">${ user[ "description" ] ?? "" }</div>
             </div>
         `, topArea );
 
         const avatarContainer = infoContainer.querySelector( ".avatar-container" );
         avatarContainer.prepend( avatar.root );
-
-        const editButton = infoContainer.querySelector( "svg" );
-        if( editButton )
-        {
-            editButton.addEventListener( "click", (e) => {
-                if( this._editingDescription ) return;
-                e.preventDefault();
-                const text = infoContainer.querySelector( ".desc-content" );
-                const input = new LX.TextArea( null, text.innerHTML, async (v) => {
-                    v = v.substring( 0, 512 ); // CAP TO 512 chars
-                    text.innerHTML = v;
-                    input.root.replaceWith( text );
-                    await this.fs.updateDocument( FS.USERS_COLLECTION_ID, user[ "$id" ], {
-                        "description": v
-                    } );
-                    this._editingDescription = false;
-                }, { width: "600px", resize: false, placeholder: "Enter your description here", className: "h-full", inputClass: "text-lg font-medium text-card-foreground bg-card!", fitHeight: true } );
-                text.replaceWith( input.root );
-                LX.doAsync( () => input.root.focus() );
-                this._editingDescription = true;
-            } );
-        }
 
         const tabs = topArea.addTabs( { parentClass: 'bg-transparent', sizes: [ 'auto', 'auto' ], contentClass: 'p-4 my-2 bg-transparent rounded-xl border-color h-auto!' } );
 
@@ -1491,7 +1480,10 @@ export const ui = {
                 const dbShaders = ShaderHub.filterShaders( result.documents, this._lastFilterSearch );
                 if( dbShaders.length === 0 )
                 {
-                    LX.makeContainer( ["100%", "auto"], "mt-8 text-2xl font-medium justify-center text-center", "No shaders found.", listContent );
+                    const headerButtons = LX.makeContainer( [ "100%", "auto" ], "flex flex-col p-2 justify-center", ``, listContent );
+                    LX.makeContainer( ["100%", "auto"], "mt-2 text-2xl font-medium justify-center text-center", `No shaders found.`, headerButtons );
+                    const getStartedButton = new LX.Button( null, "Create a Shader", () => ShaderHub.openShader( "new" ), { className: "mt-2 place-self-center w-fit!", icon: "ChevronRight", iconPosition: "end", buttonClass: "lg primary" } );
+                    headerButtons.appendChild( getStartedButton.root );
                     return;
                 }
 
@@ -1797,6 +1789,141 @@ export const ui = {
         {
             const accountContainer = LX.makeContainer( [ null, 'auto' ], 'flex flex-col relative p-1 pt-0 rounded-lg overflow-hidden' );
             tabs.add( 'Account', accountContainer, { xselected: true, onSelect: ( event, name ) => {} } );
+
+            const content = LX.makeContainer( [ "100%", 'auto' ], 'flex flex-col md:flex-row gap-2 p-1 my-2', '', accountContainer );
+
+            // notifications
+            {
+                const p = new LX.Panel({ className: "rounded-xl border-color" });
+                p.addTitle( "Notifications" );
+                p.addToggle( "Comments", false, () => {}, { className: "primary", disabled: true, nameWidth: "70%" } );
+                p.addToggle( "Comment Replies", false, () => {}, { className: "primary", disabled: true, nameWidth: "70%" } );
+                p.addToggle( "Likes", false, () => {}, { className: "primary", disabled: true, nameWidth: "70%" } );
+                p.addToggle( "New Followers", false, () => {}, { className: "primary", disabled: true, nameWidth: "70%" } );
+                p.addToggle( "Follower New Shaders", false, () => {}, { className: "primary", disabled: true, nameWidth: "70%" } );
+                p.addSeparator();
+                p.addButton( null, "Save Changes", () => {
+                    // TODO
+                }, { disabled: true, className: "place-self-center w-fit!", buttonClass: "primary" } );
+                content.appendChild( p.root );
+            }
+
+            // profile
+            {
+                let publicProfile = true;
+                let userAvatar = user.avatar ?? "", userDescription = user.description ?? "", userDisplayName = user.display_name ?? "";
+
+                const p = new LX.Panel({ className: "rounded-xl border-color" });
+                p.addTitle( "Profile" );
+                // p.addToggle( "Public", publicProfile, (v) => {
+                //     publicProfile = v;
+                // }, { className: "primary", nameWidth: "70%", disabled: true, skipReset: true } );
+                p.addText( "Avatar", userAvatar, (v) => {
+                    userAvatar = v;
+                }, { skipReset: true, placeholder: `Enter a URL (optional)` } );
+                p.addText( "Display Name", userDisplayName, (v) => {
+                    userDisplayName = v;
+                }, { skipReset: true, placeholder: `Your full name (optional)` } );
+                p.addTextArea( "About", userDescription, (v) => {
+                    userDescription = v;
+                }, { fitHeight: true, skipReset: true, inputClass: "bg-secondary!", placeholder: `Tell us something about yourself! (optional)` } );
+                p.addSeparator();
+                p.addButton( null, "Save Changes", async () => {
+                    if( userAvatar === user.avatar &&
+                        userDescription === user.description &&
+                        userDisplayName === user.display_name )
+                    {
+                        return;
+                    }
+                    const r = await this.fs.updateDocument( FS.USERS_COLLECTION_ID, user[ "$id" ], {
+                        "avatar": userAvatar,
+                        "description": userDescription,
+                        "display_name": userDisplayName
+                    } );
+                    if( r )
+                    {
+                        user.avatar = userAvatar;
+                        user.description = userDescription;
+                        infoContainer.querySelector( ".desc-content" ).innerHTML = userDescription;
+                        document.querySelectorAll( ".lexavatar img" ).forEach( i => i.src = userAvatar );
+                        Utils.toast( `✅ Settings updated`, `User: ${ userName }` );
+                    }
+                }, { className: "place-self-center w-fit!", buttonClass: "primary" } );
+                content.appendChild( p.root );
+            }
+
+            // account
+            {
+                let password = "";
+
+                const p = new LX.Panel({ className: "rounded-xl border-color" });
+                p.addTitle( "Account" );
+
+                if( this.fs.user?.emailVerification )
+                {
+                    let iconStr = LX.makeIcon( "BadgeCheck", { svgClass: 'md text-inherit!' } ).innerHTML
+                    p.attach( LX.badge( iconStr + "Email verified", "success m-4 flex place-self-center", { asElement: true } ) );
+                }
+                else
+                {
+                    let iconStr = LX.makeIcon( "BadgeX", { svgClass: 'md text-inherit!' } ).innerHTML
+                    p.attach( LX.badge( iconStr + "Email not verified yet", "destructive m-4 flex place-self-center", { asElement: true } ) );
+
+                    p.addButton( null, "Send email verification", async () => {
+                        const url = new URL( window.location.href );
+                        url.search = "";
+                        const result = await this.fs.account.createEmailVerification( {
+                            url: url.href + "?verifyEmail=true" // Redirect URL after recovery
+                        } );
+                    }, { className: "place-self-center w-fit!", buttonClass: "primary" } );
+                }
+
+                p.addSeparator();
+                p.addLabel( "Change Password" );
+                const formData = {
+                    password: { label: "Password", value: "", type: "password" },
+                    newPassword: { label: "New Password", value: "", type: "password", pattern: { minLength: Constants.PASSWORD_MIN_LENGTH, digit: true } },
+                    repeatPassword: { label: "Repeat New Password", value: "", type: "password", pattern: { fieldMatchName: "newPassword" } },
+                };
+                const form = p.addForm( null, formData, async (value, err) => {
+                    form.syncInputs(); // Force sync
+                    if( err.length )
+                    {
+                        Utils.toast( `❌ Error`, err.map( e => `${ e.entry }: ${ e.messages.join( "\n" ) }` ).join( "\n\n" ), -1 );
+                        return;
+                    }
+                    try {
+                        const r = await this.fs.account.updatePassword( value.newPassword, value.password );
+                        if( r )
+                        {
+                            form.root.querySelectorAll( "input[type=password]" ).forEach( t => t.value = "" );
+                            form.syncInputs(); // Force sync
+                            Utils.toast( `✅ Password updated!`, `User: ${ userName }` );
+                        }
+                    } catch( err ) {
+                        console.log(err)
+                        Utils.toast( `❌ Error`, err, -1 );
+                    }
+                }, { primaryActionName: "Update" } );
+                p.addSeparator();
+                p.addLabel( "This action will delete your ShaderHub account. This is irreversible!" );
+                p.addText( "Password", password, (v) => {
+                    password = v;
+                }, { disabled: true, type: "password", skipReset: true } );
+                p.addButton( "Delete Account", "Delete", async () => {
+                    try {
+                        // const r = await this.fs.account.updatePassword( password, password );
+                        // if( r )
+                        // {
+                        //     // TODO
+                        // }
+                    } catch( err ) {
+                        console.log(err)
+                        Utils.toast( `❌ Error`, err, -1 );
+                    }
+                }, { disabled: true, buttonClass: "destructive" } );
+                content.appendChild( p.root );
+            }
         }
     },
 
@@ -2521,6 +2648,7 @@ export const ui = {
 
             }, { modal: true } );
 
+            this._lastOpenedDialog = dialog;
             return;
         }
 

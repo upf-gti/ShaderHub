@@ -254,6 +254,9 @@
   .m-0 {
     margin: calc(var(--spacing) * 0);
   }
+  .m-4 {
+    margin: calc(var(--spacing) * 4);
+  }
   .mx-2 {
     margin-inline: calc(var(--spacing) * 2);
   }
@@ -356,9 +359,6 @@
   .h-auto\! {
     height: auto !important;
   }
-  .h-fit {
-    height: fit-content;
-  }
   .h-full {
     height: 100%;
   }
@@ -379,6 +379,9 @@
   }
   .w-fit {
     width: fit-content;
+  }
+  .w-fit\! {
+    width: fit-content !important;
   }
   .w-full {
     width: 100%;
@@ -436,6 +439,9 @@
   }
   .gap-8 {
     gap: calc(var(--spacing) * 8);
+  }
+  .place-self-center {
+    place-self: center;
   }
   .self-center {
     align-self: center;
@@ -533,6 +539,9 @@
   }
   .bg-orange-500 {
     background-color: var(--color-orange-500);
+  }
+  .bg-secondary\! {
+    background-color: var(--color-secondary) !important;
   }
   .bg-transparent {
     background-color: transparent;
@@ -660,6 +669,9 @@
   }
   .text-foreground {
     color: var(--color-foreground);
+  }
+  .text-inherit\! {
+    color: inherit !important;
   }
   .text-muted-foreground {
     color: var(--color-muted-foreground);
@@ -792,14 +804,6 @@
       }
     }
   }
-  .hover\:brightness-125 {
-    &:hover {
-      @media (hover: hover) {
-        --tw-brightness: brightness(125%);
-        filter: var(--tw-blur,) var(--tw-brightness,) var(--tw-contrast,) var(--tw-grayscale,) var(--tw-hue-rotate,) var(--tw-invert,) var(--tw-saturate,) var(--tw-sepia,) var(--tw-drop-shadow,);
-      }
-    }
-  }
   .sm\:text-3xl {
     @media (width >= 40rem) {
       font-size: var(--text-3xl);
@@ -826,6 +830,11 @@
   .md\:flex {
     @media (width >= 48rem) {
       display: flex;
+    }
+  }
+  .md\:flex-row {
+    @media (width >= 48rem) {
+      flex-direction: row;
     }
   }
   .\[\&_span\]\:text-xl {
