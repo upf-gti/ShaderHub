@@ -759,6 +759,14 @@ export const ui = {
             }
         };
 
+        if( mobile )
+        {
+            // Create unused editor by now
+            this.editor = new LX.CodeEditor( codeArea );
+            this.onCodeEditorReady( undefined, leftArea );
+            return;
+        }
+
         this.editor = await new LX.CodeEditor( codeArea, {
             allowClosingTabs: false,
             allowLoadingFiles: false,
@@ -1376,10 +1384,13 @@ export const ui = {
                 panel.addButton( null, "Fullscreen", () => ShaderHub.requestFullscreen(), { icon: "Fullscreen", title: "Fullscreen", tooltip: true } );
                 panel.endLine( "items-center h-full ml-auto" );
             }
-            
-            LX.doAsync( () => editor.charWidth = editor._measureChar(), 250 );
 
-            ShaderHub.onShaderEditorCreated( shader, canvas );
+            await ShaderHub.onShaderEditorCreated( shader, canvas );
+
+            if( editor )
+            {
+                LX.doAsync( () => editor.charWidth = editor._measureChar(), 400 );
+            }
         }
     },
 
