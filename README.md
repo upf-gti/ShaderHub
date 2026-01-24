@@ -12,7 +12,7 @@ Version: 1.1
 ShaderHub is an experimental **WebGPU-based shader playground**.  
 It is designed as a **demo tool** for exploring graphics programming, with a focus on **education and learning WebGPU**, rather than replacing other platforms.
 
-You can test it here: [upf-gti.github.io/ShaderHub/](https://upf-gti.github.io/ShaderHub/)
+You can test it here: [upf-gti.github.io/ShaderHub/](https://shaderhub.dev/)
 
 > ⚠️ You will probably find bugs on the way, please report them to this repository issues section!
 
