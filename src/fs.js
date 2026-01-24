@@ -142,7 +142,7 @@ class FS {
     }
 
     async getFileUrl( fileId ) {
-        return await this.storage.getFileDownload({
+        return await this.storage.getFileView({
             bucketId: FS.BUCKET_ID,
             fileId
         });
