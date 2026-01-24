@@ -553,7 +553,13 @@ const ShaderHub =
             };
 
             const authorId = result[ "author_id" ];
-            if( authorId )
+            const ownShader = ( authorId === fs.getUserId() );
+            if( ownShader )
+            {
+                shaderData.author = ui.dbUser.user_name;
+                shaderData.authorId = ui.dbUser.user_id;
+            }
+            else if( authorId )
             {
                 const users = await fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_id", authorId ) ] );
                 const authorName = users.documents[ 0 ][ "user_name" ];

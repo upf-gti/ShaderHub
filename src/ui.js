@@ -11,9 +11,9 @@ const mobile = Utils.isMobile();
 
 export const ui = {
 
-    imageCache: {},
-
     allowCapture: true,
+
+    _dbAssetsCache: new Map(), // fileId -> ImageBitmap/audio
 
     async init( fs )
     {
@@ -1081,11 +1081,9 @@ export const ui = {
 
                         if( canComment )
                         {
-                            const users = await this.fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_id", this.fs.getUserId() ) ] );
-                            const dbUser = users.documents[ 0 ];
                             const avatar = new LX.Avatar({
-                                imgSource: dbUser.avatar,
-                                fallback: dbUser.user_name[ 0 ].toUpperCase(),
+                                imgSource: this.dbUser.avatar,
+                                fallback: this.dbUser.user_name[ 0 ].toUpperCase(),
                                 className: 'mx-2 flex-auto-keep mt-1'
                             });
 
@@ -1396,22 +1394,26 @@ export const ui = {
 
         this._makeFooter( bottomArea );
 
-        const users = await this.fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_id", userID ) ] );
-        if( users.total === 0 )
+        const ownProfile = this.fs.user && ( userID === this.fs.getUserId() );
+        if( !ownProfile )
         {
-            LX.makeContainer( ["100%", "auto"], "mt-8 text-2xl font-medium justify-center text-center", "No user found.", topArea );
-            return;
+            const users = await this.fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_id", userID ) ] );
+            if( users.total === 0 )
+            {
+                LX.makeContainer( ["100%", "auto"], "mt-8 text-2xl font-medium justify-center text-center", "No user found.", topArea );
+                return;
+            }
         }
 
-        const user = users.documents[ 0 ];
+        const usersDocuments = await this.fs.listDocuments( FS.USERS_COLLECTION_ID );
+        const user = usersDocuments.documents.find( d => d.user_id === userID );
         const userName = user[ "user_name" ];
 
         const params = new URLSearchParams( document.location.search );
         const queryOrderBy = params.get( "order_by" );
 
         // Likes are only shown for the active user, they are private!
-        const ownProfile = this.fs.user && ( userID === this.fs.getUserId() );
-        const usersDocuments = await this.fs.listDocuments( FS.USERS_COLLECTION_ID );
+        
         const PAGE_LIMIT = 8;
 
         const avatar = new LX.Avatar({ imgSource: user["avatar"], fallback: userName[0].toUpperCase(), className: `size-12 [&_span]:text-xl [&_span]:leading-12` });
@@ -2863,10 +2865,28 @@ export const ui = {
                 const channelItem = LX.makeElement( "li", "relative flex rounded-lg bg-card box-border hover:bg-accent overflow-hidden", "", container );
                 channelItem.style.maxHeight = "200px";
                 const channelPreview = LX.makeElement( "img", "w-full h-full rounded-t-lg bg-card hover:scale-105 transition-transform ease-out border-none cursor-pointer", "", channelItem );
+                channelPreview.crossOrigin = "anonymous";
                 const fileId = document[ "file_id" ];
-                const localUrl = document[ "local_url" ];
-                const preview = document[ "preview" ];
-                channelPreview.src = localUrl ?? ( preview ? await this.fs.getFileUrl( preview ) : ( fileId ? await this.fs.getFileUrl( fileId ) : "images/shader_preview.png" ) );
+                if( fileId && this._dbAssetsCache.has( fileId ) )
+                {
+                    channelPreview.src = this._dbAssetsCache.get( fileId );
+                }
+                else
+                {
+                    const localUrl = document[ "local_url" ];
+                    const preview = document[ "preview" ];
+                    const url = localUrl ?? ( preview ? await this.fs.getFileUrl( preview ) : ( fileId ? await this.fs.getFileUrl( fileId ) : "images/shader_preview.png" ) );
+
+                    const img = new Image();
+                    img.crossOrigin = "anonymous";
+                    img.src = url;
+                    img.onload = async () => {
+                        const objectUrl = URL.createObjectURL( await ( await fetch( url ) ).blob() );
+                        this._dbAssetsCache.set( fileId, objectUrl );
+                        channelPreview.src = objectUrl;
+                    };
+                }
+
                 const shaderDesc = LX.makeContainer( ["100%", "auto"], "absolute text-xs top-0 p-2 w-full rounded-t-lg bg-background-blur backdrop-blur-xs items-center select-none font-semibold keep-all", `
                     ${ document.name } (uint8)
                 `, channelItem );
@@ -2956,19 +2976,28 @@ export const ui = {
             channelContainer.style.minHeight = "100px";
             LX.insertChildAtIndex( this.channelsContainer, channelContainer, channelIndex );
 
-            const channelImage = LX.makeElement( "img", "size-full rounded-lg bg-card hover:bg-accent hover:scale-105 transition-transform ease-out border-none", "", channelContainer );
+            const channelImage = LX.makeElement( "img", "w-full rounded-lg bg-card hover:bg-accent hover:scale-105 transition-transform ease-out border-none", "", channelContainer );
+            channelImage.src = Constants.IMAGE_EMPTY_SRC;
             const metadata = await ShaderHub.getChannelMetadata( pass, channelIndex );
-            let imageSrc = Constants.IMAGE_EMPTY_SRC;
-            if( metadata?.url )
+            const fileId = pass?.channels?.[ channelIndex ]?.id;
+            if( fileId && !metadata?.url.includes( 'base64' ) )
             {
-                if( !this.imageCache[ metadata.url ] )
+                if( this._dbAssetsCache.has( fileId ) )
                 {
-                    this.imageCache[ metadata.url ] = await Utils.imageToDataURL( this.fs, metadata.url )
+                    channelImage.src = this._dbAssetsCache.get( fileId );
                 }
-
-                imageSrc = this.imageCache[ metadata.url ];
+                else
+                {
+                    const img = new Image();
+                    img.crossOrigin = "anonymous";
+                    img.src = metadata?.url;
+                    img.onload = async () => {
+                        const objectUrl = URL.createObjectURL( await ( await fetch( metadata?.url ) ).blob() );
+                        this._dbAssetsCache.set( fileId, objectUrl );
+                        channelImage.src = objectUrl;
+                    };
+                }
             }
-            channelImage.src = imageSrc;
 
             // Channel Title
             LX.makeContainer( ["100%", "auto"], "p-2 absolute bg-background-blur backdrop-blur-xs text-xs text-center content-center top-0 rounded-t-lg pointer-events-none",
@@ -3024,13 +3053,13 @@ export const ui = {
 
         if( channel !== undefined )
         {
-            iUpdateChannel( channel );
+            await iUpdateChannel( channel );
             return;
         }
 
         for( let i = 0; i < Constants.UNIFORM_CHANNELS_COUNT; i++ )
         {
-            iUpdateChannel( i );
+            await iUpdateChannel( i );
         }
 
         console.log( "Channels view updated." );
