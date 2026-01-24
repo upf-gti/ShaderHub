@@ -260,6 +260,9 @@
   .mx-2 {
     margin-inline: calc(var(--spacing) * 2);
   }
+  .mx-auto {
+    margin-inline: auto;
+  }
   .my-0 {
     margin-block: calc(var(--spacing) * 0);
   }
@@ -388,6 +391,9 @@
   }
   .max-w-128 {
     max-width: calc(var(--spacing) * 128);
+  }
+  .max-w-\[25\%\] {
+    max-width: 25%;
   }
   .max-w-full {
     max-width: 100%;
@@ -835,6 +841,11 @@
   .md\:flex-row {
     @media (width >= 48rem) {
       flex-direction: row;
+    }
+  }
+  .\32 xl\:max-w-\[20\%\] {
+    @media (width >= 96rem) {
+      max-width: 20%;
     }
   }
   .\[\&_span\]\:text-xl {

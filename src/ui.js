@@ -20,20 +20,24 @@ export const ui = {
         this.fs = fs;
         this.area = await LX.init();
 
+        if( fs.user )
+        {
+            const users = await this.fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_id", fs.getUserId() ) ] );
+            this.dbUser = users.documents[ 0 ];
+
+            const userMode = this.dbUser.app_mode;
+            if( userMode && userMode !== 'Auto' )
+            {
+                LX.setMode( userMode.toLowerCase() );
+            }
+        }
+
         LX.setThemeColor( 'orange' );
 
         const params = new URLSearchParams( document.location.search );
         const starterMode = LX.getMode();
 
         const menubarOptions = [];
-        const menubarButtons = [
-            {
-                title: "Switch Mode",
-                icon: starterMode == "dark" ? "Moon" : "Sun",
-                swap: starterMode == "dark" ? "Sun" : "Moon",
-                callback: (value, event) => { LX.switchMode() }
-            }
-        ];
 
         if( !mobile )
         {
@@ -55,7 +59,7 @@ export const ui = {
         const querySearch = params.get( "search" );
         const searchShaderInput = new LX.TextInput(null, querySearch ?? '', v => {
             if( v.length ) this._searchShader( v )
-        }, { placeholder: "Search shaders...", width: "256px", className: "hidden md:flex right" });
+        }, { placeholder: "Search shaders...", className: "hidden md:flex mx-auto flex-auto-fill max-w-[25%] 2xl:max-w-[20%]" });
         menubar.root.appendChild( searchShaderInput.root );
 
         if( mobile )
@@ -63,19 +67,12 @@ export const ui = {
             const sidebarOptions = {
                 headerTitle: fs.user ? fs.user.name : "Guest",
                 headerSubtitle: fs.user ? fs.user.email : undefined,
-                headerImage: "images/favicon.png",
+                headerImage: this.dbUser?.avatar ?? "images/favicon.png",
                 skipFooter: true,
                 collapsed: false,
                 collapsable: false,
                 displaySelected: true
             };
-
-            if( fs.user )
-            {
-                const users = await this.fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_id", fs.getUserId() ) ] );
-                const dbUser = users.documents[ 0 ];
-                sidebarOptions.headerImage = dbUser.avatar;
-            }
 
             const sidebarCallback = m => {
                 if( fs.user )
@@ -99,14 +96,10 @@ export const ui = {
             const sheetArea = new LX.Area({ skipAppend: true });
             sheetArea.addSidebar( sidebarCallback, sidebarOptions );
 
-            menubar.addButtons( menubarButtons );
-
             menubar.setButtonIcon( "Menu", "Menu", () => window.__currentSheet = new LX.Sheet("256px", [ sheetArea ], { side: "right" } ) );
         }
         else
         {
-            menubar.addButtons( menubarButtons );
-
             const signupContainer = LX.makeContainer( [`auto`, "auto"], "flex flex-row p-1 gap-1 self-center items-center", "", menubar.root );
             signupContainer.id = "signupContainer";
             signupContainer.classList.toggle( "hidden", !!fs.user );
@@ -124,17 +117,15 @@ export const ui = {
                     return "Login";
                 }
 
-                const users = await this.fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_id", fs.getUserId() ) ] );
-                if( users.total === 0 )
+                if( !this.dbUser )
                 {
                     this._setLoginButtonClass( 'primary' );
                     return "Login";
                 }
 
-                const dbUser = users.documents[ 0 ];
                 const avatar = new LX.Avatar({
-                    imgSource: dbUser.avatar,
-                    fallback: dbUser.user_name[ 0 ].toUpperCase(),
+                    imgSource: this.dbUser.avatar,
+                    fallback: this.dbUser.user_name[ 0 ].toUpperCase(),
                     className: 'mx-2 size-5',
                 });
 
@@ -162,7 +153,7 @@ export const ui = {
                 {
                     this.openLoginDialog();
                 }
-            }, { className: "mr-4", buttonClass: 'ghost h-8 px-4' } );
+            }, { className: "ml-auto mr-2 flex-auto-keep", buttonClass: 'ghost h-8 px-4' } );
             loginOptionsButton.root.id = "loginOptionsButton";
 
             const loginOptionsButtonDOM = loginOptionsButton.root.querySelector( "button" );
@@ -297,7 +288,7 @@ export const ui = {
         window.location.href = url.toString();
     },
 
-    _browseOrderBy( v )
+    _browseOrderBy( v, page )
     {
         const url = new URL( window.location.href );
         const alreadyThere = ( url.searchParams.get( "order_by" ) === v );
@@ -310,7 +301,7 @@ export const ui = {
             url.searchParams.delete( 'order_by' );
         }
         url.searchParams.delete( 'page' ); // Reset page when changing feature
-        url.hash = 'browse';
+        url.hash = page ?? 'browse';
         window.location.href = url.toString();
     },
 
@@ -541,10 +532,12 @@ export const ui = {
 
             filtersPanel.addLabel( "Order by", { fit: true } );
 
+            const currentOrderFilter = queryOrderBy ?? 'recent';
+
             for( let f of Constants.ORDER_BY_NAMES )
             {
                 const fLower = f.toLowerCase();
-                filtersPanel.addButton( null, f, (v) => this._browseOrderBy( v.toLowerCase() ), { buttonClass: `xs ${queryOrderBy === fLower ? "primary" : "outline bg-card!"}` } );
+                filtersPanel.addButton( null, f, (v) => this._browseOrderBy( v.toLowerCase() ), { buttonClass: `xs ${currentOrderFilter === fLower ? "primary" : "outline bg-card!"}` } );
             }
 
             filtersPanel.endLine();
@@ -1413,6 +1406,9 @@ export const ui = {
         const user = users.documents[ 0 ];
         const userName = user[ "user_name" ];
 
+        const params = new URLSearchParams( document.location.search );
+        const queryOrderBy = params.get( "order_by" );
+
         // Likes are only shown for the active user, they are private!
         const ownProfile = this.fs.user && ( userID === this.fs.getUserId() );
         const usersDocuments = await this.fs.listDocuments( FS.USERS_COLLECTION_ID );
@@ -1431,7 +1427,7 @@ export const ui = {
         const avatarContainer = infoContainer.querySelector( ".avatar-container" );
         avatarContainer.prepend( avatar.root );
 
-        const tabs = topArea.addTabs( { parentClass: 'bg-transparent', sizes: [ 'auto', 'auto' ], contentClass: 'p-4 my-2 bg-transparent rounded-xl border-color h-auto!' } );
+        const tabs = topArea.addTabs( { parentClass: 'bg-transparent', sizes: [ 'auto', 'auto' ], contentClass: 'p-2 my-2 bg-transparent rounded-xl border-color h-auto!' } );
 
         document.title = `${ userName } - ShaderHub`;
 
@@ -1448,6 +1444,25 @@ export const ui = {
                 this._refreshOwnShaders( v );
             }, { placeholder: "Filter shaders...", width: "256px" });
             listHeader.appendChild( searchShaderInput.root );
+
+            // Profile Shader Order
+            {
+                const filtersPanel = new LX.Panel( { className: "p-4 bg-none", height: "auto" } );
+                filtersPanel.sameLine();
+
+                filtersPanel.addLabel( "Order by", { fit: true } );
+
+                const currentOrderFilter = queryOrderBy ?? 'recent';
+
+                for( let f of Constants.ORDER_BY_NAMES )
+                {
+                    const fLower = f.toLowerCase();
+                    filtersPanel.addButton( null, f, (v) => this._browseOrderBy( v.toLowerCase() ), { buttonClass: `xs ${currentOrderFilter === fLower ? "primary" : "outline bg-card!"}` } );
+                }
+
+                filtersPanel.endLine();
+                listHeader.appendChild( filtersPanel.root );
+            }
 
             // Add pagination for shader list
             const paginator = new LX.Pagination({
@@ -1471,9 +1486,10 @@ export const ui = {
                 this._lastFilterSearch = filterSearch ?? '';
                 this._lastFilteredPage = filterPage ? parseInt( filterPage ) : 1;
 
+                const orderBy = queryOrderBy ? Constants.ORDER_BY_MAPPING[ queryOrderBy ] : Constants.ORDER_BY_MAPPING[ "recent" ];
                 const queries = [
                     Query.equal( "author_id", userID ),
-                    Query.orderAsc( 'name' ),
+                    orderBy.direction === "asc" ? Query.orderAsc( orderBy.field ) : Query.orderDesc( orderBy.field ),
                     Query.offset( ( this._lastFilteredPage - 1 ) * PAGE_LIMIT ),
                     Query.limit( PAGE_LIMIT )
                 ];
@@ -1625,8 +1641,8 @@ export const ui = {
         {
             let likesOpened = false;
             const likesContainer = LX.makeContainer( [ null, 'auto' ], 'flex flex-col relative p-1 pt-0 rounded-lg overflow-hidden' );
-            tabs.add( 'Likes', likesContainer, { xselected: true, onSelect: async ( event, name ) => {
-                document.title = `${ userName } Likes - ShaderHub`;
+            tabs.add( 'Liked', likesContainer, { xselected: true, onSelect: async ( event, name ) => {
+                document.title = `${ userName } Liked - ShaderHub`;
 
                 if( likesOpened )
                 {
@@ -1796,33 +1812,20 @@ export const ui = {
             } } );
         }
 
-        // Account
+        // Preferences
         {
-            const accountContainer = LX.makeContainer( [ null, 'auto' ], 'flex flex-col relative p-1 pt-0 rounded-lg overflow-hidden' );
-            tabs.add( 'Account', accountContainer, { xselected: true, onSelect: ( event, name ) => {} } );
+            const preferencesContainer = LX.makeContainer( [ null, 'auto' ], 'flex flex-col relative p-1 pt-0 rounded-lg overflow-hidden' );
+            tabs.add( 'Preferences', preferencesContainer, { xselected: true, onSelect: ( event, name ) => {
+                document.title = `${ userName } Preferences - ShaderHub`;
+            } } );
 
-            const content = LX.makeContainer( [ "100%", 'auto' ], 'flex flex-col md:flex-row gap-2 p-1 my-2', '', accountContainer );
-
-            // notifications
-            {
-                const p = new LX.Panel({ className: "rounded-xl border-color" });
-                p.addTitle( "Notifications" );
-                p.addToggle( "Comments", false, () => {}, { className: "primary", disabled: true, nameWidth: "70%" } );
-                p.addToggle( "Comment Replies", false, () => {}, { className: "primary", disabled: true, nameWidth: "70%" } );
-                p.addToggle( "Likes", false, () => {}, { className: "primary", disabled: true, nameWidth: "70%" } );
-                p.addToggle( "New Followers", false, () => {}, { className: "primary", disabled: true, nameWidth: "70%" } );
-                p.addToggle( "Follower New Shaders", false, () => {}, { className: "primary", disabled: true, nameWidth: "70%" } );
-                p.addSeparator();
-                p.addButton( null, "Save Changes", () => {
-                    // TODO
-                }, { disabled: true, className: "place-self-center w-fit!", buttonClass: "primary" } );
-                content.appendChild( p.root );
-            }
+            const content = LX.makeContainer( [ "100%", 'auto' ], 'flex flex-col md:flex-row gap-2 p-1 my-2', '', preferencesContainer );
 
             // profile
             {
                 let publicProfile = true;
-                let userAvatar = user.avatar ?? "", userDescription = user.description ?? "", userDisplayName = user.display_name ?? "";
+                let userAvatar = user.avatar ?? "", userDescription = user.description ?? "",
+                    userDisplayName = user.display_name ?? "", userAppMode = user.app_mode ?? 'Auto';
 
                 const p = new LX.Panel({ className: "rounded-xl border-color" });
                 p.addTitle( "Profile" );
@@ -1860,6 +1863,38 @@ export const ui = {
                         Utils.toast( `✅ Settings updated`, `User: ${ userName }` );
                     }
                 }, { className: "place-self-center w-fit!", buttonClass: "primary" } );
+                content.appendChild( p.root );
+
+                p.addTitle( "App" );
+                p.addSelect( "Default Mode (Auto, Light, Dark)", [ 'Auto', 'Light', 'Dark' ], userAppMode, async (v) => {
+                    userAppMode = v;
+                    if( v === 'Auto' )
+                    {
+                        LX.setSystemMode();
+                    }
+                    else
+                    {
+                        LX.setMode( v.toLowerCase() );
+                    }
+                    await this.fs.updateDocument( FS.USERS_COLLECTION_ID, user[ "$id" ], {
+                        "app_mode": userAppMode
+                    } );
+                }, { nameWidth: "70%", skipReset: true, overflowContainer: p.root } );
+            }
+
+            // notifications
+            {
+                const p = new LX.Panel({ className: "rounded-xl border-color" });
+                p.addTitle( "Notifications" );
+                p.addToggle( "Comments", false, () => {}, { className: "primary", disabled: true, nameWidth: "70%" } );
+                p.addToggle( "Comment Replies", false, () => {}, { className: "primary", disabled: true, nameWidth: "70%" } );
+                p.addToggle( "Likes", false, () => {}, { className: "primary", disabled: true, nameWidth: "70%" } );
+                p.addToggle( "New Followers", false, () => {}, { className: "primary", disabled: true, nameWidth: "70%" } );
+                p.addToggle( "Follower New Shaders", false, () => {}, { className: "primary", disabled: true, nameWidth: "70%" } );
+                p.addSeparator();
+                p.addButton( null, "Save Changes", () => {
+                    // TODO
+                }, { disabled: true, className: "place-self-center w-fit!", buttonClass: "primary" } );
                 content.appendChild( p.root );
             }
 
@@ -2371,6 +2406,10 @@ export const ui = {
 
     async onLogin( user )
     {
+        const users = await this.fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_id", this.fs.getUserId() ) ] );
+        if( !users.documents.length ) throw( 'Something happened onlogin' );
+        this.dbUser = users.documents[ 0 ];
+
         // Update login info
         const loginButton = document.querySelector( "#loginOptionsButton button" );
         if( loginButton )
@@ -2400,6 +2439,8 @@ export const ui = {
     async onLogout()
     {
         await this.fs.logout();
+
+        this.dbUser = null;
 
         // Remove welcome message if any
         LX.deleteElement( document.querySelector( "#welcomeMessage" ) );
