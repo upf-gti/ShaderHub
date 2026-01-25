@@ -716,26 +716,20 @@ export const ui = {
         LX.doAsync( async () => {
 
             let shaderList = [];
-            let dbUser = null;
-
-            if( this.fs.user )
-            {
-                const users = await this.fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_id", this.fs.getUserId() ) ] );
-                dbUser = users.documents[ 0 ];
-            }
 
             for( const document of dbShaders )
             {
                 const name = document.name;
+                const uid = document[ "$id" ];
 
                 const shaderInfo = {
                     name,
-                    uid: document[ "$id" ],
+                    uid,
                     creationDate: Utils.toESDate( document[ "$createdAt" ] ),
                     likeCount: document[ "like_count" ],
                     features: ( document[ "features" ] ?? "" ).split( "," ),
                     public: document[ "public" ] ?? true,
-                    liked: dbUser ? ( dbUser.liked_shaders ?? [] ).includes( document[ "$id" ] ) : false
+                    liked: this.dbUser ? ( this.dbUser.liked_shaders ?? [] ).includes( uid ) : false
                 };
 
                 const authorId = document[ "author_id" ];
@@ -1515,6 +1509,9 @@ export const ui = {
         const usersDocuments = await this.fs.listDocuments( FS.USERS_COLLECTION_ID );
         const user = usersDocuments.documents.find( d => d.user_id === userID );
         const userName = user[ "user_name" ];
+        const isPublicProfile = user["public"];
+
+        document.title = `${ userName } - ShaderHub`;
 
         const params = new URLSearchParams( document.location.search );
         const queryOrderBy = params.get( "order_by" );
@@ -1536,9 +1533,13 @@ export const ui = {
         const avatarContainer = infoContainer.querySelector( ".avatar-container" );
         avatarContainer.prepend( avatar.root );
 
-        const tabs = topArea.addTabs( { parentClass: 'bg-transparent', sizes: [ 'auto', 'auto' ], contentClass: 'p-2 my-2 bg-transparent rounded-xl border-color h-auto!' } );
+        if( !ownProfile && !isPublicProfile )
+        {
+            LX.makeContainer( ["100%", "auto"], "mt-8 text-2xl font-medium justify-center text-center", "Private user, sorry :(", topArea );
+            return;
+        }
 
-        document.title = `${ userName } - ShaderHub`;
+        const tabs = topArea.addTabs( { parentClass: 'bg-transparent', sizes: [ 'auto', 'auto' ], contentClass: 'p-2 my-2 bg-transparent rounded-xl border-color h-auto!' } );
 
         // Shader list
         {
@@ -1669,6 +1670,7 @@ export const ui = {
                             likeCount: document[ "like_count" ] ?? 0,
                             public: document[ "public" ] ?? true,
                             url: await this.fs.getFileUrl( document[ "file_id" ] ),
+                            liked: this.dbUser ? ( this.dbUser.liked_shaders ?? [] ).includes( uid ) : false
                         };
 
                         const previewName = ShaderHub.getShaderPreviewName( shaderInfo.uid );
@@ -1691,7 +1693,7 @@ export const ui = {
                             <div class="flex flex-row gap-2 flex-auto-keep items-center">
                                 ${ ownProfile ? LX.makeIcon( shaderInfo.public ? "Eye" : "EyeOff", { svgClass: "viz-icon text-card-foreground" } ).innerHTML : "" }
                                 <div class="flex flex-row gap-1 items-center">
-                                    ${ LX.makeIcon( "Heart", { svgClass: "fill-current text-card-foreground" } ).innerHTML }
+                                    ${ LX.makeIcon( "Heart", { svgClass: `${ shaderInfo.liked ? "text-orange-600" : "" } fill-current` } ).innerHTML }
                                     <span>${ shaderInfo.likeCount ?? 0 }</span>
                                 </div>
                                 ${ ownProfile ? `<span class="h-4 mx-2 border-right border-color text-muted-foreground self-center items-center"></span>` : "" }
@@ -1865,11 +1867,13 @@ export const ui = {
                         {
                             const document = dbShaders[ i ];
                             const name = document.name;
+                            const uid = document[ "$id" ];
 
                             const shaderInfo = {
                                 name,
-                                uid: document[ "$id" ],
+                                uid,
                                 likeCount: document[ "like_count" ] ?? 0,
+                                liked: true // we're in liked tab...
                             };
 
                             const authorId = document[ "author_id" ];
@@ -1905,7 +1909,7 @@ export const ui = {
                                     <div class="text-sm font-light">by ${ !shaderInfo.anonAuthor ? `<a onclick='ui._openUserProfile("${ shaderInfo.authorId }")' class='hub-link font-medium'>` : "" }<span>${ shaderInfo.author }</span>${ !shaderInfo.anonAuthor ? "</a>" : "" }</div>
                                 </div>
                                 <div class="flex flex-row gap-1 items-center">
-                                    ${ LX.makeIcon( "Heart", { svgClass: "fill-current text-card-foreground" } ).innerHTML }
+                                    ${ LX.makeIcon( "Heart", { svgClass: `${ shaderInfo.liked ? "text-orange-600" : "" } fill-current` } ).innerHTML }
                                     <span>${ shaderInfo.likeCount ?? 0 }</span>
                                 </div>`, shaderItem );
 
@@ -1932,15 +1936,15 @@ export const ui = {
 
             // profile
             {
-                let publicProfile = true;
+                let publicProfile = user.public ?? true;
                 let userAvatar = user.avatar ?? "", userDescription = user.description ?? "",
                     userDisplayName = user.display_name ?? "", userAppMode = user.app_mode ?? 'Auto';
 
                 const p = new LX.Panel({ className: "rounded-xl border-color" });
                 p.addTitle( "Profile" );
-                // p.addToggle( "Public", publicProfile, (v) => {
-                //     publicProfile = v;
-                // }, { className: "primary", nameWidth: "70%", disabled: true, skipReset: true } );
+                p.addToggle( "Public", publicProfile, (v) => {
+                    publicProfile = v;
+                }, { className: "primary", nameWidth: "70%", skipReset: true } );
                 p.addText( "Avatar", userAvatar, (v) => {
                     userAvatar = v;
                 }, { skipReset: true, placeholder: `Enter a URL (optional)` } );
@@ -1950,30 +1954,6 @@ export const ui = {
                 p.addTextArea( "About", userDescription, (v) => {
                     userDescription = v;
                 }, { fitHeight: true, skipReset: true, inputClass: "bg-secondary!", placeholder: `Tell us something about yourself! (optional)` } );
-                p.addSeparator();
-                p.addButton( null, "Save Changes", async () => {
-                    if( userAvatar === user.avatar &&
-                        userDescription === user.description &&
-                        userDisplayName === user.display_name )
-                    {
-                        return;
-                    }
-                    const r = await this.fs.updateDocument( FS.USERS_COLLECTION_ID, user[ "$id" ], {
-                        "avatar": userAvatar,
-                        "description": userDescription,
-                        "display_name": userDisplayName
-                    } );
-                    if( r )
-                    {
-                        user.avatar = userAvatar;
-                        user.description = userDescription;
-                        infoContainer.querySelector( ".desc-content" ).innerHTML = userDescription;
-                        document.querySelectorAll( ".lexavatar img" ).forEach( i => i.src = userAvatar );
-                        Utils.toast( `✅ Settings updated`, `User: ${ userName }` );
-                    }
-                }, { className: "place-self-center w-fit!", buttonClass: "primary" } );
-                content.appendChild( p.root );
-
                 p.addTitle( "App" );
                 p.addSelect( "Default Mode (Auto, Light, Dark)", [ 'Auto', 'Light', 'Dark' ], userAppMode, async (v) => {
                     userAppMode = v;
@@ -1985,10 +1965,32 @@ export const ui = {
                     {
                         LX.setMode( v.toLowerCase() );
                     }
-                    await this.fs.updateDocument( FS.USERS_COLLECTION_ID, user[ "$id" ], {
-                        "app_mode": userAppMode
-                    } );
                 }, { nameWidth: "70%", skipReset: true, overflowContainer: p.root } );
+                p.addSeparator();
+                p.addButton( null, "Save Changes", async () => {
+                    if( userAvatar === user.avatar &&
+                        userDescription === user.description &&
+                        userDisplayName === user.display_name )
+                    {
+                        return;
+                    }
+                    const r = await this.fs.updateDocument( FS.USERS_COLLECTION_ID, user[ "$id" ], {
+                        "avatar": userAvatar,
+                        "description": userDescription,
+                        "display_name": userDisplayName,
+                        "app_mode": userAppMode,
+                        "public": publicProfile,
+                    } );
+                    if( r )
+                    {
+                        user.avatar = userAvatar;
+                        user.description = userDescription;
+                        infoContainer.querySelector( ".desc-content" ).innerHTML = userDescription;
+                        document.querySelectorAll( ".lexavatar img" ).forEach( i => i.src = userAvatar );
+                        Utils.toast( `✅ Settings updated`, `User: ${ userName }` );
+                    }
+                }, { className: "place-self-center w-fit!", buttonClass: "primary" } );
+                content.appendChild( p.root );
             }
 
             // notifications
