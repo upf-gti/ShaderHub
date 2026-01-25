@@ -67,7 +67,7 @@ export const ui = {
             const sidebarOptions = {
                 headerTitle: fs.user ? fs.user.name : "Guest",
                 headerSubtitle: fs.user ? fs.user.email : undefined,
-                headerImage: this.dbUser?.avatar ?? "images/favicon.png",
+                headerImage: this.dbUser?.avatar ?? "/images/favicon.png",
                 skipFooter: true,
                 collapsed: false,
                 collapsable: false,
@@ -162,7 +162,7 @@ export const ui = {
             menubar.root.appendChild( loginOptionsButton.root );
         }
 
-        menubar.setButtonImage("ShaderHub", mobile ? `images/favicon.png` : `images/icon_${ starterMode }.png`, ( element, event ) => {
+        menubar.setButtonImage("ShaderHub", mobile ? `/images/favicon.png` : `/images/icon_${ starterMode }.png`, ( element, event ) => {
             const needsReload = ( window.location.search === "" );
             window.location.hash = "";
             window.open( `${ ShaderHub.getFullPath() }`, event?.button !== 1 ? "_self" : undefined );
@@ -172,7 +172,7 @@ export const ui = {
         LX.addSignal( "@on_new_color_scheme", ( el, value ) => {
             if( !mobile )
             {
-                menubar.setButtonImage("ShaderHub", `images/icon_${ value }.png`, null, { float: "left" } );
+                menubar.setButtonImage("ShaderHub", `/images/icon_${ value }.png`, null, { float: "left" } );
             }
         } );
 
@@ -337,7 +337,7 @@ export const ui = {
             }
             
             const header = LX.makeContainer( [ null, "auto" ], "flex flex-col mt-8 px-10 gap-4 text-center items-center place-content-center", `
-                <img src="images/favicon.png" class="">
+                <img src="/images/favicon.png" class="">
                 <span class="mb-6 text-muted-foreground text-2xl sm:text-3xl font-medium">ShaderHub (beta ${ ShaderHub.version })</span>
                 <span class="text-balanced text-4xl sm:text-5xl font-medium">Create and Share Shaders using latest WebGPU!</span>
                 <a onclick='ShaderHub.openShader("6963e7bd0533036adf87")' class="flex flex-row gap-1 items-center text-sm p-1 px-4 rounded-full text-secondary-foreground decoration-none hover:bg-secondary cursor-pointer"><span class="flex bg-orange-500 w-2 h-2 rounded-full"></span>
@@ -378,7 +378,7 @@ export const ui = {
             const shaderPreview = LX.makeElement( "img", "opacity-0 rounded-lg bg-background-blur hover:bg-accent border-none cursor-pointer self-center mt-2", "", shaderItem );
             shaderPreview.style.width = "calc(100% - 1rem)";
             shaderPreview.style.height = "calc(100% - 1rem)";
-            shaderPreview.src = "images/shader_preview.png";
+            shaderPreview.src = "/images/shader_preview.png";
             LX.makeContainer( ["100%", "auto"], "bg-background-blur flex flex-row rounded-b-lg gap-6 p-4 select-none", `
                 <div class="w-full flex flex-col gap-1">
                     <div class="w-3/4 h-3 lexskeletonpart"></div>
@@ -463,7 +463,7 @@ export const ui = {
                 const shaderItem = skeleton.root.children[ i ];
                 const shaderPreview = shaderItem.querySelector( "img" );
                 shaderPreview.style.width = "calc(100% - 1rem)";
-                shaderPreview.src = shader.preview ?? "images/shader_preview.png";
+                shaderPreview.src = shader.preview ?? "/images/shader_preview.png";
                 shaderPreview.onload = () => shaderPreview.classList.remove( "opacity-0" );
                 shaderItem.querySelector( "div" ).remove();
                 const shaderDesc = LX.makeContainer( ["100%", "auto"], "flex flex-row bg-card hover:bg-accent rounded-b-lg gap-6 p-4 select-none", `
@@ -594,7 +594,7 @@ export const ui = {
             const shaderPreview = LX.makeElement( "img", "opacity-0 rounded-lg bg-background-blur hover:bg-accent border-none cursor-pointer self-center mt-2", "", shaderItem );
             shaderPreview.style.width = "calc(100% - 1rem)";
             shaderPreview.style.height = "calc(100% - 1rem)";
-            shaderPreview.src = "images/shader_preview.png";
+            shaderPreview.src = "/images/shader_preview.png";
             LX.makeContainer( ["100%", "auto"], "absolute bottom-0 bg-background-blur flex flex-row rounded-b-lg gap-6 p-4 select-none", `
                 <div class="w-full flex flex-col gap-1">
                     <div class="w-3/4 h-3 lexskeletonpart"></div>
@@ -678,7 +678,7 @@ export const ui = {
                 const shaderItem = skeleton.root.children[ i ];
                 const shaderPreview = shaderItem.querySelector( "img" );
                 shaderPreview.style.width = "calc(100% - 1rem)";
-                shaderPreview.src = shader.preview ?? "images/shader_preview.png";
+                shaderPreview.src = shader.preview ?? "/images/shader_preview.png";
                 shaderPreview.onload = () => shaderPreview.classList.remove( "opacity-0" );
                 shaderItem.querySelector( "div" ).remove();
                 const shaderDesc = LX.makeContainer( ["100%", "auto"], "flex flex-row rounded-b-lg gap-6 p-4 items-center select-none", `
@@ -1524,7 +1524,7 @@ export const ui = {
                     const shaderPreview = LX.makeElement( "img", "opacity-0 rounded-lg bg-background-blur hover:bg-accent border-none cursor-pointer self-center mt-2", "", shaderItem );
                     shaderPreview.style.width = "calc(100% - 1rem)";
                     shaderPreview.style.height = "calc(100% - 1rem)";
-                    shaderPreview.src = "images/shader_preview.png";
+                    shaderPreview.src = "/images/shader_preview.png";
                     LX.makeContainer( ["100%", "auto"], "absolute bottom-0 bg-background-blur flex flex-row rounded-b-lg gap-6 p-4 select-none", `
                         <div class="w-full flex flex-col gap-1">
                             <div class="w-3/4 h-3 lexskeletonpart"></div>
@@ -1574,7 +1574,7 @@ export const ui = {
                         const shaderItem = skeleton.root.children[ i ];
                         const shaderPreview = shaderItem.querySelector( "img" );
                         shaderPreview.style.width = "calc(100% - 1rem)";
-                        shaderPreview.src = shaderInfo.preview ?? "images/shader_preview.png";
+                        shaderPreview.src = shaderInfo.preview ?? "/images/shader_preview.png";
                         shaderPreview.onload = () => shaderPreview.classList.remove( "opacity-0" );
                         shaderItem.querySelector( "div" ).remove();
                         const shaderDesc = LX.makeContainer( ["100%", "auto"], "flex flex-row rounded-b-lg gap-6 p-4 items-center select-none", `
@@ -1725,7 +1725,7 @@ export const ui = {
                         const shaderPreview = LX.makeElement( "img", "opacity-0 rounded-lg bg-background-blur hover:bg-accent border-none cursor-pointer self-center mt-2", "", shaderItem );
                         shaderPreview.style.width = "calc(100% - 1rem)";
                         shaderPreview.style.height = "calc(100% - 1rem)";
-                        shaderPreview.src = "images/shader_preview.png";
+                        shaderPreview.src = "/images/shader_preview.png";
                         LX.makeContainer( ["100%", "auto"], "absolute bottom-0 bg-background-blur flex flex-row rounded-b-lg gap-6 p-4 select-none", `
                             <div class="w-full flex flex-col gap-1">
                                 <div class="w-3/4 h-3 lexskeletonpart"></div>
@@ -1789,7 +1789,7 @@ export const ui = {
                             const shaderItem = skeleton.root.children[ i ];
                             const shaderPreview = shaderItem.querySelector( "img" );
                             shaderPreview.style.width = "calc(100% - 1rem)";
-                            shaderPreview.src = shaderInfo.preview ?? "images/shader_preview.png";
+                            shaderPreview.src = shaderInfo.preview ?? "/images/shader_preview.png";
                             shaderPreview.onload = () => shaderPreview.classList.remove( "opacity-0" );
                             shaderItem.querySelector( "div" ).remove();
                             const shaderDesc = LX.makeContainer( ["100%", "auto"], "flex flex-row rounded-b-lg gap-6 p-4 items-center select-none", `
@@ -2875,7 +2875,7 @@ export const ui = {
                 {
                     const localUrl = document[ "local_url" ];
                     const preview = document[ "preview" ];
-                    const url = localUrl ?? ( preview ? await this.fs.getFileUrl( preview ) : ( fileId ? await this.fs.getFileUrl( fileId ) : "images/shader_preview.png" ) );
+                    const url = localUrl ?? ( preview ? await this.fs.getFileUrl( preview ) : ( fileId ? await this.fs.getFileUrl( fileId ) : "/images/shader_preview.png" ) );
 
                     const img = new Image();
                     img.crossOrigin = "anonymous";
