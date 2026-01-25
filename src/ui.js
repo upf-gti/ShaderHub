@@ -11,7 +11,7 @@ const mobile = Utils.isMobile();
 
 export const ui = {
 
-    allowCapture: true,
+    captureInProgress: false,
 
     _dbAssetsCache: new Map(), // fileId -> ImageBitmap/audio
 
@@ -1428,11 +1428,15 @@ export const ui = {
                 panel.sameLine();
                 const container = LX.makeContainer( ["auto", "auto"], "flex flex-row ml-auto" );
                 this._recordButton = new LX.Button( null, "RecordButton", ( name, event ) => {
+                    if( this.captureInProgress )
+                    {
+                        return;
+                    }
                     const iButton = this._recordButton.root.querySelector( "button" );
                     iButton.classList.remove( "bg-none", "lexbutton" );
                     iButton.classList.add( "bg-destructive", "hover:bg-destructive", "rounded-lg", "border-none" );
-                    this.allowCapture = false;
-                    ShaderHub.startCapture( exportOptions );
+                    this.captureInProgress = true;
+                    LX.doAsync( () => ShaderHub.startCapture( exportOptions ) );
                 }, { icon: "Video", className: "p-0", buttonClass: "outline record-button", title: "Record", tooltip: true } );
                 container.appendChild( this._recordButton.root );
                 const b = new LX.Button( null, "RecordSettingsButton", ( name, event ) => {
@@ -2524,7 +2528,7 @@ export const ui = {
         iButton.classList.remove( "bg-destructive",  "hover:bg-destructive" );
         iButton.classList.add( "bg-none", "lexbutton" );
 
-        this.allowCapture = true;
+        this.captureInProgress = false;
     },
 
     openRecoverPasswordDialog()
