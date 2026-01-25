@@ -1,6 +1,6 @@
 /docs/*     /docs/index.html   200
 /view/*     /index.html        200
-/profile/*  /index.html        200
+/user/*     /index.html        200
 /explore    /index.html        200
 /create     /index.html        200
 /           /index.html        200

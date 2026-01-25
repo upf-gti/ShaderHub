@@ -36,11 +36,11 @@ const ShaderHub =
 
     async init()
     {
-        await fs.detectAutoLogin();
-        await ui.init( fs );
-
         this.audioContext = new AudioContext( { sampleRate: 48000 } );
         this.shaderPreviewPath = `${this.imagesRootPath}/shader_preview.png`;
+
+        await fs.detectAutoLogin();
+        await ui.init( fs );
     },
 
     async onFrame()
@@ -670,30 +670,6 @@ const ShaderHub =
         return window.location.origin + ( addPath ? window.location.pathname : "" );
     },
 
-    openPage( path = "", e )
-    {
-        const fullPath = `${ this.getFullPath( false ) }/${ path }`;
-
-        if( e?.button === 1 )
-        {
-            e.preventDefault();
-            window.open( fullPath, "_blank" );
-            return;
-        }
-
-        window.location.href = fullPath;
-    },
-
-    openProfile( userID, e )
-    {
-        window.open( `${ this.getFullPath( false ) }/${ `profile/${ Utils.encodeUID( userID ) }` }`, e?.button !== 1 ? "_self" : undefined );
-    },
-
-    openShader( shaderID, e )
-    {
-        window.open( `${ this.getFullPath( false ) }/${ shaderID === 'new' ? 'create/' : `view/${ shaderID }` }`, e?.button !== 1 ? "_self" : undefined );
-    },
-
     getCurrentSuggestions()
     {
         const customSuggestions = [];
@@ -929,7 +905,7 @@ const ShaderHub =
         await this.updateShaderPreview( shaderUid, false );
 
         // Go to shader edit view with the new shader
-        this.openShader( result[ "$id" ] );
+        ui._openShader( result[ "$id" ] );
     },
 
     filterShaders( shaderList, querySearch )

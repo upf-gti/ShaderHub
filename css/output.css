@@ -391,8 +391,8 @@
   .max-w-128 {
     max-width: calc(var(--spacing) * 128);
   }
-  .max-w-\[25\%\] {
-    max-width: 25%;
+  .max-w-\[40\%\] {
+    max-width: 40%;
   }
   .max-w-full {
     max-width: 100%;
@@ -821,11 +821,6 @@
       line-height: var(--tw-leading, var(--text-lg--line-height));
     }
   }
-  .md\:ml-0 {
-    @media (width >= 48rem) {
-      margin-left: calc(var(--spacing) * 0);
-    }
-  }
   .md\:block {
     @media (width >= 48rem) {
       display: block;
@@ -834,6 +829,16 @@
   .md\:flex {
     @media (width >= 48rem) {
       display: flex;
+    }
+  }
+  .md\:hidden {
+    @media (width >= 48rem) {
+      display: none;
+    }
+  }
+  .md\:max-w-\[25\%\] {
+    @media (width >= 48rem) {
+      max-width: 25%;
     }
   }
   .md\:flex-row {
@@ -849,6 +854,18 @@
   .\32 xl\:max-w-\[20\%\] {
     @media (width >= 96rem) {
       max-width: 20%;
+    }
+  }
+  .\[\&_\.lexmenuentry\]\:hidden\! {
+    & .lexmenuentry {
+      display: none !important;
+    }
+  }
+  .\[\&_\.lexmenuentry\]\:md\:flex\! {
+    & .lexmenuentry {
+      @media (width >= 48rem) {
+        display: flex !important;
+      }
     }
   }
   .\[\&_span\]\:text-xl {

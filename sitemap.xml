@@ -10,6 +10,9 @@
         <loc>https://shaderhub.dev/view</loc>
     </url>
     <url>
+        <loc>https://shaderhub.dev/create</loc>
+    </url>
+    <url>
         <loc>https://shaderhub.dev/docs</loc>
     </url>
 </urlset>

@@ -19,6 +19,7 @@ export const ui = {
     {
         this.fs = fs;
         this.area = await LX.init();
+        this.currentView = null; // 'home' | 'explore' | 'shader' | 'user'
 
         if( fs.user )
         {
@@ -43,26 +44,27 @@ export const ui = {
         {
             menubarOptions.push(
                 {
-                    name: "New", callback: ( k, entry, event ) => ShaderHub.openShader( "new", event )
+                    name: "New", callback: ( k, entry, event ) => this._openShader( "new", event )
                 },
                 {
-                    name: "Explore", callback: ( k, entry, event ) => ShaderHub.openPage( `${k.toLowerCase()}/`, event )
+                    name: "Explore", callback: ( k, entry, event ) => this._openPage( `${k.toLowerCase()}/`, event )
                 },
                 {
-                    name: "Docs", callback: ( k, entry, event ) => ShaderHub.openPage( `${k.toLowerCase()}/`, event )
+                    name: "Docs", callback: ( k, entry, event ) => this._openPage( `${k.toLowerCase()}/`, event )
                 }
             );
         }
 
         const menubar = this.area.addMenubar( menubarOptions, { parentClass: "bg-none" } );
+        LX.addClass( menubar.root, '[&_.lexmenuentry]:hidden! [&_.lexmenuentry]:md:flex!' );
 
         const querySearch = params.get( "search" );
         const searchShaderInput = new LX.TextInput(null, querySearch ?? '', v => {
             if( v.length ) this._searchShader( v )
-        }, { placeholder: "Search shaders...", className: "hidden md:flex mx-auto flex-auto-fill max-w-[25%] 2xl:max-w-[20%]" });
+        }, { placeholder: "Search...", className: "mx-auto flex-auto-fill max-w-[40%] md:max-w-[25%] 2xl:max-w-[20%]" });
         menubar.root.appendChild( searchShaderInput.root );
 
-        if( mobile )
+        // Do it always and use it for small screens
         {
             const sidebarOptions = {
                 headerTitle: fs.user ? fs.user.name : "Guest",
@@ -77,7 +79,7 @@ export const ui = {
             const sidebarCallback = m => {
                 if( fs.user )
                 {
-                    m.add( "Profile", { icon: "User", callback: () => ShaderHub.openProfile( fs.getUserId() ) } );
+                    m.add( "Profile", { icon: "User", callback: () => this._openUserProfile( fs.getUserId() ) } );
                 }
                 else
                 {
@@ -85,8 +87,8 @@ export const ui = {
                     m.add( "Create account", { icon: "UserPlus", callback: () => this.openSignUpDialog() } );
                 }
 
-                m.add( "Explore", { icon: "Search", callback: () => ShaderHub.openPage( "explore" ) } );
-                m.add( "Docs", { icon: "HelpCircle", callback: () => ShaderHub.openPage( "docs" ) } );
+                m.add( "Explore", { icon: "Search", callback: () => this._openPage( "explore" ) } );
+                m.add( "Docs", { icon: "BookOpen", callback: () => this._openPage( "docs" ) } );
 
                 if( fs.user )
                 {
@@ -101,18 +103,22 @@ export const ui = {
 
             menubar.setButtonIcon( 'Menu', 'Menu', () => window.__currentSheet = new LX.Sheet("256px", [ sheetArea ],
                 { side: "right" } ) );
-            LX.addClass( menubar.buttons[ 'Menu' ].root, 'ml-auto' );
+            const menuButton = menubar.buttons[ 'Menu' ].root;
+            LX.addClass( menuButton, 'md:hidden ml-auto' );
         }
-        else
+        
+        if( !mobile )
         {
-            const signupContainer = LX.makeContainer( [`auto`, "auto"], "flex flex-row p-1 gap-1 self-center items-center", "", menubar.root );
+            const accountContainer = LX.makeContainer( [`auto`, "auto"], "hidden md:flex flex-row p-1 gap-1 self-center items-center ml-auto", "", menubar.root );
+
+            const signupContainer = LX.makeContainer( [`auto`, "auto"], "flex flex-row p-1 gap-1 self-center items-center", "", accountContainer );
             signupContainer.id = "signupContainer";
             signupContainer.classList.toggle( "hidden", !!fs.user );
 
-            const signupOptionsButton = new LX.Button( null, "Create account", () => this.openSignUpDialog(),
-                { className: 'ml-auto', buttonClass: 'ghost h-8 px-4' } );
+            const signupOptionsButton = new LX.Button( null, "Create account", () => this.openSignUpDialog(), { buttonClass: 'ghost h-8 px-4' } );
             signupContainer.appendChild( signupOptionsButton.root );
 
+            // Separator
             LX.makeContainer( [`auto`, "0.85rem"], "border-right border-color text-foreground self-center items-center", "", signupContainer );
 
             this.getLoginHtml = async ( user ) => {
@@ -148,7 +154,7 @@ export const ui = {
                     new LX.DropdownMenu( loginOptionsButton.root, [
                         fs.user.name,
                         null,
-                        { name: "Profile", icon: "User", callback: () => ShaderHub.openProfile( fs.getUserId() ) },
+                        { name: "Profile", icon: "User", callback: () => this._openUserProfile( fs.getUserId() ) },
                         null,
                         { name: "Logout", icon: "LogOut", className: "destructive", callback: async () => {
                             await this.onLogout();
@@ -159,13 +165,13 @@ export const ui = {
                 {
                     this.openLoginDialog();
                 }
-            }, { className: "mr-2 ml-auto md:ml-0 flex-auto-keep", buttonClass: 'ghost h-8 px-4' } );
+            }, { className: "mx-2 flex-auto-keep", buttonClass: 'ghost h-8 px-4' } );
             loginOptionsButton.root.id = "loginOptionsButton";
 
             const loginOptionsButtonDOM = loginOptionsButton.root.querySelector( "button" );
             LX.doAsync( async () => { loginOptionsButtonDOM.innerHTML = await this.getLoginHtml( fs.user ) }, 10 );
 
-            menubar.root.appendChild( loginOptionsButton.root );
+            accountContainer.appendChild( loginOptionsButton.root );
         }
 
         menubar.setButtonImage("ShaderHub", mobile ? `${ShaderHub.imagesRootPath}/favicon.png` : `${ShaderHub.imagesRootPath}/icon_${ starterMode }.png`, ( element, event ) => {
@@ -180,58 +186,16 @@ export const ui = {
         } );
 
         menubar.root.classList.add( "hub-background-blur-md" );
-        menubar.siblingArea.root.classList.add( "content-area" );
 
-        const path = window.location.pathname;
-
-        if ( path.startsWith( '/explore' ) )
+        // Update main area after creating menubar
         {
-            this.renderExploreView();
+            this.area = menubar.siblingArea;
+            LX.addClass( this.area.root, 'content-area' );
         }
-        else if ( path.startsWith( '/create' ) )
-        {
-            this.renderShaderView( 'new' );
-        }
-        else if ( path.startsWith( '/view' ) )
-        {
-            let encodedShaderUid = path.split( '/view/' )[1];
 
-            // Fallback: if no UID in path, check query parameter
-            if ( !encodedShaderUid || encodedShaderUid === '' )
-            {
-                encodedShaderUid = params.get( 'shader' );
-            }
+        window.addEventListener( 'popstate', this.router.bind( this ) );
 
-            if ( !encodedShaderUid )
-            {
-                console.warn( 'No shader UID specified' );
-                return;
-            }
-
-            await this.renderShaderView( Utils.decodeUID( encodedShaderUid ) );
-        }
-        else if ( path.startsWith( '/profile' ) )
-        {
-            let encodedProfileUid = path.split( '/profile/' )[1];
-
-            // Fallback: if no UID in path, check query parameter
-            if ( !encodedProfileUid || encodedProfileUid === '' )
-            {
-                encodedProfileUid = params.get( 'profile' );
-            }
-
-            if ( !encodedProfileUid )
-            {
-                console.warn( 'No profile UID specified' );
-                return;
-            }
-
-            await this.renderProfileView( Utils.decodeUID( encodedProfileUid ) );
-        }
-        else
-        {
-            await this.renderInitialPage();
-        }
+        this.router();
 
         const isPasswordRecovery = params.get( "verifyEmail" ) === "true";
         const queryPasswordRecoverySecret = params.get( "secret" );
@@ -252,6 +216,52 @@ export const ui = {
         else if( queryPasswordRecoverySecret && queryPasswordRecoveryUserId )
         {
             this.openUpdatePasswordRecoverDialog( queryPasswordRecoveryUserId, queryPasswordRecoverySecret );
+        }
+    },
+
+    async router()
+    {
+        const path = window.location.pathname;
+        const goingToShader = path.startsWith( '/view' ) || path.startsWith( '/create' );
+        const currentlyInShader = ( this.currentView === 'shader' );
+
+        if ( currentlyInShader && !goingToShader )
+        {
+            window.location.href = window.location.origin + path;
+            return;
+        }
+
+        if ( path.startsWith( '/explore' ) )
+        {
+            this.renderExploreView();
+        }
+        else if ( path.startsWith( '/create' ) )
+        {
+            this.renderShaderView( 'new' );
+        }
+        else if ( path.startsWith( '/view' ) )
+        {
+            const shaderUid = Utils.parsePathUid( 'view' );
+            if ( !shaderUid )
+            {
+                return;
+            }
+
+            await this.renderShaderView( shaderUid );
+        }
+        else if ( path.startsWith( '/user' ) )
+        {
+            const userUid = Utils.parsePathUid( 'user' );
+            if ( !userUid )
+            {
+                return;
+            }
+
+            await this.renderUserView( userUid );
+        }
+        else
+        {
+            await this.renderHomePage();
         }
     },
 
@@ -276,6 +286,59 @@ export const ui = {
             url.searchParams.delete( 'search' );
         }
         window.location.href = url.toString();
+    },
+
+    _openPage( path = "", e )
+    {
+        const isDocs = path.startsWith( '/docs' );
+        const url = `${ ShaderHub.getFullPath( false ) }/${ path }`;
+
+        if ( e?.button === 1 || e?.ctrlKey || e?.metaKey )
+        {
+            e.preventDefault();
+            window.open( url, "_blank" );
+            return;
+        }
+
+        // Docs site is not part of the SPA by now, make a full reload
+        if ( isDocs )
+        {
+            window.location.href = path;
+            return;
+        }
+
+        history.pushState( {}, '', url );
+        this.router();
+    },
+
+    _openShader( shaderID, e )
+    {
+        const path = ( shaderID === 'new' ) ? '/create/' : `/view/${Utils.encodeUID(shaderID )}`;
+        const url = `${ShaderHub.getFullPath( false )}${path}`;
+
+        if ( e?.button === 1 || e?.ctrlKey || e?.metaKey )
+        {
+            window.open( url, "_blank" );
+            return;
+        }
+
+        history.pushState( {}, '', url );
+        this.router();
+    },
+
+    _openUserProfile( userID, e )
+    {
+        const url = `${ShaderHub.getFullPath( false )}/user/${Utils.encodeUID( userID )}`;
+
+        if ( e?.button === 1 || e?.ctrlKey || e?.metaKey )
+        {
+            e.preventDefault();
+            window.open( url, '_blank' );
+            return;
+        }
+
+        history.pushState( {}, '', url );
+        this.router();
     },
 
     _explorePage( v )
@@ -330,8 +393,19 @@ export const ui = {
             ${ LX.makeIcon("Github@solid", { svgClass:"lg" } ).innerHTML }<a class="decoration-none hover:underline underline-offset-4" href="https://github.com/upf-gti/ShaderHub">Code on Github</a>`, area );
     },
 
-    async renderInitialPage()
+    _clearContent()
     {
+        this.area.root.innerHTML = '';
+        delete this.area.type;
+        this.area.sections = [];
+    },
+
+    async renderHomePage()
+    {
+        this._clearContent();
+
+        this.currentView = 'home';
+
         var [ topArea, bottomArea ] = this.area.split({ type: "vertical", sizes: ["calc(100% - 48px)", "48px"], resize: false });
         this.area.root.className += " hub-background";
         bottomArea.root.className += " items-center content-center";
@@ -359,14 +433,14 @@ export const ui = {
                 <img src="${ShaderHub.imagesRootPath}/favicon.png" class="">
                 <span class="mb-6 text-muted-foreground text-2xl sm:text-3xl font-medium">ShaderHub (beta ${ ShaderHub.version })</span>
                 <span class="text-balanced text-4xl sm:text-5xl font-medium">Create and Share Shaders using latest WebGPU!</span>
-                <a onclick='ShaderHub.openShader("new")' class="flex flex-row gap-1 items-center text-sm p-1 px-4 rounded-full text-secondary-foreground decoration-none hover:bg-secondary cursor-pointer"><span class="flex flex-auto-keep bg-orange-500 w-2 h-2 rounded-full"></span>
+                <a onclick='ui._openShader("new")' class="flex flex-row gap-1 items-center text-sm p-1 px-4 rounded-full text-secondary-foreground decoration-none hover:bg-secondary cursor-pointer"><span class="flex flex-auto-keep bg-orange-500 w-2 h-2 rounded-full"></span>
                 <span class="flex flex-auto-fill">New Sound Channel, User Avatars, Shader Comments, UI Improvements</span>${ LX.makeIcon( "ArrowRight", { svgClass: "flex flex-auto-keep sm" } ).innerHTML }</a>
             `, container );
 
             if( !mobile )
             {
                 const headerButtons = LX.makeContainer( [ "auto", "auto" ], "flex flex-row p-2", ``, header );
-                const getStartedButton = new LX.Button( null, "Create a Shader", () => ShaderHub.openShader( "new" ), { icon: "ChevronRight", iconPosition: "end", buttonClass: "lg primary" } );
+                const getStartedButton = new LX.Button( null, "Create a Shader", () => this._openShader( "new" ), { icon: "ChevronRight", iconPosition: "end", buttonClass: "lg primary" } );
                 headerButtons.appendChild( getStartedButton.root );
             }
 
@@ -488,7 +562,7 @@ export const ui = {
                 const shaderDesc = LX.makeContainer( ["100%", "auto"], "flex flex-row bg-card hover:bg-accent rounded-b-lg gap-6 p-4 select-none", `
                     <div class="w-full">
                         <div class="text-md font-bold">${ shader.name }</div>
-                        <div class="text-sm font-light">by ${ !shader.anonAuthor ? `<a onclick='ShaderHub.openProfile("${ shader.authorId }")' class='hub-link font-medium'>` : "" }<span>${ shader.author }</span>${ !shader.anonAuthor ? "</a>" : "" }</div>
+                        <div class="text-sm font-light">by ${ !shader.anonAuthor ? `<a onclick='ui._openUserProfile("${ shader.authorId }")' class='hub-link font-medium'>` : "" }<span>${ shader.author }</span>${ !shader.anonAuthor ? "</a>" : "" }</div>
                     </div>
                     <div class="flex flex-row gap-1 items-center">
                         ${ LX.makeIcon( "Heart", { svgClass: "fill-current text-card-foreground" } ).innerHTML }
@@ -497,7 +571,7 @@ export const ui = {
 
                 shaderPreview.addEventListener( "mousedown", e => e.preventDefault() );
                 shaderPreview.addEventListener( "mouseup", ( e ) => {
-                    ShaderHub.openShader( Utils.encodeUID( shader.uid ), e );
+                    this._openShader( shader.uid, e );
                 } );
             }
 
@@ -512,6 +586,10 @@ export const ui = {
 
     async renderExploreView()
     {
+        this._clearContent();
+
+        this.currentView = 'explore';
+
         const params = new URLSearchParams( document.location.search );
         const queryFeature = params.get( "feature" );
         const queryOrderBy = params.get( "order_by" );
@@ -703,7 +781,7 @@ export const ui = {
                 const shaderDesc = LX.makeContainer( ["100%", "auto"], "flex flex-row rounded-b-lg gap-6 p-4 items-center select-none", `
                     <div class="w-full">
                         <div class="text-base font-bold">${ shader.name }</div>
-                        <div class="text-sm font-light">by ${ !shader.anonAuthor ? `<a onclick='ShaderHub.openProfile("${ shader.authorId }")' class='hub-link font-medium'>` : "" }<span>${ shader.author }</span>${ !shader.anonAuthor ? "</a>" : "" }</div>
+                        <div class="text-sm font-light">by ${ !shader.anonAuthor ? `<a onclick='ui._openUserProfile("${ shader.authorId }")' class='hub-link font-medium'>` : "" }<span>${ shader.author }</span>${ !shader.anonAuthor ? "</a>" : "" }</div>
                     </div>
                     <div class="flex flex-row gap-1 items-center">
                         ${ LX.makeIcon( "Heart", { svgClass: `${ shader.liked ? "text-orange-600" : "" } fill-current` } ).innerHTML }
@@ -712,7 +790,7 @@ export const ui = {
 
                 shaderPreview.addEventListener( "mousedown", e => e.preventDefault() );
                 shaderPreview.addEventListener( "mouseup", ( e ) => {
-                    ShaderHub.openShader( Utils.encodeUID( shader.uid ), e );
+                    this._openShader( shader.uid, e );
                 } );
             }
 
@@ -724,6 +802,10 @@ export const ui = {
 
     async renderShaderView( shaderUid )
     {
+        this._clearContent();
+
+        this.currentView = 'shader';
+
         this.area.root.style.height = "100dvh";
 
         const shader = await ShaderHub.getShaderById( shaderUid );
@@ -858,8 +940,8 @@ export const ui = {
                         ${ ( ownProfile || isNewShader ) ? LX.makeIcon("Edit", { svgClass: "mr-2 cursor-pointer hover:text-foreground" } ).innerHTML : "" }
                         <div class="text-foreground text-lg font-semibold">${ shader.name }</div>
                     </div>
-                    ${ isNewShader ? '' : `<div class="text-muted-foreground text-sm">Created by ${ !shader.anonAuthor ? `<a onclick='ShaderHub.openProfile("${ shader.authorId }")' class='hub-link font-medium'>` : `` }<span>${ shader.author }</span>${ !shader.anonAuthor ? "</a>" : "" } on ${ shader.creationDate }
-                    ${ originalShader ? `(remixed from <a onclick='ShaderHub.openShader("${ Utils.encodeUID( shader.originalId ) }")' class='hub-link font-medium'>${ originalShader.name }</a> by <a onclick='ShaderHub.openProfile("${ originalShader.authorId }")' class='hub-link font-medium'>${ originalShader.author }</a>)` : `` } ` }
+                    ${ isNewShader ? '' : `<div class="text-muted-foreground text-sm">Created by ${ !shader.anonAuthor ? `<a onclick='ui._openUserProfile("${ shader.authorId }")' class='hub-link font-medium'>` : `` }<span>${ shader.author }</span>${ !shader.anonAuthor ? "</a>" : "" } on ${ shader.creationDate }
+                    ${ originalShader ? `(remixed from <a onclick='ui._openShader("${ shader.originalId }")' class='hub-link font-medium'>${ originalShader.name }</a> by <a onclick='ui._openUserProfile("${ originalShader.authorId }")' class='hub-link font-medium'>${ originalShader.author }</a>)` : `` } ` }
                     </div>
                 </div>
             `, shaderDataContainer );
@@ -1156,7 +1238,7 @@ export const ui = {
                                         const dbMentionedUsers = await this.fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_name", m[2] ) ] );
                                         if( dbMentionedUsers.total === 0 ) continue;
                                         commentText = commentText.substring( 0, m.index ) + commentText.substring( m.index ).replace(m[0],
-                                        ` <span onclick='ShaderHub.openProfile("${ dbMentionedUsers.documents[0].user_id }")' class="hub-mention">${m[0]}</span>` );   
+                                        ` <span onclick='ui._openUserProfile("${ dbMentionedUsers.documents[0].user_id }")' class="hub-mention">${m[0]}</span>` );   
                                     }
                                 }
 
@@ -1166,7 +1248,7 @@ export const ui = {
                                     ${ avatar.root.outerHTML }
                                     <div class="flex flex-col gap-1 flex-auto-fill">
                                         <div class="flex flex-row gap-2 items-center">
-                                            <div class="text-sm font-medium">${ `<a onclick='ShaderHub.openProfile("${ commentAuthorId }")' class='hub-link font-medium'>${ commentAuthorName }</a>` }</div>
+                                            <div class="text-sm font-medium">${ `<a onclick='ui._openUserProfile("${ commentAuthorId }")' class='hub-link font-medium'>${ commentAuthorName }</a>` }</div>
                                             <div class="text-xs text-muted-foreground">${ commentDate }</div>
                                         </div>
                                         <div class="text-sm w-full break-all">${ commentText }</div>
@@ -1255,7 +1337,7 @@ export const ui = {
                                             const dbMentionedUsers = await this.fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_name", m[2] ) ] );
                                             if( dbMentionedUsers.total === 0 ) continue;
                                             replyText = replyText.substring( 0, m.index ) + replyText.substring( m.index ).replace(m[0],
-                                            ` <span onclick='ShaderHub.openProfile("${ dbMentionedUsers.documents[0].user_id }")' class="hub-mention">${m[0]}</span>` );   
+                                            ` <span onclick='ui._openUserProfile("${ dbMentionedUsers.documents[0].user_id }")' class="hub-mention">${m[0]}</span>` );   
                                         }
                                     }
 
@@ -1273,7 +1355,7 @@ export const ui = {
                                         ${ avatar.root.outerHTML }
                                         <div class="flex flex-col gap-1 flex-auto-fill">
                                             <div class="flex flex-row gap-2 items-center">
-                                                <div class="text-sm font-medium">${ `<a onclick='ShaderHub.openProfile("${ replyAuthorId }")' class='hub-link font-medium'>${ replyAuthorName }</a>` }</div>
+                                                <div class="text-sm font-medium">${ `<a onclick='ui._openUserProfile("${ replyAuthorId }")' class='hub-link font-medium'>${ replyAuthorName }</a>` }</div>
                                                 <div class="text-xs text-muted-foreground">${ replyDate }</div>
                                             </div>
                                             <div class="text-sm w-full break-all">${ replyText }</div>
@@ -1406,8 +1488,12 @@ export const ui = {
         }
     },
 
-    async renderProfileView( userID )
+    async renderUserView( userID )
     {
+        this._clearContent();
+
+        this.currentView = 'user';
+
         let [ topArea, bottomArea ] = this.area.split({ type: "vertical", sizes: ["calc(100% - 48px)", null], resize: false });
         topArea.root.parentElement.classList.add( "hub-background" )
         topArea.root.className += " p-6 hub-background-blur overflow-scroll";
@@ -1480,7 +1566,7 @@ export const ui = {
                 for( let f of Constants.ORDER_BY_NAMES )
                 {
                     const fLower = f.toLowerCase();
-                    filtersPanel.addButton( null, f, (v) => this._exploreOrderBy( v.toLowerCase(), 'profile' ), { buttonClass: `xs ${currentOrderFilter === fLower ? "primary" : "outline bg-card!"}` } );
+                    filtersPanel.addButton( null, f, (v) => this._exploreOrderBy( v.toLowerCase(), 'user' ), { buttonClass: `xs ${currentOrderFilter === fLower ? "primary" : "outline bg-card!"}` } );
                 }
 
                 filtersPanel.endLine();
@@ -1532,7 +1618,7 @@ export const ui = {
                 {
                     const headerButtons = LX.makeContainer( [ "100%", "auto" ], "flex flex-col p-2 justify-center", ``, listContent );
                     LX.makeContainer( ["100%", "auto"], "mt-2 text-2xl font-medium justify-center text-center", `No shaders found.`, headerButtons );
-                    const getStartedButton = new LX.Button( null, "Create a Shader", () => ShaderHub.openShader( "new" ), { className: "mt-2 place-self-center w-fit!", icon: "ChevronRight", iconPosition: "end", buttonClass: "lg primary" } );
+                    const getStartedButton = new LX.Button( null, "Create a Shader", () => this._openShader( "new" ), { className: "mt-2 place-self-center w-fit!", icon: "ChevronRight", iconPosition: "end", buttonClass: "lg primary" } );
                     headerButtons.appendChild( getStartedButton.root );
                     return;
                 }
@@ -1645,7 +1731,7 @@ export const ui = {
 
                         shaderPreview.addEventListener( "mousedown", e => e.preventDefault() );
                         shaderPreview.addEventListener( "mouseup", ( e ) => {
-                            ShaderHub.openShader( Utils.encodeUID( shaderInfo.uid ), e );
+                            this._openShader( shaderInfo.uid, e );
                         } );
                     }
                 }, 10 );
@@ -1816,7 +1902,7 @@ export const ui = {
                             const shaderDesc = LX.makeContainer( ["100%", "auto"], "flex flex-row rounded-b-lg gap-6 p-4 items-center select-none", `
                                 <div class="w-full">
                                     <div class="text-lg font-bold"><span>${ shaderInfo.name }</span></div>
-                                    <div class="text-sm font-light">by ${ !shaderInfo.anonAuthor ? `<a onclick='ShaderHub.openProfile("${ shaderInfo.authorId }")' class='hub-link font-medium'>` : "" }<span>${ shaderInfo.author }</span>${ !shaderInfo.anonAuthor ? "</a>" : "" }</div>
+                                    <div class="text-sm font-light">by ${ !shaderInfo.anonAuthor ? `<a onclick='ui._openUserProfile("${ shaderInfo.authorId }")' class='hub-link font-medium'>` : "" }<span>${ shaderInfo.author }</span>${ !shaderInfo.anonAuthor ? "</a>" : "" }</div>
                                 </div>
                                 <div class="flex flex-row gap-1 items-center">
                                     ${ LX.makeIcon( "Heart", { svgClass: "fill-current text-card-foreground" } ).innerHTML }
@@ -1825,7 +1911,7 @@ export const ui = {
 
                             shaderPreview.addEventListener( "mousedown", e => e.preventDefault() );
                             shaderPreview.addEventListener( "mouseup", ( e ) => {
-                                ShaderHub.openShader( Utils.encodeUID( shaderInfo.uid ), e );
+                                this._openShader( shaderInfo.uid, e );
                             } );
                         }
                     }, 10 );
@@ -2382,9 +2468,19 @@ export const ui = {
         {
             await this._createShaderDataView();
         }
-        else if( path === '/' )
+        else if( path.startsWith( '/user' ) )
         {
-            ShaderHub.openPage( 'explore' );
+            const userUid = Utils.parsePathUid( 'user' );
+            if ( !userUid )
+            {
+                return;
+            }
+
+            await this.renderUserView( userUid );
+        }
+        else
+        {
+            await this.renderExploreView();
         }
     },
 
@@ -2413,9 +2509,10 @@ export const ui = {
         {
             await this._createShaderDataView();
         }
-        else if( path === '/' )
+        else
         {
-            ShaderHub.openPage();
+            history.pushState( {}, '', '/' );
+            this.renderHomePage();
         }
     },
 
