@@ -99,7 +99,9 @@ export const ui = {
             const sheetArea = new LX.Area({ skipAppend: true });
             sheetArea.addSidebar( sidebarCallback, sidebarOptions );
 
-            menubar.setButtonIcon( "Menu", "Menu", () => window.__currentSheet = new LX.Sheet("256px", [ sheetArea ], { side: "right" } ) );
+            menubar.setButtonIcon( 'Menu', 'Menu', () => window.__currentSheet = new LX.Sheet("256px", [ sheetArea ],
+                { side: "right" } ) );
+            LX.addClass( menubar.buttons[ 'Menu' ].root, 'ml-auto' );
         }
         else
         {
@@ -107,7 +109,8 @@ export const ui = {
             signupContainer.id = "signupContainer";
             signupContainer.classList.toggle( "hidden", !!fs.user );
 
-            const signupOptionsButton = new LX.Button( null, "Create account", () => this.openSignUpDialog(), { buttonClass: 'ghost h-8 px-4' } );
+            const signupOptionsButton = new LX.Button( null, "Create account", () => this.openSignUpDialog(),
+                { className: 'ml-auto', buttonClass: 'ghost h-8 px-4' } );
             signupContainer.appendChild( signupOptionsButton.root );
 
             LX.makeContainer( [`auto`, "0.85rem"], "border-right border-color text-foreground self-center items-center", "", signupContainer );
@@ -156,7 +159,7 @@ export const ui = {
                 {
                     this.openLoginDialog();
                 }
-            }, { className: "ml-auto mr-2 flex-auto-keep", buttonClass: 'ghost h-8 px-4' } );
+            }, { className: "mr-2 ml-auto md:ml-0 flex-auto-keep", buttonClass: 'ghost h-8 px-4' } );
             loginOptionsButton.root.id = "loginOptionsButton";
 
             const loginOptionsButtonDOM = loginOptionsButton.root.querySelector( "button" );
