@@ -555,7 +555,7 @@ const ShaderHub =
             };
 
             const authorId = result[ "author_id" ];
-            const ownShader = ( authorId === fs.getUserId() );
+            const ownShader = fs.user && ( authorId === fs.getUserId() );
             if( ownShader )
             {
                 shaderData.author = ui.dbUser.user_name;
