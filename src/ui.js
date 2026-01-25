@@ -263,7 +263,7 @@ export const ui = {
 
     _searchShader( v )
     {
-        const url = new URL( window.location.href );
+        const url = new URL( `${ShaderHub.getFullPath( false )}/explore/` );
         if( v && v.trim() )
         {
             url.searchParams.set( 'search', v.trim() );
@@ -272,16 +272,12 @@ export const ui = {
         {
             url.searchParams.delete( 'search' );
         }
-        // Remove shader params if any since this can be done from any view
-        url.searchParams.delete( 'shader' );
-        url.searchParams.delete( 'profile' );
-        url.hash = 'explore';
         window.location.href = url.toString();
     },
 
     _explorePage( v )
     {
-        const url = new URL( window.location.href );
+        const url = new URL( `${ShaderHub.getFullPath( false )}/explore/` );
         if( v && v.trim() )
         {
             url.searchParams.set( 'page', v.trim() );
@@ -290,13 +286,12 @@ export const ui = {
         {
             url.searchParams.delete( 'page' );
         }
-        url.hash = 'explore';
         window.location.href = url.toString();
     },
 
     _exploreFeature( v )
     {
-        const url = new URL( window.location.href );
+        const url = new URL( `${ShaderHub.getFullPath( false )}/explore/` );
         const alreadyThere = ( url.searchParams.get( "feature" ) === v );
         if( v && v.trim() && !alreadyThere )
         {
@@ -307,13 +302,12 @@ export const ui = {
             url.searchParams.delete( 'feature' );
         }
         url.searchParams.delete( 'page' ); // Reset page when changing feature
-        url.hash = 'explore';
         window.location.href = url.toString();
     },
 
     _exploreOrderBy( v, page )
     {
-        const url = new URL( window.location.href );
+        const url = new URL( `${ShaderHub.getFullPath( false )}/${page ?? 'explore'}/` );
         const alreadyThere = ( url.searchParams.get( "order_by" ) === v );
         if( v && v.trim() && !alreadyThere )
         {
@@ -324,7 +318,6 @@ export const ui = {
             url.searchParams.delete( 'order_by' );
         }
         url.searchParams.delete( 'page' ); // Reset page when changing feature
-        url.hash = page ?? 'explore';
         window.location.href = url.toString();
     },
 
@@ -1484,7 +1477,7 @@ export const ui = {
                 for( let f of Constants.ORDER_BY_NAMES )
                 {
                     const fLower = f.toLowerCase();
-                    filtersPanel.addButton( null, f, (v) => this._exploreOrderBy( v.toLowerCase() ), { buttonClass: `xs ${currentOrderFilter === fLower ? "primary" : "outline bg-card!"}` } );
+                    filtersPanel.addButton( null, f, (v) => this._exploreOrderBy( v.toLowerCase(), 'profile' ), { buttonClass: `xs ${currentOrderFilter === fLower ? "primary" : "outline bg-card!"}` } );
                 }
 
                 filtersPanel.endLine();
@@ -2381,15 +2374,14 @@ export const ui = {
         document.querySelectorAll( ".lextoast" ).forEach( t => t.close() );
         Utils.toast( `✅ Logged in`, `Welcome ${ user.email }!` );
 
-        const params = new URLSearchParams( document.location.search );
-        const queryShader = params.get( "shader" );
-        if( queryShader )
+        const path = window.location.pathname;
+        if( path.startsWith( '/view' ) )
         {
             await this._createShaderDataView();
         }
-        else if( document.location.hash === "" )
+        else if( path === '/' )
         {
-            ShaderHub.openPage( "explore" );
+            ShaderHub.openPage( 'explore' );
         }
     },
 
@@ -2413,11 +2405,14 @@ export const ui = {
         document.querySelector( "#signupContainer" )?.classList.remove( "hidden" );
 
         // Update shader description (menu, likes, etc)
-        const params = new URLSearchParams( document.location.search );
-        const queryShader = params.get( "shader" );
-        if( queryShader )
+        const path = window.location.pathname;
+        if( path.startsWith( '/view' ) )
         {
             await this._createShaderDataView();
+        }
+        else if( path === '/' )
+        {
+            ShaderHub.openPage();
         }
     },
 
