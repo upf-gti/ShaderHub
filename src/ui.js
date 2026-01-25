@@ -46,10 +46,10 @@ export const ui = {
                     name: "New", callback: ( k, entry, event ) => ShaderHub.openShader( "new", event )
                 },
                 {
-                    name: "Browse", callback: ( k, entry, event ) => ShaderHub.openPage( k.toLowerCase(), event )
+                    name: "Explore", callback: ( k, entry, event ) => ShaderHub.openPage( `${k.toLowerCase()}/`, event )
                 },
                 {
-                    name: "Help", callback: ( k, entry, event ) => ShaderHub.openPage( k.toLowerCase(), event )
+                    name: "Docs", callback: ( k, entry, event ) => ShaderHub.openPage( `${k.toLowerCase()}/`, event )
                 }
             );
         }
@@ -67,7 +67,7 @@ export const ui = {
             const sidebarOptions = {
                 headerTitle: fs.user ? fs.user.name : "Guest",
                 headerSubtitle: fs.user ? fs.user.email : undefined,
-                headerImage: this.dbUser?.avatar ?? "/images/favicon.png",
+                headerImage: this.dbUser?.avatar ?? `${ShaderHub.imagesRootPath}/favicon.png`,
                 skipFooter: true,
                 collapsed: false,
                 collapsable: false,
@@ -78,18 +78,21 @@ export const ui = {
                 if( fs.user )
                 {
                     m.add( "Profile", { icon: "User", callback: () => ShaderHub.openProfile( fs.getUserId() ) } );
-                    m.add( "Browse", { icon: "Search", callback: () => ShaderHub.openPage( "browse" ) } );
-                    m.add( "Help", { icon: "HelpCircle", callback: () => ShaderHub.openPage( "help" ) } );
-                    m.add( "Logout", { icon: "LogOut", callback: async () => {
-                        await this.onLogout();
-                    } } );
                 }
                 else
                 {
                     m.add( "Login", { icon: "LogIn", callback: () => this.openLoginDialog() } );
-                    m.add( "Browse", { icon: "Search", callback: () => ShaderHub.openPage( "browse" ) } );
-                    m.add( "Help", { icon: "HelpCircle", callback: () => ShaderHub.openPage( "help" ) } );
                     m.add( "Create account", { icon: "UserPlus", callback: () => this.openSignUpDialog() } );
+                }
+
+                m.add( "Explore", { icon: "Search", callback: () => ShaderHub.openPage( "explore" ) } );
+                m.add( "Docs", { icon: "HelpCircle", callback: () => ShaderHub.openPage( "docs" ) } );
+
+                if( fs.user )
+                {
+                    m.add( "Logout", { icon: "LogOut", callback: async () => {
+                        await this.onLogout();
+                    } } );
                 }
             }
 
@@ -162,49 +165,69 @@ export const ui = {
             menubar.root.appendChild( loginOptionsButton.root );
         }
 
-        menubar.setButtonImage("ShaderHub", mobile ? `/images/favicon.png` : `/images/icon_${ starterMode }.png`, ( element, event ) => {
-            const needsReload = ( window.location.search === "" );
-            window.location.hash = "";
-            window.open( `${ ShaderHub.getFullPath() }`, event?.button !== 1 ? "_self" : undefined );
-            if( needsReload ) window.location.reload();
+        menubar.setButtonImage("ShaderHub", mobile ? `${ShaderHub.imagesRootPath}/favicon.png` : `${ShaderHub.imagesRootPath}/icon_${ starterMode }.png`, ( element, event ) => {
+            window.location.href = window.location.origin;
         }, { float: "left" } );
 
         LX.addSignal( "@on_new_color_scheme", ( el, value ) => {
             if( !mobile )
             {
-                menubar.setButtonImage("ShaderHub", `/images/icon_${ value }.png`, null, { float: "left" } );
+                menubar.setButtonImage("ShaderHub", `${ShaderHub.imagesRootPath}/icon_${ value }.png`, null, { float: "left" } );
             }
         } );
 
         menubar.root.classList.add( "hub-background-blur-md" );
         menubar.siblingArea.root.classList.add( "content-area" );
 
-        const queryShader = params.get( "shader" );
-        const queryProfile = params.get( "profile" );
+        const path = window.location.pathname;
 
-        if( queryShader )
+        if ( path.startsWith( '/explore' ) )
         {
-            await this.makeShaderView( queryShader );
+            this.renderExploreView();
         }
-        else if( queryProfile )
+        else if ( path.startsWith( '/create' ) )
         {
-            await this.makeProfileView( queryProfile );
+            this.renderShaderView( 'new' );
+        }
+        else if ( path.startsWith( '/view' ) )
+        {
+            let encodedShaderUid = path.split( '/view/' )[1];
+
+            // Fallback: if no UID in path, check query parameter
+            if ( !encodedShaderUid || encodedShaderUid === '' )
+            {
+                encodedShaderUid = params.get( 'shader' );
+            }
+
+            if ( !encodedShaderUid )
+            {
+                console.warn( 'No shader UID specified' );
+                return;
+            }
+
+            await this.renderShaderView( Utils.decodeUID( encodedShaderUid ) );
+        }
+        else if ( path.startsWith( '/profile' ) )
+        {
+            let encodedProfileUid = path.split( '/profile/' )[1];
+
+            // Fallback: if no UID in path, check query parameter
+            if ( !encodedProfileUid || encodedProfileUid === '' )
+            {
+                encodedProfileUid = params.get( 'profile' );
+            }
+
+            if ( !encodedProfileUid )
+            {
+                console.warn( 'No profile UID specified' );
+                return;
+            }
+
+            await this.renderProfileView( Utils.decodeUID( encodedProfileUid ) );
         }
         else
         {
-            const hash = window.location.hash ?? "";
-            if( hash === "#browse" )
-            {
-                this.makeBrowseList();
-            }
-            else if( hash === "#help" )
-            {
-                this.makeHelpView();
-            }
-            else
-            {
-                await this.makeInitialPage();
-            }
+            await this.renderInitialPage();
         }
 
         const isPasswordRecovery = params.get( "verifyEmail" ) === "true";
@@ -252,11 +275,11 @@ export const ui = {
         // Remove shader params if any since this can be done from any view
         url.searchParams.delete( 'shader' );
         url.searchParams.delete( 'profile' );
-        url.hash = 'browse';
+        url.hash = 'explore';
         window.location.href = url.toString();
     },
 
-    _browsePage( v )
+    _explorePage( v )
     {
         const url = new URL( window.location.href );
         if( v && v.trim() )
@@ -267,11 +290,11 @@ export const ui = {
         {
             url.searchParams.delete( 'page' );
         }
-        url.hash = 'browse';
+        url.hash = 'explore';
         window.location.href = url.toString();
     },
 
-    _browseFeature( v )
+    _exploreFeature( v )
     {
         const url = new URL( window.location.href );
         const alreadyThere = ( url.searchParams.get( "feature" ) === v );
@@ -284,11 +307,11 @@ export const ui = {
             url.searchParams.delete( 'feature' );
         }
         url.searchParams.delete( 'page' ); // Reset page when changing feature
-        url.hash = 'browse';
+        url.hash = 'explore';
         window.location.href = url.toString();
     },
 
-    _browseOrderBy( v, page )
+    _exploreOrderBy( v, page )
     {
         const url = new URL( window.location.href );
         const alreadyThere = ( url.searchParams.get( "order_by" ) === v );
@@ -301,7 +324,7 @@ export const ui = {
             url.searchParams.delete( 'order_by' );
         }
         url.searchParams.delete( 'page' ); // Reset page when changing feature
-        url.hash = page ?? 'browse';
+        url.hash = page ?? 'explore';
         window.location.href = url.toString();
     },
 
@@ -311,7 +334,7 @@ export const ui = {
             ${ LX.makeIcon("Github@solid", { svgClass:"lg" } ).innerHTML }<a class="decoration-none hover:underline underline-offset-4" href="https://github.com/upf-gti/ShaderHub">Code on Github</a>`, area );
     },
 
-    async makeInitialPage()
+    async renderInitialPage()
     {
         var [ topArea, bottomArea ] = this.area.split({ type: "vertical", sizes: ["calc(100% - 48px)", "48px"], resize: false });
         this.area.root.className += " hub-background";
@@ -337,10 +360,10 @@ export const ui = {
             }
             
             const header = LX.makeContainer( [ null, "auto" ], "flex flex-col mt-8 px-10 gap-4 text-center items-center place-content-center", `
-                <img src="/images/favicon.png" class="">
+                <img src="${ShaderHub.imagesRootPath}/favicon.png" class="">
                 <span class="mb-6 text-muted-foreground text-2xl sm:text-3xl font-medium">ShaderHub (beta ${ ShaderHub.version })</span>
                 <span class="text-balanced text-4xl sm:text-5xl font-medium">Create and Share Shaders using latest WebGPU!</span>
-                <a onclick='ShaderHub.openShader("6963e7bd0533036adf87")' class="flex flex-row gap-1 items-center text-sm p-1 px-4 rounded-full text-secondary-foreground decoration-none hover:bg-secondary cursor-pointer"><span class="flex bg-orange-500 w-2 h-2 rounded-full"></span>
+                <a onclick='ShaderHub.openShader("new")' class="flex flex-row gap-1 items-center text-sm p-1 px-4 rounded-full text-secondary-foreground decoration-none hover:bg-secondary cursor-pointer"><span class="flex bg-orange-500 w-2 h-2 rounded-full"></span>
                 New Sound Channel, User Avatars, Shader Comments, UI Improvements${ LX.makeIcon( "ArrowRight", { svgClass: "sm" } ).innerHTML }</a>
             `, container );
 
@@ -378,7 +401,7 @@ export const ui = {
             const shaderPreview = LX.makeElement( "img", "opacity-0 rounded-lg bg-background-blur hover:bg-accent border-none cursor-pointer self-center mt-2", "", shaderItem );
             shaderPreview.style.width = "calc(100% - 1rem)";
             shaderPreview.style.height = "calc(100% - 1rem)";
-            shaderPreview.src = "/images/shader_preview.png";
+            shaderPreview.src = ShaderHub.shaderPreviewPath;
             LX.makeContainer( ["100%", "auto"], "bg-background-blur flex flex-row rounded-b-lg gap-6 p-4 select-none", `
                 <div class="w-full flex flex-col gap-1">
                     <div class="w-3/4 h-3 lexskeletonpart"></div>
@@ -463,7 +486,7 @@ export const ui = {
                 const shaderItem = skeleton.root.children[ i ];
                 const shaderPreview = shaderItem.querySelector( "img" );
                 shaderPreview.style.width = "calc(100% - 1rem)";
-                shaderPreview.src = shader.preview ?? "/images/shader_preview.png";
+                shaderPreview.src = shader.preview ?? ShaderHub.shaderPreviewPath;
                 shaderPreview.onload = () => shaderPreview.classList.remove( "opacity-0" );
                 shaderItem.querySelector( "div" ).remove();
                 const shaderDesc = LX.makeContainer( ["100%", "auto"], "flex flex-row bg-card hover:bg-accent rounded-b-lg gap-6 p-4 select-none", `
@@ -478,7 +501,7 @@ export const ui = {
 
                 shaderPreview.addEventListener( "mousedown", e => e.preventDefault() );
                 shaderPreview.addEventListener( "mouseup", ( e ) => {
-                    ShaderHub.openShader( shader.uid, e );
+                    ShaderHub.openShader( Utils.encodeUID( shader.uid ), e );
                 } );
             }
 
@@ -491,7 +514,7 @@ export const ui = {
         }, 10 );
     },
 
-    async makeBrowseList()
+    async renderExploreView()
     {
         const params = new URLSearchParams( document.location.search );
         const queryFeature = params.get( "feature" );
@@ -518,14 +541,14 @@ export const ui = {
             for( let f of Constants.FEATURES )
             {
                 const fLower = f.toLowerCase();
-                filtersPanel.addButton( null, f, (v) => this._browseFeature( v.toLowerCase() ), { buttonClass: `xs ${queryFeature === fLower ? "primary" : "outline bg-card!"}` } );
+                filtersPanel.addButton( null, f, (v) => this._exploreFeature( v.toLowerCase() ), { buttonClass: `xs ${queryFeature === fLower ? "primary" : "outline bg-card!"}` } );
             }
 
             filtersPanel.endLine();
             header.appendChild( filtersPanel.root );
         }
 
-        // Browsing Shader Order
+        // Exploring Shader Order
         {
             const filtersPanel = new LX.Panel( { className: "p-4 bg-none", height: "auto" } );
             filtersPanel.sameLine();
@@ -537,7 +560,7 @@ export const ui = {
             for( let f of Constants.ORDER_BY_NAMES )
             {
                 const fLower = f.toLowerCase();
-                filtersPanel.addButton( null, f, (v) => this._browseOrderBy( v.toLowerCase() ), { buttonClass: `xs ${currentOrderFilter === fLower ? "primary" : "outline bg-card!"}` } );
+                filtersPanel.addButton( null, f, (v) => this._exploreOrderBy( v.toLowerCase() ), { buttonClass: `xs ${currentOrderFilter === fLower ? "primary" : "outline bg-card!"}` } );
             }
 
             filtersPanel.endLine();
@@ -551,7 +574,7 @@ export const ui = {
                 alwaysShowEdges: false,
                 xallowChangeItemsPerPage: true,
                 onChange: (page) => {
-                    this._browsePage( page.toString() );
+                    this._explorePage( page.toString() );
                 }
             });
             header.appendChild( this.paginator.root );
@@ -594,7 +617,7 @@ export const ui = {
             const shaderPreview = LX.makeElement( "img", "opacity-0 rounded-lg bg-background-blur hover:bg-accent border-none cursor-pointer self-center mt-2", "", shaderItem );
             shaderPreview.style.width = "calc(100% - 1rem)";
             shaderPreview.style.height = "calc(100% - 1rem)";
-            shaderPreview.src = "/images/shader_preview.png";
+            shaderPreview.src = ShaderHub.shaderPreviewPath;
             LX.makeContainer( ["100%", "auto"], "absolute bottom-0 bg-background-blur flex flex-row rounded-b-lg gap-6 p-4 select-none", `
                 <div class="w-full flex flex-col gap-1">
                     <div class="w-3/4 h-3 lexskeletonpart"></div>
@@ -678,7 +701,7 @@ export const ui = {
                 const shaderItem = skeleton.root.children[ i ];
                 const shaderPreview = shaderItem.querySelector( "img" );
                 shaderPreview.style.width = "calc(100% - 1rem)";
-                shaderPreview.src = shader.preview ?? "/images/shader_preview.png";
+                shaderPreview.src = shader.preview ?? ShaderHub.shaderPreviewPath;
                 shaderPreview.onload = () => shaderPreview.classList.remove( "opacity-0" );
                 shaderItem.querySelector( "div" ).remove();
                 const shaderDesc = LX.makeContainer( ["100%", "auto"], "flex flex-row rounded-b-lg gap-6 p-4 items-center select-none", `
@@ -693,7 +716,7 @@ export const ui = {
 
                 shaderPreview.addEventListener( "mousedown", e => e.preventDefault() );
                 shaderPreview.addEventListener( "mouseup", ( e ) => {
-                    ShaderHub.openShader( shader.uid, e );
+                    ShaderHub.openShader( Utils.encodeUID( shader.uid ), e );
                 } );
             }
 
@@ -703,11 +726,13 @@ export const ui = {
         }, 10 );
     },
 
-    async makeShaderView( shaderUid )
+    async renderShaderView( shaderUid )
     {
         this.area.root.style.height = "100dvh";
 
         const shader = await ShaderHub.getShaderById( shaderUid );
+        if( !shader ) return;
+
         this.shader = shader;
 
         let [ leftArea, rightArea ] = this.area.split({ sizes: ["50%", "50%"] });
@@ -838,7 +863,7 @@ export const ui = {
                         <div class="text-foreground text-lg font-semibold">${ shader.name }</div>
                     </div>
                     ${ isNewShader ? '' : `<div class="text-muted-foreground text-sm">Created by ${ !shader.anonAuthor ? `<a onclick='ShaderHub.openProfile("${ shader.authorId }")' class='hub-link font-medium'>` : `` }<span>${ shader.author }</span>${ !shader.anonAuthor ? "</a>" : "" } on ${ shader.creationDate }
-                    ${ originalShader ? `(remixed from <a onclick='ShaderHub.openShader("${ shader.originalId }")' class='hub-link font-medium'>${ originalShader.name }</a> by <a onclick='ShaderHub.openProfile("${ originalShader.authorId }")' class='hub-link font-medium'>${ originalShader.author }</a>)` : `` } ` }
+                    ${ originalShader ? `(remixed from <a onclick='ShaderHub.openShader("${ Utils.encodeUID( shader.originalId ) }")' class='hub-link font-medium'>${ originalShader.name }</a> by <a onclick='ShaderHub.openProfile("${ originalShader.authorId }")' class='hub-link font-medium'>${ originalShader.author }</a>)` : `` } ` }
                     </div>
                 </div>
             `, shaderDataContainer );
@@ -1385,7 +1410,7 @@ export const ui = {
         }
     },
 
-    async makeProfileView( userID )
+    async renderProfileView( userID )
     {
         let [ topArea, bottomArea ] = this.area.split({ type: "vertical", sizes: ["calc(100% - 48px)", null], resize: false });
         topArea.root.parentElement.classList.add( "hub-background" )
@@ -1459,7 +1484,7 @@ export const ui = {
                 for( let f of Constants.ORDER_BY_NAMES )
                 {
                     const fLower = f.toLowerCase();
-                    filtersPanel.addButton( null, f, (v) => this._browseOrderBy( v.toLowerCase() ), { buttonClass: `xs ${currentOrderFilter === fLower ? "primary" : "outline bg-card!"}` } );
+                    filtersPanel.addButton( null, f, (v) => this._exploreOrderBy( v.toLowerCase() ), { buttonClass: `xs ${currentOrderFilter === fLower ? "primary" : "outline bg-card!"}` } );
                 }
 
                 filtersPanel.endLine();
@@ -1524,7 +1549,7 @@ export const ui = {
                     const shaderPreview = LX.makeElement( "img", "opacity-0 rounded-lg bg-background-blur hover:bg-accent border-none cursor-pointer self-center mt-2", "", shaderItem );
                     shaderPreview.style.width = "calc(100% - 1rem)";
                     shaderPreview.style.height = "calc(100% - 1rem)";
-                    shaderPreview.src = "/images/shader_preview.png";
+                    shaderPreview.src = ShaderHub.shaderPreviewPath;
                     LX.makeContainer( ["100%", "auto"], "absolute bottom-0 bg-background-blur flex flex-row rounded-b-lg gap-6 p-4 select-none", `
                         <div class="w-full flex flex-col gap-1">
                             <div class="w-3/4 h-3 lexskeletonpart"></div>
@@ -1574,7 +1599,7 @@ export const ui = {
                         const shaderItem = skeleton.root.children[ i ];
                         const shaderPreview = shaderItem.querySelector( "img" );
                         shaderPreview.style.width = "calc(100% - 1rem)";
-                        shaderPreview.src = shaderInfo.preview ?? "/images/shader_preview.png";
+                        shaderPreview.src = shaderInfo.preview ?? ShaderHub.shaderPreviewPath;
                         shaderPreview.onload = () => shaderPreview.classList.remove( "opacity-0" );
                         shaderItem.querySelector( "div" ).remove();
                         const shaderDesc = LX.makeContainer( ["100%", "auto"], "flex flex-row rounded-b-lg gap-6 p-4 items-center select-none", `
@@ -1624,7 +1649,7 @@ export const ui = {
 
                         shaderPreview.addEventListener( "mousedown", e => e.preventDefault() );
                         shaderPreview.addEventListener( "mouseup", ( e ) => {
-                            ShaderHub.openShader( shaderInfo.uid, e );
+                            ShaderHub.openShader( Utils.encodeUID( shaderInfo.uid ), e );
                         } );
                     }
                 }, 10 );
@@ -1725,7 +1750,7 @@ export const ui = {
                         const shaderPreview = LX.makeElement( "img", "opacity-0 rounded-lg bg-background-blur hover:bg-accent border-none cursor-pointer self-center mt-2", "", shaderItem );
                         shaderPreview.style.width = "calc(100% - 1rem)";
                         shaderPreview.style.height = "calc(100% - 1rem)";
-                        shaderPreview.src = "/images/shader_preview.png";
+                        shaderPreview.src = ShaderHub.shaderPreviewPath;
                         LX.makeContainer( ["100%", "auto"], "absolute bottom-0 bg-background-blur flex flex-row rounded-b-lg gap-6 p-4 select-none", `
                             <div class="w-full flex flex-col gap-1">
                                 <div class="w-3/4 h-3 lexskeletonpart"></div>
@@ -1789,7 +1814,7 @@ export const ui = {
                             const shaderItem = skeleton.root.children[ i ];
                             const shaderPreview = shaderItem.querySelector( "img" );
                             shaderPreview.style.width = "calc(100% - 1rem)";
-                            shaderPreview.src = shaderInfo.preview ?? "/images/shader_preview.png";
+                            shaderPreview.src = shaderInfo.preview ?? ShaderHub.shaderPreviewPath;
                             shaderPreview.onload = () => shaderPreview.classList.remove( "opacity-0" );
                             shaderItem.querySelector( "div" ).remove();
                             const shaderDesc = LX.makeContainer( ["100%", "auto"], "flex flex-row rounded-b-lg gap-6 p-4 items-center select-none", `
@@ -1804,7 +1829,7 @@ export const ui = {
 
                             shaderPreview.addEventListener( "mousedown", e => e.preventDefault() );
                             shaderPreview.addEventListener( "mouseup", ( e ) => {
-                                ShaderHub.openShader( shaderInfo.uid, e );
+                                ShaderHub.openShader( Utils.encodeUID( shaderInfo.uid ), e );
                             } );
                         }
                     }, 10 );
@@ -1973,76 +1998,6 @@ export const ui = {
                 content.appendChild( p.root );
             }
         }
-    },
-
-    makeHelpView()
-    {
-        this.area.sections[ 1 ].root.classList.add( "hub-background" );
-        const viewContainer = LX.makeContainer( [ "100%", "100%" ], "hub-background-blur", "", this.area );
-
-        const header = LX.makeContainer( [ null, "200px" ], "flex flex-col gap-2 text-center items-center place-content-center", `
-            <a><span class="text-lg text-muted-foreground">Documentation</span></a>
-            <span class="text-4xl font-medium text-card-foreground">Get started with ShaderHub</span>
-        `, viewContainer );
-
-        const headerButtons = LX.makeContainer( [ "auto", "auto" ], "flex flex-row p-2", ``, header );
-        const getStartedButton = new LX.Button( null, "Get Started", () => ShaderHub.openShader( "new" ), { buttonClass: "primary lg" } );
-        headerButtons.appendChild( getStartedButton.root );
-
-        const docMaker = new DocMaker();
-        const collapsibleClass = 'my-0 bg-accent/30 hover:bg-accent/50! rounded-xl border-color cursor-pointer [&_svg]:w-5! [&_svg]:h-5!';
-
-        const content = LX.makeContainer( [ null, "calc(100% - 200px)" ], "lexdocs-content flex flex-col gap-2 px-10 pt-4 overflow-scroll", "", viewContainer );
-        docMaker.setDomTarget( content );
-
-        docMaker.header( "Creating Shaders.", "h1", "creating-shaders" );
-
-        docMaker.paragraph( `ShaderHub lets you create and run shaders right in your browser using WebGPU. You can write code, plug in textures or uniforms, and instantly see the results on the canvas. No setup, no downloads, just shaders that run on the web.` );
-        docMaker.paragraph( `To create a new shader, simply click on the "New" button in the top menu bar. This will open a new shader editor where you can start coding your shader. The editor supports multiple passes, allowing you to create complex effects by layering different shaders together.
-        Once you've written your shader code, you can compile and run it by clicking the "Run" button or using the ${ LX.makeKbd( ["Ctrl", "Space"], false, "text-base inline-block border-color px-1 rounded" ).innerHTML }/${ LX.makeKbd( ["Ctrl", "Enter"], false, "text-base inline-block border-color px-1 rounded" ).innerHTML } shortcuts.
-        Once the shader is compiled, you will see the results in real-time on the canvas.` );
-
-        docMaker.lineBreak();
-        docMaker.header( "Shader Passes.", "h2", "shader-passes", { collapsable: true, className: collapsibleClass, collapsed: true, collapsableContentCallback: () => {
-            docMaker.root.classList.add( 'py-4' );
-            docMaker.paragraph( `ShaderHub supports multiple shader passes, which are essentially different stages of rendering that can be combined to create complex visual effects. There are 3 types of passes you can create:` );
-            docMaker.bulletList( [
-                `<span class='font-bold underline underline-offset-4'>Buffers</span>: Offscreen render targets that can be used to store intermediate results. You can create up to four buffer passes, which can be referenced in subsequent passes using the iChannel uniforms (iChannel0, iChannel1, etc.). This allows you to build effects step by step, using the output of one pass as the input for another.`,
-                `<span class='font-bold underline underline-offset-4'>Compute</span>: A compute pass that runs independently of the render pipeline and writes directly to buffers or textures. This is useful for general-purpose GPU computations such as simulations, particle updates, procedural data generation, or precomputing values that will later be used by render or buffer passes.`,
-                `<span class='font-bold underline underline-offset-4'>Common</span>: Used for shared code that can be included in other passes. This is useful for defining functions or variables that you want to reuse across multiple shader passes. You can only have one Common pass per shader.`
-            ] );
-            docMaker.paragraph( `To create a new pass, click on the "+" button in the editor's tab bar and select the type of pass you want to create. You can then write your shader code in the new tab that appears.` );
-        } } );
-
-        docMaker.header( "Uniforms, Textures and Sounds.", "h2", "uniforms", { collapsable: true, className: collapsibleClass, collapsed: true, collapsableContentCallback: () => {
-            docMaker.root.classList.add( 'py-4' );
-            docMaker.paragraph( `Uniforms are global variables that can be passed to your shader code. ShaderHub provides a set of default uniforms, such as <span class='font-bold'>iTime</span> (elapsed time), <span class='font-bold'>iResolution</span> (canvas resolution), and <span class='font-bold'>iMouse</span> (mouse position), which you can use to create dynamic effects.
-                In addition to the default uniforms, you can also create custom uniforms to pass additional data to your shaders. To add a custom uniform, first open the Custom Uniforms popover using the button at the status bar (bottom of the editor), then click on the "+" button. You can specify the name and type of the uniform, and it will be available for use in your shader code.` );
-            docMaker.lineBreak();
-            docMaker.paragraph( `Textures and Sounds can be used in your shaders by assigning them to the iChannel uniforms. You must use existing assets from the ShaderHub library. To assign texture/sounds to an iChannel, click on the corresponding channel in the status bar and select the asset you want to use.` );
-        } } );
-
-        docMaker.header( "Saving and Sharing Shaders.", "h2", "saving-and-sharing-shaders", { collapsable: true, className: collapsibleClass, collapsed: true, collapsableContentCallback: () => {
-            docMaker.root.classList.add( 'py-4' );
-            docMaker.paragraph( `Once you've created a shader that you're happy with, you can save it to your ShaderHub account by clicking the "Save" button in the shader options menu. If your shader is public, it will be visible to everyone.
-                You can also share your shaders with others by providing them with a direct link. Simply copy the URL from your browser's address bar and send it to anyone you want to share your shader with. They will be able to view, edit and run your shader in their own browser (not save it!).` );
-            docMaker.lineBreak();
-            docMaker.paragraph( `If you want to allow others to remix your shader, you can enable the remix option in the shader settings. This will let other users create their own versions of your shader while still giving you credit as the original author.` );
-        } } );
-
-        docMaker.header( "Source Code.", "h1", "source-code" );
-
-        docMaker.paragraph( `ShaderHub is an open-source project, and its source code is available on GitHub. You can find the repository <a class='underline underline-offset-4' href="https://github.com/upf-gti/ShaderHub">here</a>.` );
-
-    //     MAKE_CODE( `@[com]// Split main area in 2 sections (2 Areas)@
-    // @let@ [ left, right ] = area.@[mtd]split@({
-    //     sizes: [@"70%"@, @"30%"@]
-    // });
-    // @[com]// Split again left area this time vertically@
-    // @let@ [ leftUp, leftBottom ] = leftArea.@[mtd]split@({
-    //     type: @"vertical"@,
-    //     sizes: [@"80vh"@, @"20vh"@]
-    // });` );
     },
 
     async makeStatusBarButtons( p, editor )
@@ -2434,7 +2389,7 @@ export const ui = {
         }
         else if( document.location.hash === "" )
         {
-            ShaderHub.openPage( "browse" );
+            ShaderHub.openPage( "explore" );
         }
     },
 
@@ -2875,7 +2830,7 @@ export const ui = {
                 {
                     const localUrl = document[ "local_url" ];
                     const preview = document[ "preview" ];
-                    const url = localUrl ?? ( preview ? await this.fs.getFileUrl( preview ) : ( fileId ? await this.fs.getFileUrl( fileId ) : "/images/shader_preview.png" ) );
+                    const url = localUrl ?? ( preview ? await this.fs.getFileUrl( preview ) : ( fileId ? await this.fs.getFileUrl( fileId ) : ShaderHub.shaderPreviewPath ) );
 
                     const img = new Image();
                     img.crossOrigin = "anonymous";

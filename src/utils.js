@@ -86,4 +86,31 @@ function toast( title, text, timeout )
     LX.toast( title, text, { position: "top-right", timeout } );
 }
 
-export { toast, code2ascii, getDate, toESDate, capitalizeFirstLetter, imageToDataURL, isMobile, formatMD, unformatMD };
+const BASE62 = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
+// Convert hex string to base62
+function encodeUID( hex )
+{
+    let num = BigInt('0x' + hex); // convert hex to bigint
+    let str = '';
+    while ( num > 0 )
+    {
+        str = BASE62[num % 62n] + str;
+        num = num / 62n;
+    }
+    return str;
+}
+
+// Convert back to original hex
+function decodeUID( base62 )
+{
+    let num = 0n;
+    for ( const char of base62 )
+    {
+        num = num * 62n + BigInt( BASE62.indexOf( char ) );
+    }
+    let hex = num.toString( 16 ).padStart( 20, '0' ); // keep length consistent
+    return hex;
+}
+
+export { toast, code2ascii, getDate, toESDate, capitalizeFirstLetter, imageToDataURL, isMobile, formatMD, unformatMD, encodeUID, decodeUID };

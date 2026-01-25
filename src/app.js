@@ -32,6 +32,7 @@ const ShaderHub =
     timePaused:         false,
     manualCompile:      false,
     previewNamePrefix:  '_preview_',
+    imagesRootPath:     '/images/',
 
     async init()
     {
@@ -39,6 +40,7 @@ const ShaderHub =
         await ui.init( fs );
 
         this.audioContext = new AudioContext( { sampleRate: 48000 } );
+        this.shaderPreviewPath = `${this.imagesRootPath}/shader_preview.png`;
     },
 
     async onFrame()
@@ -597,9 +599,9 @@ const ShaderHub =
         {
             const assetFileId = channel?.id;
             if( !assetFileId ) url = Constants.IMAGE_EMPTY_SRC;
-            else if( assetFileId === "Keyboard" ) url = "images/keyboard.png";
-            else if( assetFileId.startsWith( "Buffer" ) ) url = "images/buffer.png";
-            else if( assetFileId.startsWith( "Compute" ) ) url = "images/buffer.png"; // TODO: Change preview image for computes
+            else if( assetFileId === "Keyboard" ) url = `${ShaderHub.imagesRootPath}/keyboard.png`;
+            else if( assetFileId.startsWith( "Buffer" ) ) url = `${ShaderHub.imagesRootPath}/buffer.png`;
+            else if( assetFileId.startsWith( "Compute" ) ) url = `${ShaderHub.imagesRootPath}/buffer.png`; // TODO: Change preview image for computes
             else
             {
                 const result = await fs.listDocuments( FS.ASSETS_COLLECTION_ID, [ Query.equal( "file_id", assetFileId ) ] );
@@ -611,7 +613,7 @@ const ShaderHub =
                 name = d.name;
                 category = d.category;
 
-                const preview = category === "sound" ? "images/sound.png" : d[ "preview" ];
+                const preview = category === "sound" ? `${ShaderHub.imagesRootPath}/sound.png` : d[ "preview" ];
                 if( preview )
                 {
                     url = preview.includes( '/' ) ? preview : await fs.getFileUrl( preview );
@@ -668,31 +670,28 @@ const ShaderHub =
         return window.location.origin + ( addPath ? window.location.pathname : "" );
     },
 
-    openPage( hash = "", e )
+    openPage( path = "", e )
     {
-        const path = `${ this.getFullPath() }${ hash ? `#${ hash }` : "" }`;
+        const fullPath = `${ this.getFullPath( false ) }/${ path }`;
 
         if( e?.button === 1 )
         {
             e.preventDefault();
-            window.open( path, "_blank" );
+            window.open( fullPath, "_blank" );
             return;
         }
 
-        const needsReload = window.location.search === "";
-        window.location.search = "";
-        window.open( path, "_self" );
-        if( needsReload ) window.location.reload();
+        window.location.href = fullPath;
     },
 
     openProfile( userID, e )
     {
-        window.open( `${ this.getFullPath() }?profile=${ userID }`, e?.button !== 1 ? "_self" : undefined );
+        window.open( `${ this.getFullPath( false ) }/${ `profile/${ Utils.encodeUID( userID ) }` }`, e?.button !== 1 ? "_self" : undefined );
     },
 
     openShader( shaderID, e )
     {
-        window.open( `${ this.getFullPath() }?shader=${ shaderID }`, e?.button !== 1 ? "_self" : undefined );
+        window.open( `${ this.getFullPath( false ) }/${ shaderID === 'new' ? 'create/' : `view/${ shaderID }` }`, e?.button !== 1 ? "_self" : undefined );
     },
 
     getCurrentSuggestions()
