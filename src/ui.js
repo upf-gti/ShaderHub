@@ -12,6 +12,7 @@ const mobile = Utils.isMobile();
 export const ui = {
 
     captureInProgress: false,
+    pageExploreLimit: 12,
 
     _dbAssetsCache: new Map(), // fileId -> ImageBitmap/audio
 
@@ -352,12 +353,15 @@ export const ui = {
         {
             url.searchParams.delete( 'page' );
         }
-        window.location.href = url.toString();
+        history.pushState( {}, '', url );
+        this.router();
     },
 
     _exploreFeature( v )
     {
+        const currUrl = new URL( window.location.href );
         const url = new URL( `${ShaderHub.getFullPath( false )}/explore/` );
+        url.search = currUrl.search;
         const alreadyThere = ( url.searchParams.get( "feature" ) === v );
         if( v && v.trim() && !alreadyThere )
         {
@@ -368,12 +372,15 @@ export const ui = {
             url.searchParams.delete( 'feature' );
         }
         url.searchParams.delete( 'page' ); // Reset page when changing feature
-        window.location.href = url.toString();
+        history.pushState( {}, '', url );
+        this.router();
     },
 
     _exploreOrderBy( v, page )
     {
+        const currUrl = new URL( window.location.href );
         const url = new URL( `${ShaderHub.getFullPath( false )}/${page ?? 'explore'}/` );
+        url.search = currUrl.search;
         const alreadyThere = ( url.searchParams.get( "order_by" ) === v );
         if( v && v.trim() && !alreadyThere )
         {
@@ -384,7 +391,8 @@ export const ui = {
             url.searchParams.delete( 'order_by' );
         }
         url.searchParams.delete( 'page' ); // Reset page when changing feature
-        window.location.href = url.toString();
+        history.pushState( {}, '', url );
+        this.router();
     },
 
     _makeFooter( area )
@@ -432,7 +440,7 @@ export const ui = {
             const header = LX.makeContainer( [ null, "auto" ], "flex flex-col mt-8 px-4 md:px-10 gap-4 text-center items-center place-content-center", `
                 <img src="${ShaderHub.imagesRootPath}/favicon.png" class="">
                 <span class="mb-6 text-muted-foreground text-2xl sm:text-3xl font-medium">ShaderHub (beta ${ ShaderHub.version })</span>
-                <span class="text-balanced text-4xl sm:text-5xl font-medium">Create and Share Shaders using latest WebGPU!</span>
+                <span class="text-balanced text-4xl sm:text-5xl font-medium">Create and share shaders using latest WebGPU!</span>
                 <a onclick='ui._openShader("new")' class="flex flex-row gap-1 items-center text-sm p-1 px-4 rounded-full text-secondary-foreground decoration-none hover:bg-secondary cursor-pointer"><span class="flex flex-auto-keep bg-orange-500 w-2 h-2 rounded-full"></span>
                 <span class="flex flex-auto-fill">New Sound Channel, User Avatars, Shader Comments, UI Improvements</span>${ LX.makeIcon( "ArrowRight", { svgClass: "flex flex-auto-keep sm" } ).innerHTML }</a>
             `, container );
@@ -607,7 +615,7 @@ export const ui = {
 
         // Filters
         {
-            const filtersPanel = new LX.Panel( { className: "p-4 bg-none", height: "auto" } );
+            const filtersPanel = new LX.Panel( { className: "p-4 bg-none flex-auto-fill", height: "auto" } );
             filtersPanel.sameLine();
 
             filtersPanel.addLabel( "Filter Features", { fit: true } );
@@ -624,7 +632,7 @@ export const ui = {
 
         // Exploring Shader Order
         {
-            const filtersPanel = new LX.Panel( { className: "p-4 bg-none", height: "auto" } );
+            const filtersPanel = new LX.Panel( { className: "p-4 bg-none flex-auto-fill", height: "auto" } );
             filtersPanel.sameLine();
 
             filtersPanel.addLabel( "Order by", { fit: true } );
@@ -641,20 +649,6 @@ export const ui = {
             header.appendChild( filtersPanel.root );
         }
 
-        {
-            this.paginator = new LX.Pagination({
-                maxButtons: 4,
-                useEllipsis: true,
-                alwaysShowEdges: false,
-                xallowChangeItemsPerPage: true,
-                onChange: (page) => {
-                    this._explorePage( page.toString() );
-                }
-            });
-            header.appendChild( this.paginator.root );
-        }
-
-        const PAGE_LIMIT = 25;
         const page = queryPage ? parseInt( queryPage ) : 1;
         const orderBy = queryOrderBy ? Constants.ORDER_BY_MAPPING[ queryOrderBy ] : Constants.ORDER_BY_MAPPING[ "recent" ];
         console.log( "Order by:", orderBy );
@@ -662,7 +656,8 @@ export const ui = {
         const shaderQueries = [
             Query.or( [ Query.equal( "public", true ), Query.isNull( "public" ) ] ),
             orderBy.direction === "asc" ? Query.orderAsc( orderBy.field ) : Query.orderDesc( orderBy.field ),
-            Query.offset( ( page - 1 ) * PAGE_LIMIT )
+            Query.offset( ( page - 1 ) * this.pageExploreLimit ),
+            Query.limit( this.pageExploreLimit )
         ]
 
         if( queryFeature )
@@ -672,9 +667,28 @@ export const ui = {
 
         // Get all stored shader files (not the code, only the data)
         const result = await this.fs.listDocuments( FS.SHADERS_COLLECTION_ID, shaderQueries );
+        const totalPages = Math.ceil( result.total / this.pageExploreLimit );
 
-        this.paginator.setPages( Math.ceil( result.total / PAGE_LIMIT ) );
-        this.paginator.setPage( page );
+        this.paginator = new LX.Pagination({
+            page,
+            pages: totalPages,
+            maxButtons: 4,
+            useEllipsis: true,
+            alwaysShowEdges: false,
+            allowChangeItemsPerPage: true,
+            className: 'flex-auto-keep',
+            itemsPerPage: this.pageExploreLimit,
+            onChange: (page) => {
+                this._explorePage( page.toString() );
+            },
+            onItemsPerPageChange: (n) => {
+                this.pageExploreLimit = n;
+                this._explorePage();
+            }
+        });
+        header.appendChild( this.paginator.root );
+
+        this.paginator.setPages( totalPages );
 
         const dbShaders = ShaderHub.filterShaders( result.documents, querySearch );
         if( dbShaders.length === 0 )
@@ -709,7 +723,8 @@ export const ui = {
         const previewFiles = await this.fs.listFiles( [
             Query.startsWith( "name", ShaderHub.previewNamePrefix ),
             Query.endsWith( "name", ".png" ),
-            Query.contains( "name", dbShaders.map( d => d[ "$id" ] ) )
+            Query.contains( "name", dbShaders.map( d => d[ "$id" ] ) ),
+            Query.limit( this.pageExploreLimit )
         ] );
         const usersDocuments = await this.fs.listDocuments( FS.USERS_COLLECTION_ID, [ Query.equal( "user_name", dbShaders.map( d => d[ "author_name" ] ) ) ] );
 
@@ -1940,27 +1955,33 @@ export const ui = {
 
             // profile
             {
-                let publicProfile = user.public ?? true;
+                let profileDirty = false;
                 let userAvatar = user.avatar ?? "", userDescription = user.description ?? "",
-                    userDisplayName = user.display_name ?? "", userAppMode = user.app_mode ?? 'Auto';
+                    userDisplayName = user.display_name ?? "", userAppMode = user.app_mode ?? 'Auto',
+                    publicProfile = user.public ?? true;
 
                 const p = new LX.Panel({ className: "rounded-xl border-color" });
                 p.addTitle( "Profile" );
                 p.addToggle( "Public", publicProfile, (v) => {
                     publicProfile = v;
+                    profileDirty = true;
                 }, { className: "primary", nameWidth: "70%", skipReset: true } );
                 p.addText( "Avatar", userAvatar, (v) => {
                     userAvatar = v;
+                    profileDirty = true;
                 }, { skipReset: true, placeholder: `Enter a URL (optional)` } );
                 p.addText( "Display Name", userDisplayName, (v) => {
                     userDisplayName = v;
+                    profileDirty = true;
                 }, { skipReset: true, placeholder: `Your full name (optional)` } );
                 p.addTextArea( "About", userDescription, (v) => {
                     userDescription = v;
+                    profileDirty = true;
                 }, { fitHeight: true, skipReset: true, inputClass: "bg-secondary!", placeholder: `Tell us something about yourself! (optional)` } );
                 p.addTitle( "App" );
                 p.addSelect( "Default Mode (Auto, Light, Dark)", [ 'Auto', 'Light', 'Dark' ], userAppMode, async (v) => {
                     userAppMode = v;
+                    profileDirty = true;
                     if( v === 'Auto' )
                     {
                         LX.setSystemMode();
@@ -1971,28 +1992,29 @@ export const ui = {
                     }
                 }, { nameWidth: "70%", skipReset: true, overflowContainer: p.root } );
                 p.addSeparator();
-                p.addButton( null, "Save Changes", async () => {
-                    if( userAvatar === user.avatar &&
-                        userDescription === user.description &&
-                        userDisplayName === user.display_name )
+                const saveButton = p.addButton( null, "Save Changes", async () => {
+                    if( !profileDirty )
                     {
                         return;
                     }
-                    const r = await this.fs.updateDocument( FS.USERS_COLLECTION_ID, user[ "$id" ], {
+                    const spinner = new LX.Spinner();
+                    saveButton.root.querySelector( 'button' ).prepend( spinner.root );
+                    this.fs.updateDocument( FS.USERS_COLLECTION_ID, user[ "$id" ], {
                         "avatar": userAvatar,
                         "description": userDescription,
                         "display_name": userDisplayName,
                         "app_mode": userAppMode,
                         "public": publicProfile,
-                    } );
-                    if( r )
-                    {
-                        user.avatar = userAvatar;
-                        user.description = userDescription;
+                    } ).then( r => {
+                        if( !r ) return;
+                        spinner.destroy();
+                        profileDirty = false;
+                        Object.assign( user, r );
                         infoContainer.querySelector( ".desc-content" ).innerHTML = userDescription;
                         document.querySelectorAll( ".lexavatar img" ).forEach( i => i.src = userAvatar );
                         Utils.toast( `✅ Settings updated`, `User: ${ userName }` );
-                    }
+                    } );
+                    
                 }, { className: "place-self-center w-fit!", buttonClass: "primary" } );
                 content.appendChild( p.root );
             }
@@ -2007,7 +2029,7 @@ export const ui = {
                 p.addToggle( "New Followers", false, () => {}, { className: "primary", disabled: true, nameWidth: "70%" } );
                 p.addToggle( "Follower New Shaders", false, () => {}, { className: "primary", disabled: true, nameWidth: "70%" } );
                 p.addSeparator();
-                p.addButton( null, "Save Changes", () => {
+                const saveButton = p.addButton( null, "Save Changes", async () => {
                     // TODO
                 }, { disabled: true, className: "place-self-center w-fit!", buttonClass: "primary" } );
                 content.appendChild( p.root );
@@ -2053,14 +2075,18 @@ export const ui = {
                         Utils.toast( `❌ Error`, err.map( e => `${ e.entry }: ${ e.messages.join( "\n" ) }` ).join( "\n\n" ), -1 );
                         return;
                     }
+
+                    const spinner = new LX.Spinner();
+                    form.root.querySelector( 'button' ).prepend( spinner.root );
+
                     try {
-                        const r = await this.fs.account.updatePassword( value.newPassword, value.password );
-                        if( r )
-                        {
+                        this.fs.account.updatePassword( value.newPassword, value.password ).then( r => {
+                            if( !r ) return;
+                            spinner.destroy();
                             form.root.querySelectorAll( "input[type=password]" ).forEach( t => t.value = "" );
                             form.syncInputs(); // Force sync
                             Utils.toast( `✅ Password updated!`, `User: ${ userName }` );
-                        }
+                        } );
                     } catch( err ) {
                         console.log(err)
                         Utils.toast( `❌ Error`, err, -1 );
