@@ -1,0 +1,53 @@
+<script type="module">
+
+    import { LX } from 'lexgui';
+
+    const content = document.querySelector('.lexdocs-content');
+
+    docMaker.header("Image Channel", "h1", "channels-images");
+
+    docMaker.paragraph(`
+This group includes 2D textures, cubemaps, and outputs of image or compute passes (buffers).
+All image channels are automatically bound and can be sampled in your shader using one of the default samplers.
+`);
+
+    docMaker.header("nearestSampler", "h3");
+    docMaker.paragraph(`
+<span class='text-sm font-code'>minFilter=nearest, magFilter=nearest, mipmapFilter=nearest, addressMode=clamp</span>
+`);
+    docMaker.header("bilinearSampler", "h3");
+    docMaker.paragraph(`
+<span class='text-sm font-code'>minFilter=linear, magFilter=linear, mipmapFilter=nearest, addressMode=clamp</span>
+`);
+    docMaker.header("trilinearSampler", "h3");
+    docMaker.paragraph(`
+<span class='text-sm font-code'>minFilter=linear, magFilter=linear, mipmapFilter=linear, addressMode=clamp</span>
+`);
+    docMaker.header("nearestRepeatSampler", "h3");
+    docMaker.paragraph(`
+<span class='text-sm font-code'>minFilter=nearest, magFilter=nearest, mipmapFilter=nearest, addressMode=repeat</span>
+`);
+    docMaker.header("bilinearRepeatSampler", "h3");
+    docMaker.paragraph(`
+<span class='text-sm font-code'>minFilter=linear, magFilter=linear, mipmapFilter=nearest, addressMode=repeat</span>
+`);
+    docMaker.header("trilinearRepeatSampler", "h3");
+    docMaker.paragraph(`
+<span class='text-sm font-code'>minFilter=linear, magFilter=linear, mipmapFilter=linear, addressMode=repeat</span>
+`);
+
+    docMaker.header("Sampling Example", "h2", "image-sample");
+
+    docMaker.paragraph(`
+Texture 2D:
+`);
+
+    docMaker.code(`let color : vec4f = textureSample(iChannel0, nearestSampler, uv);`, "wgsl");
+
+    docMaker.paragraph(`
+Cubemap (where <span class='text-sm font-code'>direction</span> is a 3D direction vector):
+`);
+
+    docMaker.code(`let color : vec4f = textureSample(iChannel0, bilinearSampler, direction);`, "wgsl");
+
+</script>

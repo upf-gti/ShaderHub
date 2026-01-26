@@ -290,7 +290,7 @@ export const ui = {
 
     _openPage( path = "", e )
     {
-        const isDocs = path.startsWith( '/docs' );
+        const isDocs = path.startsWith( 'docs' );
         const url = `${ ShaderHub.getFullPath( false ) }/${ path }`;
 
         if ( e?.button === 1 || e?.ctrlKey || e?.metaKey )

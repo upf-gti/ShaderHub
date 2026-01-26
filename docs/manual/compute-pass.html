@@ -1,0 +1,93 @@
+<script type="module">
+
+    import { LX } from 'lexgui';
+
+    const content = document.querySelector('.lexdocs-content');
+
+    // SHADER PASSES / COMPUTE PASS
+
+    docMaker.header("Compute Pass", "h1", "compute-pass");
+
+    docMaker.paragraph(`
+A Compute Pass executes general-purpose GPU computations using a compute shader.
+Its output is basically a texture, which can be used in the same way as the result of an image pass,
+including being connected to channels in subsequent passes.
+`);
+
+    docMaker.header("Shader Entry Point", "h2", "compute-pass-entry-point");
+
+    docMaker.paragraph(`
+Compute passes define one or more compute entry points.
+Each invocation receives a global invocation ID that identifies the current thread.
+`);
+
+    docMaker.paragraph(`
+A typical compute pass entry point looks like this:
+`);
+
+    docMaker.code(`fn mainCompute(id: vec3u) {
+    // Viewport resolution (in pixels)
+    let screen_size = textureDimensions(screen);
+
+    // Prevent overdraw for workgroups on the edge of the viewport
+    if (id.x >= screen_size.x || id.y >= screen_size.y) { return; }
+
+    // Pixel coordinates (centre of pixel, origin at bottom left)
+    let fragCoord = vec2f(f32(id.x) + 0.5, f32(screen_size.y - id.y) - 0.5);
+
+    // Normalised pixel coordinates (from 0 to 1)
+    let uv = fragCoord / vec2f(screen_size);
+
+    // Output to screen (gamma colour space, will be auto-converted later)
+    textureStore(screen, id.xy, vec4f(1.0));
+}`, "wgsl");
+
+    docMaker.header("Dispatching Compute Work", "h2", "compute-dispatch");
+
+    docMaker.paragraph(`
+Compute passes are dispatched explicitly using preprocessor directives.
+These directives control how many workgroups are executed for a given entry point.
+`);
+
+    docMaker.bulletList([
+        `<span class="font-code font-bold text-muted-foreground">#workgroup_count ENTRYPOINT X Y Z</span>: Specifies how many workgroups should be dispatched for the given entry point.`,
+        `<span class="font-code font-bold text-muted-foreground">#dispatch_once ENTRYPOINT</span>: Ensures the entry point is dispatched only once. This is useful for initialization or setup computations.`
+    ]);
+
+    docMaker.paragraph(`
+These directives allow compute passes to be used both for per-frame execution
+and one-time initialization tasks.
+`);
+
+    docMaker.header("Storage Buffers", "h2", "compute-storage-buffers");
+
+    docMaker.paragraph(`
+Compute passes can declare storage buffers for reading and writing structured data.
+Storage buffers are defined using a preprocessor directive.
+`);
+
+    docMaker.bulletList([
+        `<span class="font-code font-bold text-muted-foreground">#storage NAME TYPE</span>: Declares a storage buffer with the given name and data type.`
+    ]);
+
+    docMaker.paragraph(`
+Storage buffers persist across dispatches and can be used to share data
+between compute passes or between compute and image passes.
+`);
+
+    docMaker.header("When to Use a Compute Pass", "h2", "when-to-use-compute-pass");
+
+    docMaker.paragraph(`
+Use a compute pass when your shader logic does not naturally fit into a pixel-based rendering model,
+or when you need fine-grained control over execution and memory access.
+`);
+
+    docMaker.bulletList([
+        "Simulations and state updates",
+        "Particle systems",
+        "Procedural data generation",
+        "Precomputing textures or lookup tables",
+        "Initialization steps for complex shaders"
+    ]);
+
+</script>

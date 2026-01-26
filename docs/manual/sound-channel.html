@@ -1,0 +1,22 @@
+<script type="module">
+
+    import { LX } from 'lexgui';
+
+    const content = document.querySelector('.lexdocs-content');
+
+    docMaker.header("Sound", "h1", "channels-sound");
+
+    docMaker.paragraph(`
+Sound channels provide access to audio assets assigned to a shader.
+The sound data is uploaded as a 512×2 texture where the first row contains the frequency spectrum, obtained from an FFT analysis,
+and the second row contains the waveform of the audio signal.
+driving visual effects directly from audio input
+`);
+
+    docMaker.header("Sampling Example", "h2", "sound-sample");
+
+    docMaker.code(`let tx: i32 = i32(uv.x * 512.0);
+let fft : f32 = textureLoad( iChannel0, vec2i(tx,0), 0 ).x; 
+let wave : f32 = textureLoad( iChannel0, vec2i(tx,1), 0 ).x;`, "wgsl");
+
+</script>

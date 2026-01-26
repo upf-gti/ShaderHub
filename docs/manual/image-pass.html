@@ -1,0 +1,88 @@
+<script type="module">
+
+    import { LX } from 'lexgui';
+
+    const content = document.querySelector('.lexdocs-content');
+
+    // SHADER PASSES / IMAGE PASS
+
+    docMaker.header("Image Pass", "h1", "image-pass");
+
+    docMaker.paragraph(`
+An Image Pass is a rendering stage that outputs pixel color data.
+Most image passes render to an offscreen texture, while the main image pass
+renders directly to the screen.
+`);
+
+    docMaker.paragraph(`
+The main image pass is mandatory and represents the final visual output of the shader.
+All other image passes act as intermediate render targets that can be reused by
+subsequent passes.
+`);
+
+    docMaker.paragraph(`
+Each image pass executes a fragment shader that runs once per pixel.
+The shader computes a color value, which is written to the pass output.
+`);
+
+    docMaker.header("Shader Entry Point", "h2", "image-pass-entry-point");
+
+    docMaker.paragraph(`
+Image passes use a single entry function that defines how each pixel is rendered.
+The function receives both normalized and pixel-space coordinates and returns a color.
+`);
+
+    docMaker.paragraph(`
+A minimal image pass shader looks like this:
+`);
+
+    docMaker.code(`fn mainImage(fragUV : vec2f, fragCoord : vec2f) -> vec4f {
+    // Output to screen
+    return vec4f(0.0, 0.0, 1.0, 1.0);
+}`, "wgsl");
+
+    docMaker.paragraph(`
+The returned value represents the RGBA color written to the output target.
+`);
+
+    docMaker.header("Coordinates", "h2", "image-pass-coordinates");
+
+    docMaker.paragraph(`
+Image passes receive two coordinate inputs:
+`);
+
+    docMaker.bulletList([
+        `<span class="font-bold underline underline-offset-4">fragUV</span>: Normalized texture coordinates in the range [0, 1].`,
+        `<span class="font-bold underline underline-offset-4">fragCoord</span>: Pixel coordinates in resolution space.`
+    ]);
+
+    docMaker.paragraph(`
+The coordinate origin is located at the top-left corner of the image.
+`);
+
+    docMaker.header("Chaining Image Passes", "h2", "chaining-image-passes");
+
+    docMaker.paragraph(`
+Multiple image passes can be chained together.
+Earlier passes render to textures that later passes can sample through channels.
+`);
+
+    docMaker.paragraph(`
+This technique is commonly used to build multi-stage effects such as feedback loops,
+blur pipelines, or layered compositing.
+`);
+
+    docMaker.header("When to Use an Image Pass", "h2", "when-to-use-image-pass");
+
+    docMaker.paragraph(`
+Use image passes when you need to render visual output or perform pixel-based operations.
+`);
+
+    docMaker.bulletList([
+        "Drawing full-screen effects",
+        "Post-processing and color grading",
+        "Compositing multiple render targets",
+        "Using intermediate textures between passes"
+    ]);
+
+</script>

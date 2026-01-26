@@ -2,6 +2,65 @@
 
     import { LX } from 'lexgui';
 
-    const content = document.querySelector( '.lexdocs-content' );
+    const content = document.querySelector('.lexdocs-content');
+
+    docMaker.header("Shader Passes", "h1", "shader-passes");
+
+    docMaker.paragraph(`
+ShaderHub shaders are built from one or more shader passes.
+Each pass represents a stage of GPU execution and can either render to a texture,
+perform a computation, or provide shared code used by other passes.
+`);
+
+    docMaker.paragraph(`
+By combining multiple passes, you can create complex effects such as multi-step rendering,
+feedback loops, simulations, post-processing chains, or procedural data generation.
+`);
+
+    docMaker.header("How Passes Work", "h2", "how-passes-work");
+
+    docMaker.paragraph(`
+Each pass runs independently on the GPU and produces an output.
+That output can be consumed by other passes through channels, allowing data to flow
+from one stage to the next.
+`);
+
+    docMaker.paragraph(`
+Passes are executed in a defined order.
+This makes it possible to build effects incrementally, where earlier passes compute
+or store intermediate results that later passes reuse.
+`);
+
+    docMaker.header("Pass Types", "h2", "pass-types");
+
+    docMaker.paragraph(`
+ShaderHub supports three types of passes.
+Each type serves a different purpose in the rendering pipeline.
+`);
+
+    docMaker.bulletList([
+        `<span class="font-bold underline underline-offset-4">Image Pass</span>: Renders visual output to a texture or directly to the screen. Image passes are commonly used for drawing full-screen effects and post-processing.`,
+        `<span class="font-bold underline underline-offset-4">Compute Pass</span>: Executes general-purpose GPU computations without rendering to the screen. Compute passes are useful for simulations, particle updates, procedural data generation, or precomputing values.`,
+        `<span class="font-bold underline underline-offset-4">Common Pass</span>: Contains shared code that can be included in other passes. This is useful for defining functions, constants, or utilities reused across multiple passes.`
+    ]);
+
+    docMaker.header("Creating and Managing Passes", "h2", "creating-and-managing-passes");
+
+    docMaker.paragraph(`
+To create a new pass, click the ${LX.makeIcon( 'Plus', { svgClass: 'border-color rounded-lg p-2 mx-2 w-8! h-8! inline-flex!' } ).innerHTML} button in the editor tab bar
+and select the type of pass you want to add. Each pass appears as a separate tab in the editor, which can be deleted anytime. Using multiple passes is recommended when:
+`);
+
+    docMaker.bulletList([
+        "An effect requires intermediate results or feedback",
+        "You want to separate logic into clear stages",
+        "A computation should run independently of rendering",
+        "Code reuse across passes improves readability and maintainability"
+    ]);
+
+    docMaker.paragraph(`
+For simple shaders, a single image pass may be enough.
+As your shader grows in complexity, multiple passes help keep things structured and efficient.
+`);
 
 </script>

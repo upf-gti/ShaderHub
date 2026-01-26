@@ -1,0 +1,30 @@
+<script type="module">
+
+    import { LX } from 'lexgui';
+
+    const content = document.querySelector('.lexdocs-content');
+
+    docMaker.header("Keyboard", "h1", "channels-keyboard");
+
+    docMaker.paragraph(`
+Keyboard channels provide real-time input from the user.
+They are read-only and give the current state of keys, which can be used to trigger actions or drive shader effects.
+`);
+
+docMaker.paragraph(`
+The keyboard data is provided as a texture: the first row of texels contains the current state of all 256 keys,
+the second row contains a toggle for every key, and the third row contains keypress events.
+Texel positions correspond to ASCII codes.
+`);
+
+    docMaker.paragraph(`
+All key states are automatically available in the shader. You can query individual keys or check for modifiers like Shift, Ctrl, or Alt.
+`);
+
+    docMaker.header("Sampling Example", "h2", "keyboard-sample");
+
+    docMaker.code(`let isPressed : f32 = textureLoad(iChannel0, vec2i(KEY_LEFT, 0), 0).x;
+let wasPressed : f32 = textureLoad(iChannel0, vec2i(KEY_LEFT, 1), 0).x;
+let isToggled : f32 = textureLoad(iChannel0, vec2i(KEY_LEFT, 2), 0).x;`, "wgsl");
+
+</script>

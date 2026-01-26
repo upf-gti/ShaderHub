@@ -58,17 +58,7 @@ window.setPath = function (startPage) {
     const startPath = [];
 
     for (let t of tokens) {
-        const pToken = LX.toTitleCase(t);
-
-        if (startPath.length && startPath[0] == "Components") {
-            if (generalComponents.includes(pToken)) startPath.push("General");
-            if (dataInputComponents.includes(pToken)) startPath.push("Data Input");
-            if (dataDisplayComponents.includes(pToken)) startPath.push("Data Display");
-            if (feedbackComponents.includes(pToken)) startPath.push("Feedback");
-            if (navigationComponents.includes(pToken)) startPath.push("Navigation");
-        }
-
-        startPath.push(pToken == "Api" ? "API Reference" : pToken);
+        startPath.push( LX.toTitleCase(t) );
     }
 
     if (startPath.length) {
@@ -108,10 +98,10 @@ window.loadPage = function (page, addToHistory = true, title, callback) {
             });
 
             if (addToHistory) {
-                history.pushState({ page }, "", `?p=${page.replace(".html", "")}`);
+                history.pushState({ page }, "", `?p=${page.substring(page.lastIndexOf('/')+1).replace(".html", "")}`);
             }
 
-            if (title) document.title = `${title} - LexGUI`;
+            if (title) document.title = `${title} - ShaderHub Docs`;
         })
         .then(callback)
         .catch((err) => {
@@ -138,10 +128,6 @@ const open = (url, target, name, dom, event) => {
     else {
         path = null;
 
-        if (breadcrumb) {
-            path = target;
-        }
-
         loadPage(url, true, name, () => {
             if (anchor) {
                 LX.doAsync(() => document.getElementById(target.substring(1))?.scrollIntoView({ behavior: 'smooth' }), 20);
@@ -156,18 +142,30 @@ const open = (url, target, name, dom, event) => {
 
 const sidebarCallback = m => {
 
-    const manualCallback = v => open(`manual/${v.toLowerCase().replaceAll(" ", "-")}.html`, ["Manual"], v);
-    const extensionCallback = v => open(`extensions/${v.toLowerCase().replaceAll(" ", "-")}.html`, ["Extensions"], v);
+    const entryCallback = v => open(`manual/${v.toLowerCase().replaceAll(" ", "-")}.html`, [], v);
+    const entryOptions = { callback: entryCallback };
 
-    m.group("Manual");
-    m.add("Getting Started", { callback: manualCallback });
-    m.add("Shader Passes", { callback: manualCallback });
+    m.group( "Create");
+    m.add( "Getting Started", entryOptions );
+    m.add( "Shader Passes", entryOptions );
+    m.add( "Shader Passes/Image Pass", entryOptions );
+    m.add( "Shader Passes/Compute Pass", entryOptions );
+    m.add( "Preprocessor", entryOptions );
+    m.add( "Channels", entryOptions );
+    m.add( "Channels/Image Channel", entryOptions );
+    m.add( "Channels/Keyboard Channel", entryOptions );
+    m.add( "Channels/Sound Channel", entryOptions );
+    m.add( "Default Uniforms", entryOptions );
+    m.add( "Custom Uniforms", entryOptions );
+    m.add( "Share & Export", entryOptions );
     m.separator();
-    m.group("Community");
+    m.group("Explore");
+    m.add( "Search Shaders", entryOptions );
+    m.add( "Remix", entryOptions );
+    m.separator();
+    m.add( "About", entryOptions );
+    m.add( "Source Code", { icon: "Code", skipSelection: true, callback: open.bind(this, "https://github.com/jxarco/ShaderHub/", "_blank") } );
     // m.add("General", { skipSelection: true });
-    m.add("Remix", { callback: extensionCallback });
-    m.separator();
-    m.add("Source Code", { icon: "Code", skipSelection: true, callback: open.bind(this, "https://github.com/jxarco/ShaderHub/", "_blank") });
 }
 
 if (mobile) {
@@ -200,7 +198,7 @@ if (mobile) {
 
 const params = new URLSearchParams(document.location.search);
 const queryPage = params.get("p");
-const startPage = queryPage ?? "manual/getting-started";
+const startPage =  `manual/${queryPage ?? "getting-started"}`;
 const tabName = window.setPath(startPage);
 
 loadPage(`${startPage}.html`, !!queryPage, tabName);

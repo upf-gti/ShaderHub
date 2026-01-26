@@ -1,0 +1,97 @@
+<script type="module">
+
+    import { LX } from 'lexgui';
+
+    const content = document.querySelector('.lexdocs-content');
+
+    // PREPROCESSOR
+
+    docMaker.header("Preprocessor", "h1", "preprocessor");
+
+    docMaker.paragraph(`
+ShaderHub includes a lightweight preprocessor that runs before shader compilation.
+It allows you to define constants, enable or disable code paths, and control
+certain aspects of shader execution.
+`);
+
+    docMaker.paragraph(`
+The preprocessor operates purely at compile time.
+It performs textual substitution and conditional inclusion of code,
+and does not introduce runtime overhead.
+`);
+
+    docMaker.header("Macro Definitions", "h2", "preprocessor-define");
+
+    docMaker.paragraph(`
+You can define simple macros using the <span class="font-bold font-code">#define</span> directive.
+Macros are replaced with their corresponding values during preprocessing.
+`);
+
+    docMaker.paragraph(`
+Only simple value substitution is supported.
+Function-like macros are not supported.
+`);
+
+    docMaker.code(`#define PI 3.14159265
+#define ITERATIONS 64
+
+let angle = PI * 0.5;`, "wgsl");
+
+    docMaker.header("Conditional Compilation", "h2", "preprocessor-conditional");
+
+    docMaker.paragraph(`
+Conditional directives allow you to include or exclude sections of code
+based on compile-time conditions.
+`);
+
+    docMaker.bulletList([
+        `<span class="font-bold font-code">#if</span>`,
+        `<span class="font-bold font-code">#elseif</span>`,
+        `<span class="font-bold font-code">#else</span>`,
+        `<span class="font-bold font-code">#endif</span>`
+    ]);
+
+    docMaker.paragraph(`
+This is useful for toggling features, selecting algorithms,
+or writing shader variants without duplicating code.
+`);
+
+    docMaker.code(`#define USE_FOG 1
+
+#if USE_FOG
+    color *= fogFactor;
+#else
+    color *= 1.0;
+#endif`, "wgsl");
+
+    docMaker.header("Predefined Variables", "h2", "preprocessor-predefined");
+
+    docMaker.paragraph(`
+ShaderHub provides a small set of predefined variables that can be used
+during preprocessing.
+`);
+
+    docMaker.bulletList([
+        `<span class="font-bold font-code">SCREEN_WIDTH</span>: Width of the canvas in pixels.`,
+        `<span class="font-bold font-code">SCREEN_HEIGHT</span>: Height of the canvas in pixels.`
+    ]);
+
+    docMaker.paragraph(`
+These values can be used in macro definitions or conditional expressions
+to adapt shader code to the current canvas size.
+`);
+
+    docMaker.header("When to Use the Preprocessor", "h2", "when-to-use-preprocessor");
+
+    docMaker.paragraph(`
+The preprocessor is useful when you need compile-time control over your shader code.
+`);
+
+    docMaker.bulletList([
+        "Defining constants shared across passes",
+        "Enabling or disabling features without runtime branching",
+        "Adapting code to different resolutions",
+        "Controlling compute dispatch behavior"
+    ]);
+
+</script>

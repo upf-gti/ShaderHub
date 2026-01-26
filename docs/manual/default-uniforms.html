@@ -1,0 +1,60 @@
+<script type="module">
+
+    import { LX } from 'lexgui';
+
+    const content = document.querySelector('.lexdocs-content');
+
+    // DEFAULT UNIFORMS
+
+    docMaker.header("Default Uniforms", "h1", "default-uniforms");
+
+    docMaker.paragraph(`
+ShaderHub provides a set of default inputs that are automatically available in your shaders.
+These include mouse input, screen information, time data, and selectable channel textures.
+Custom values controlled by sliders can also be added as needed.
+`);
+
+    docMaker.header("Mouse Input", "h2", "default-uniforms-mouse");
+
+    docMaker.paragraph(`
+Mouse input is accessible through the <span class="font-bold">iMouse</span> struct, which contains:
+`);
+
+    docMaker.codeBulletList([
+        ["iMouse.pos", "vec2f", "Current mouse position while pressed"],
+        ["iMouse.start", "vec2f", "Mouse down position"],
+        ["iMouse.delta", "vec2f", "Delta since the last mouse move"],
+        ["iMouse.press", "f32", "Mouse button currently pressed (none = -1, left = 0, middle = 1, right = 2)"],
+        ["iMouse.click", "f32", "Mouse button clicked (none = -1, left = 0, middle = 1, right = 2)"],
+    ]);
+
+    docMaker.header("Screen Information", "h2", "default-uniforms-screen");
+
+    docMaker.paragraph(`
+Screen-related information is provided through the <span class="font-bold">iResolution</span> uniform:
+`);
+
+    docMaker.codeBulletList([
+        ["iResolution", "vec2f", "Viewport resolution"],
+    ]);
+
+    docMaker.header("Time Information", "h2", "default-uniforms-time");
+
+    docMaker.paragraph(`
+Time-related uniforms provide the current time and frame information:
+`);
+
+    docMaker.codeBulletList([
+        ["iTime", "f32", "Elapsed time since shader start"],
+        ["iTimeDelta", "f32", "Delta time between frames"],
+        ["iFrame", "f32", "Current frame number"],
+    ]);
+
+    docMaker.header("Channel Textures", "h2", "default-uniforms-channels");
+
+    docMaker.paragraph(`
+Selectable channel textures are available via <span class="font-bold font-code">iChannel0</span> through <span class="font-bold font-code">iChannel3</span>.
+These textures can be sampled in your shader using one of the default samplers seen before.
+`);
+
+</script>

@@ -1,0 +1,79 @@
+<script type="module">
+
+    import { LX } from 'lexgui';
+
+    const content = document.querySelector('.lexdocs-content');
+
+    // CHANNELS
+
+    docMaker.header("Channels", "h1", "channels");
+
+    docMaker.paragraph(`
+Channels are input slots that allow shaders to read external data.
+They are commonly used to connect textures and sounds from the ShaderHub asset library, or the outputs of other passes
+to image or compute shaders.
+`);
+
+    docMaker.paragraph(`
+Each shader pass has access to up to four channels, named
+<span class="font-bold font-code">iChannel0</span> through <span class="font-bold font-code">iChannel3</span>.
+This makes channels the primary mechanism for passing data
+between different stages of a shader.
+`);
+
+    docMaker.header("Assigning Channel Inputs", "h2", "assigning-channels");
+
+    docMaker.paragraph(`
+Channel inputs are assigned through the editor interface.
+Each pass exposes its channels in the status bar at the bottom of the editor.
+`);
+
+    docMaker.paragraph(`
+To assign a resource to a channel:
+`);
+
+    docMaker.bulletList([
+        "Click on one of the channel slots (iChannel0–iChannel3)",
+        "Select a texture, sound, or pass output from the available list",
+        "The selected resource becomes available to the shader immediately after recompilation"
+    ]);
+
+    docMaker.header("Using Channels in Shaders", "h2", "using-channels");
+
+    docMaker.paragraph(`
+Channels are automatically bound and made available to your shader as input resources.
+The way you access each channel depends on the type of asset connected to it.
+ShaderHub currently supports the following channel types:
+`);
+
+    docMaker.bulletList([
+        `<span class="font-bold underline underline-offset-4">Image Textures</span>`,
+        `<span class="font-bold underline underline-offset-4">Cubemap Textures</span>`,
+        `<span class="font-bold underline underline-offset-4">Keyboard Input</span>`,
+        `<span class="font-bold underline underline-offset-4">Sound</span>`,
+        `<span class="font-bold underline underline-offset-4">Pass Buffers</span>`
+    ]);
+
+    docMaker.header("Channel Limitations", "h2", "channel-limitations");
+
+    docMaker.paragraph(`
+Each pass supports a maximum of four channels.
+If more inputs are required, intermediate passes can be used
+to combine or preprocess data before passing it forward.
+`);
+
+    docMaker.paragraph(`
+Channels are read-only from the perspective of the shader.
+Writing data is performed by rendering to textures in image passes
+or explicitly storing values in compute passes.
+`);
+
+    docMaker.header("When to Use Channels", "h2", "when-to-use-channels");
+
+    docMaker.paragraph(`
+Use channels whenever your shader needs external or intermediate data.
+They are the main way to structure complex shaders and enable reuse between passes.
+`);
+
+
+</script>
