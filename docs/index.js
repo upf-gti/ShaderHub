@@ -157,13 +157,12 @@ const sidebarCallback = m => {
     m.add( "Channels/Sound Channel", entryOptions );
     m.add( "Default Uniforms", entryOptions );
     m.add( "Custom Uniforms", entryOptions );
-    m.add( "Share & Export", entryOptions );
     m.separator();
-    m.group("Explore");
-    m.add( "Search Shaders", entryOptions );
+    m.add( "Share and Export", entryOptions );
     m.add( "Remix", entryOptions );
+    m.add( "Search Shaders", entryOptions );
     m.separator();
-    m.add( "About", entryOptions );
+    m.group("About");
     m.add( "Source Code", { icon: "Code", skipSelection: true, callback: open.bind(this, "https://github.com/jxarco/ShaderHub/", "_blank") } );
     // m.add("General", { skipSelection: true });
 }

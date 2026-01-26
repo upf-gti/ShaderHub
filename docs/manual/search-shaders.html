@@ -2,6 +2,40 @@
 
     import { LX } from 'lexgui';
 
-    const content = document.querySelector( '.lexdocs-content' );
+    const content = document.querySelector('.lexdocs-content');
+
+    // SEARCH SHADERS
+
+    docMaker.header("Search Shaders", "h1", "search-shaders");
+
+    docMaker.paragraph(`
+ShaderHub allows you to explore public shaders created by the community.
+The search system lets you quickly find shaders by name, tags, or even author and description, based on scoring.
+`);
+
+    docMaker.header("Using the Search Bar", "h2", "search-shaders-bar");
+
+    docMaker.paragraph(`
+The search bar is located at the top of the ShaderHub interface.
+Type in keywords, shader names, or tags (starting with '#') to filter the results.
+`);
+
+    docMaker.header("Filter and Sort", "h2", "search-shaders-filter");
+
+    docMaker.paragraph(`
+You can refine your search using feature filters such as Multipass, Compute, Keyboard, Sound.
+`);
+
+    docMaker.paragraph(`
+You can also explore sorting shaders by Recent (posted date, desc), Popular (number of likes, desc), and Name (asc).
+`);
+
+//     docMaker.header("Previewing Shaders", "h2", "search-shaders-preview");
+
+//     docMaker.paragraph(`
+// Clicking on a shader in the search results opens a preview where you can run the shader directly in your browser.
+// From the preview, you can also view details such as the author, tags, likes, and remixes.
+// `);
+
 
 </script>

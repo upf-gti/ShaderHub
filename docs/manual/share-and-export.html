@@ -1,0 +1,45 @@
+<script type="module">
+
+    import { LX } from 'lexgui';
+
+    const content = document.querySelector('.lexdocs-content');
+
+    // SHARE & EXPORT
+
+    docMaker.header("Share and Export", "h1", "share-export");
+
+    docMaker.paragraph(`
+ShaderHub makes it easy to share your shaders with others and export them for offline use.
+You can share your shader via a direct link, embed it in a website, or export the shader code as a WGSL file.
+`);
+
+    docMaker.header("Direct Link", "h2", "share-export-direct-link");
+
+    docMaker.paragraph(`
+Every shader has a unique URL that you can copy and share.
+Anyone with this link can view and run your shader in their browser.
+Simply copy the URL from your browser's address bar and share it with others.
+`);
+
+    docMaker.header("Embedding with iFrame", "h2", "share-export-iframe");
+
+    docMaker.paragraph(`
+You can embed your shader in a website or blog using an iFrame.
+Copy the code snippet provided and paste it into your HTML where you want the shader to appear.
+`);
+
+    docMaker.lineBreak();
+
+    docMaker.paragraph(`
+<iframe src="https://shaderhub.dev/embed/2ulvS3GQNIH1se/" frameborder="0" width="640" height="405" class="rounded-lg" allowfullscreen></iframe>`, "html");
+
+    docMaker.header("Exporting Shaders", "h2", "share-export-exporting");
+
+    docMaker.paragraph(`
+In your user profile, you can export your shaders to download them as WGSL files.
+This process concatenates all shader passes into a single file, allowing you to use the shader offline
+or in other WebGPU projects.
+`);
+
+
+</script>

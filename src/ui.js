@@ -2807,7 +2807,7 @@ export const ui = {
 
             // direct link
             {
-                p.addTextArea( null, `Direct link - Just copy and past the URL below:`, null, { inputClass: "text-card-foreground", disabled: true, fitHeight: true } );
+                p.addTextArea( null, `Direct link - Just copy and paste the URL below:`, null, { inputClass: "text-card-foreground", disabled: true, fitHeight: true } );
                 const directLink = `${ window.location.origin }${ window.location.pathname }?shader=${ r[ "$id" ] }`;
                 p.addTextArea( null, directLink, null, { disabled: true, fitHeight: true } );
                 const copyButtonComponent = p.addButton(null, "Copy Shader URL",  async () => {

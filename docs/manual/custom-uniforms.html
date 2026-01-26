@@ -2,6 +2,46 @@
 
     import { LX } from 'lexgui';
 
-    const content = document.querySelector( '.lexdocs-content' );
+    const content = document.querySelector('.lexdocs-content');
+
+    // CUSTOM UNIFORMS
+
+    docMaker.header("Custom Uniforms", "h1", "custom-uniforms");
+
+    docMaker.paragraph(`
+Custom uniforms are values created by the user to control shader behavior dynamically.
+Users can define the variable name, type, minimum, maximum, and current value.
+These uniforms can be connected to sliders or color pickers for interactive control.
+`);
+
+    docMaker.header("Creating Custom Uniforms", "h2", "custom-uniforms-creation");
+
+    docMaker.paragraph(`
+Custom uniforms can be created directly from the shader code editor.
+Right-click on a variable and select "Create Uniform".
+The variable name must start with <span class="font-bold">i</span> followed by an uppercase letter (e.g., iMyValue) to be detected as a uniform.
+`);
+
+    docMaker.header("Supported Types", "h2", "custom-uniforms-types");
+
+    docMaker.paragraph(`
+ShaderHub supports the following types for custom uniforms:
+`);
+
+    docMaker.bulletList([
+        "<span class='font-bold'>Number</span>: <span class='text-sm font-code'>f32, i32, u32</span>",
+        "<span class='font-bold'>Vec2</span>: <span class='text-sm font-code'>vec2f, vec2i, vec2u</span>",
+        "<span class='font-bold'>Vec3</span>: <span class='text-sm font-code'>vec3f, vec3i, vec3u</span>",
+        "<span class='font-bold'>Vec4</span>: <span class='text-sm font-code'>vec4f, vec4i, vec4u</span>",
+        "<span class='font-bold'>Color</span>: <span class='text-sm font-code'>vec3f, vec4f</span> (bound as vec3f/vec4f with a color picker)"
+    ]);
+
+    docMaker.header("Using Custom Uniforms in Shaders", "h2", "custom-uniforms-usage");
+
+    docMaker.paragraph(`
+Once created, custom uniforms are automatically available in your shader code using the variable name you assigned.
+Number and vector types can be controlled via sliders, while color uniforms use a color picker.
+`);
+
 
 </script>

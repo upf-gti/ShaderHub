@@ -2,6 +2,34 @@
 
     import { LX } from 'lexgui';
 
-    const content = document.querySelector( '.lexdocs-content' );
+    const content = document.querySelector('.lexdocs-content');
+
+    // REMIX SHADERS
+
+    docMaker.header("Remix", "h1", "remix-shaders");
+
+    docMaker.paragraph(`
+ShaderHub allows you to remix shaders created by other users (remix has to be enabled).
+Remixing means creating your own version of an existing shader while keeping attribution to the original author.
+`);
+
+    docMaker.header("How to Remix a Shader", "h2", "remix-shaders-how");
+
+    docMaker.paragraph(`
+To remix a shader, open the shader editor for a remix-enabled shader and click the "Remix" button.
+This will create a new shader in your account that contains the original code as a starting point.
+You can then modify, add new passes, change uniforms, or experiment freely without affecting the original shader.
+`);
+
+    docMaker.paragraph(`
+Once you have modified a remixed shader, you can save it to your account, share it using a direct link or iFrame, and even export it as a WGSL file just like any other shader.
+`);
+
+    docMaker.header("Attribution", "h2", "remix-shaders-attribution");
+
+    docMaker.paragraph(`
+All remixed shaders automatically keep a reference to the original author.
+The original author receives credit for the base shader, ensuring proper recognition while still allowing creative freedom.
+`);
 
 </script>

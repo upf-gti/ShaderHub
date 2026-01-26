@@ -9,7 +9,9 @@
     `, content);
 
     const headerButtons = LX.makeContainer(["auto", "auto"], "flex flex-row p-2", ``, header);
-    const getStartedButton = new LX.Button(null, "Get Started", () => { }, { buttonClass: "primary lg" });
+    const getStartedButton = new LX.Button(null, "Get Started", () => {
+        window.location.href = `${window.location.origin}/create/`;
+    }, { buttonClass: "primary lg" });
     headerButtons.appendChild(getStartedButton.root);
 
     const collapsibleClass = 'my-0 bg-accent/30 hover:bg-accent/50! rounded-xl border-color cursor-pointer [&_svg]:w-5! [&_svg]:h-5!';
