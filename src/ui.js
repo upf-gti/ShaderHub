@@ -1127,7 +1127,7 @@ export const ui = {
                         }
                         
                     }, { disabled: !editable, tagClass: 'text-xs' } );
-                    tags.set( shader.tags );
+                    tags.set( shader.tags, true );
                     shaderDataContainer.appendChild( tags.root );
                 }
             }
@@ -1137,7 +1137,7 @@ export const ui = {
             {
                 const descContainer = LX.makeContainer( [`auto`, "auto"], "text-foreground mt-2 flex flex-row items-center", `
                     <div class="w-auto self-start">${ editable ? LX.makeIcon("Edit", { svgClass: "mr-3 cursor-pointer hover:text-foreground" } ).innerHTML : "" }</div>
-                    <div class="desc-content w-full text-sm break-all">${ shader.description }</div>
+                    <div class="desc-content w-full text-sm break-keep">${ shader.description }</div>
                     `, shaderDataContainer );
 
                 const editButton = descContainer.querySelector( "svg" );
@@ -1260,7 +1260,7 @@ export const ui = {
                                             <div class="text-sm font-medium">${ `<a onclick='ui._openUserProfile("${ commentAuthorId }")' class='hub-link font-medium'>${ commentAuthorName }</a>` }</div>
                                             <div class="text-xs text-muted-foreground">${ commentDate }</div>
                                         </div>
-                                        <div class="text-sm w-full break-all">${ commentText }</div>
+                                        <div class="text-sm w-full break-keep">${ commentText }</div>
                                     </div>
                                 `, commentItemContainer );
 
@@ -1367,7 +1367,7 @@ export const ui = {
                                                 <div class="text-sm font-medium">${ `<a onclick='ui._openUserProfile("${ replyAuthorId }")' class='hub-link font-medium'>${ replyAuthorName }</a>` }</div>
                                                 <div class="text-xs text-muted-foreground">${ replyDate }</div>
                                             </div>
-                                            <div class="text-sm w-full break-all">${ replyText }</div>
+                                            <div class="text-sm w-full break-keep">${ replyText }</div>
                                         </div>
                                     `, repliesContainer );
 
