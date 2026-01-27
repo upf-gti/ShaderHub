@@ -304,7 +304,7 @@ export const ui = {
         // Docs site is not part of the SPA by now, make a full reload
         if ( isDocs )
         {
-            window.location.href = path;
+            window.location.href = url;
             return;
         }
 
