@@ -478,8 +478,8 @@ export const ui = {
 
         for( let i = 0; i < 3; ++i )
         {
-            const shaderItem = LX.makeElement( "li", `shader-item ${ i === 0 ? "featured" : "" } lexskeletonpart relative bg-background-blur hover:bg-accent overflow-hidden flex flex-col h-auto`, "" );
-            const shaderPreview = LX.makeElement( "img", "opacity-0 rounded-lg bg-background-blur hover:bg-accent border-none cursor-pointer self-center mt-2", "", shaderItem );
+            const shaderItem = LX.makeElement( "li", `shader-item ${ i === 0 ? "featured" : "" } lexskeletonpart relative bg-card hover:bg-accent/50 overflow-hidden flex flex-col h-auto`, "" );
+            const shaderPreview = LX.makeElement( "img", "opacity-0 rounded-lg bg-background-blur border-none cursor-pointer self-center mt-2", "", shaderItem );
             shaderPreview.style.width = "calc(100% - 1rem)";
             shaderPreview.style.height = "calc(100% - 1rem)";
             shaderPreview.src = ShaderHub.shaderPreviewPath;
@@ -570,14 +570,14 @@ export const ui = {
                 shaderPreview.src = shader.preview ?? ShaderHub.shaderPreviewPath;
                 shaderPreview.onload = () => shaderPreview.classList.remove( "opacity-0" );
                 shaderItem.querySelector( "div" ).remove();
-                const shaderDesc = LX.makeContainer( ["100%", "auto"], "flex flex-row bg-card hover:bg-accent rounded-b-lg gap-6 p-4 select-none", `
-                    <div class="w-full">
-                        <div class="text-md font-bold">${ shader.name }</div>
-                        <div class="text-sm font-light">by ${ !shader.anonAuthor ? `<a onclick='ui._openUserProfile("${ shader.authorId }")' class='hub-link font-medium'>` : "" }<span>${ shader.author }</span>${ !shader.anonAuthor ? "</a>" : "" }</div>
-                    </div>
-                    <div class="flex flex-row gap-1 items-center">
-                        ${ LX.makeIcon( "Heart", { svgClass: "fill-current text-card-foreground" } ).innerHTML }
-                        <span>${ shader.likeCount ?? 0 }</span>
+                LX.makeContainer( ["100%", "auto"], "flex flex-row rounded-b-lg gap-6 px-4 py-3 items-center select-none", `
+                    <div class="flex flex-row w-full items-center gap-2">
+                        <span class="text-base font-medium text-nowrap truncate">${ shader.name }</span>
+                        <span class="text-base font-light text-muted-foreground flex-auto-keep">by ${ !shader.anonAuthor ? `<a onclick='ui._openUserProfile("${ shader.authorId }")' class='hub-link font-medium'>` : "" }<span>${ shader.author }</span>${ !shader.anonAuthor ? "</a>" : "" }</span>
+                        <div class="flex flex-row gap-1 items-center ml-auto flex-auto-keep">
+                            ${ LX.makeIcon( "Heart", { svgClass: "fill-current text-card-foreground" } ).innerHTML }
+                            <span>${ shader.likeCount ?? 0 }</span>
+                        </div>
                     </div>`, shaderItem );
 
                 shaderPreview.addEventListener( "mousedown", e => e.preventDefault() );
@@ -790,14 +790,14 @@ export const ui = {
                 shaderPreview.src = shader.preview ?? ShaderHub.shaderPreviewPath;
                 shaderPreview.onload = () => shaderPreview.classList.remove( "opacity-0" );
                 shaderItem.querySelector( "div" ).remove();
-                const shaderDesc = LX.makeContainer( ["100%", "auto"], "flex flex-row rounded-b-lg gap-6 p-4 items-center select-none", `
-                    <div class="w-full">
-                        <div class="text-base font-bold">${ shader.name }</div>
-                        <div class="text-sm font-light">by ${ !shader.anonAuthor ? `<a onclick='ui._openUserProfile("${ shader.authorId }")' class='hub-link font-medium'>` : "" }<span>${ shader.author }</span>${ !shader.anonAuthor ? "</a>" : "" }</div>
-                    </div>
-                    <div class="flex flex-row gap-1 items-center">
-                        ${ LX.makeIcon( "Heart", { svgClass: `${ shader.liked ? "text-orange-600" : "" } fill-current` } ).innerHTML }
-                        <span>${ shader.likeCount ?? 0 }</span>
+                LX.makeContainer( ["100%", "auto"], "flex flex-row rounded-b-lg gap-6 px-4 py-3 items-center select-none", `
+                    <div class="flex flex-row w-full items-center gap-2">
+                        <span class="text-sm font-medium text-nowrap truncate">${ shader.name }</span>
+                        <span class="text-sm font-light text-muted-foreground flex-auto-keep">by ${ !shader.anonAuthor ? `<a onclick='ui._openUserProfile("${ shader.authorId }")' class='hub-link font-medium'>` : "" }<span>${ shader.author }</span>${ !shader.anonAuthor ? "</a>" : "" }</span>
+                        <div class="flex flex-row gap-1 items-center ml-auto flex-auto-keep">
+                            ${ LX.makeIcon( "Heart", { svgClass: `${ shader.liked ? "text-orange-600" : "" } fill-current sm` } ).innerHTML }
+                            <span class="text-sm">${ shader.likeCount ?? 0 }</span>
+                        </div>
                     </div>`, shaderItem );
 
                 shaderPreview.addEventListener( "mousedown", e => e.preventDefault() );
@@ -1708,9 +1708,9 @@ export const ui = {
                         shaderPreview.src = shaderInfo.preview ?? ShaderHub.shaderPreviewPath;
                         shaderPreview.onload = () => shaderPreview.classList.remove( "opacity-0" );
                         shaderItem.querySelector( "div" ).remove();
-                        const shaderDesc = LX.makeContainer( ["100%", "auto"], "flex flex-row rounded-b-lg gap-6 p-4 items-center select-none", `
+                        const shaderDesc = LX.makeContainer( ["100%", "auto"], "flex flex-row rounded-b-lg gap-6 px-4 py-3 items-center select-none", `
                             <div class="w-full flex-auto-fill overflow-hidden">
-                                <div class="text-base sm:text-lg font-bold"><span class="truncate max-w-full block">${ shaderInfo.name }</span></div>
+                                <div class="text-sm sm:text-base font-medium"><span class="truncate max-w-full block">${ shaderInfo.name }</span></div>
                             </div>
                             <div class="flex flex-row gap-2 flex-auto-keep items-center">
                                 ${ ownProfile ? LX.makeIcon( shaderInfo.public ? "Eye" : "EyeOff", { svgClass: "viz-icon text-card-foreground" } ).innerHTML : "" }
@@ -1727,7 +1727,7 @@ export const ui = {
                         if( optButton )
                         {
                             optButton.addEventListener( "click", ( e ) => {
-                                new LX.DropdownMenu( optButton, [
+                                LX.addDropdownMenu( optButton, [
                                     { name: shaderInfo.public ? "Make Private" : "Make Public", icon: shaderInfo.public ? "EyeOff" : "Eye", callback: async () => {
                                         shaderInfo.public = !shaderInfo.public;
                                         const newIcon = LX.makeIcon( shaderInfo.public ? "Eye" : "EyeOff", { svgClass: "viz-icon text-card-foreground" } ).querySelector( "svg" );
@@ -1749,7 +1749,7 @@ export const ui = {
                                     } },
                                     null,
                                     { name: "Delete", icon: "Trash2", className: "destructive", callback: () => ShaderHub.deleteShader( { uid, name } ) },
-                                ], { side: "bottom", align: "end" });
+                                ], { side: "top", align: "end" });
                             } );
                         }
 
@@ -1925,14 +1925,14 @@ export const ui = {
                             shaderPreview.src = shaderInfo.preview ?? ShaderHub.shaderPreviewPath;
                             shaderPreview.onload = () => shaderPreview.classList.remove( "opacity-0" );
                             shaderItem.querySelector( "div" ).remove();
-                            const shaderDesc = LX.makeContainer( ["100%", "auto"], "flex flex-row rounded-b-lg gap-6 p-4 items-center select-none", `
-                                <div class="w-full">
-                                    <div class="text-lg font-bold"><span>${ shaderInfo.name }</span></div>
-                                    <div class="text-sm font-light">by ${ !shaderInfo.anonAuthor ? `<a onclick='ui._openUserProfile("${ shaderInfo.authorId }")' class='hub-link font-medium'>` : "" }<span>${ shaderInfo.author }</span>${ !shaderInfo.anonAuthor ? "</a>" : "" }</div>
-                                </div>
-                                <div class="flex flex-row gap-1 items-center">
-                                    ${ LX.makeIcon( "Heart", { svgClass: `${ shaderInfo.liked ? "text-orange-600" : "" } fill-current` } ).innerHTML }
-                                    <span>${ shaderInfo.likeCount ?? 0 }</span>
+                            const shaderDesc = LX.makeContainer( ["100%", "auto"], "flex flex-row rounded-b-lg gap-6 px-4 py-3 items-center select-none", `
+                                <div class="flex flex-row w-full items-center gap-2">
+                                   <span class="text-sm font-medium text-nowrap truncate">${ shaderInfo.name }</span>
+                                    <span class="text-sm font-light text-muted-foreground flex-auto-keep">by ${ !shaderInfo.anonAuthor ? `<a onclick='ui._openUserProfile("${ shaderInfo.authorId }")' class='hub-link font-medium'>` : "" }<span>${ shaderInfo.author }</span>${ !shaderInfo.anonAuthor ? "</a>" : "" }</span>
+                                    <div class="flex flex-row gap-1 items-center ml-auto flex-auto-keep">
+                                        ${ LX.makeIcon( "Heart", { svgClass: `${ shaderInfo.liked ? "text-orange-600" : "" } fill-current sm` } ).innerHTML }
+                                        <span class="text-sm">${ shaderInfo.likeCount ?? 0 }</span>
+                                    </div>
                                 </div>`, shaderItem );
 
                             shaderPreview.addEventListener( "mousedown", e => e.preventDefault() );

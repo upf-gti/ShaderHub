@@ -107,11 +107,7 @@
 }
 
 .shader-item:hover img {
-    scale: 1.05;
-}
-
-.shader-item:hover > div {
-    background-color: var(--accent);
+    scale: 1.025;
 }
 
 .shader-item.featured {
