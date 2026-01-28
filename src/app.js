@@ -196,7 +196,7 @@ const ShaderHub =
     {
         this._mouseDown = parseInt( button );
         this._mousePressed = this._mouseDown;
-        this.mousePosition = [ x, y ];
+        this.mousePosition = [ x, this.resolutionY - y ];
         this.lastMousePosition = [ ...this.mousePosition ];
     },
 
@@ -209,7 +209,7 @@ const ShaderHub =
     {
         if( this._mouseDown !== undefined )
         {
-            this.mousePosition = [ x, y ];
+            this.mousePosition = [ x, this.resolutionY - y ];
         }
     },
 

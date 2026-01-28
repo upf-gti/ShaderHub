@@ -180,10 +180,12 @@ class Renderer
         return texture;
     }
 
-    async createCubemapTexture( arrayBuffer, id, label = "" )
+    async createCubemapTexture( arrayBuffer, id, label = "", options = {} )
     {
+        options.flipY = options.flipY ?? true;
+
         const zip = await JSZip.loadAsync( arrayBuffer );
-        const faceNames = [ "px", "nx", "py", "ny", "pz", "nz" ];
+        const faceNames = [ "px", "nx", "ny", "py", "pz", "nz" ];
         const faceImages = [];
 
         for( const face of faceNames )
@@ -211,7 +213,7 @@ class Renderer
         for( let i = 0; i < 6; i++ )
         {
             this.device.queue.copyExternalImageToTexture(
-                { source: faceImages[ i ] },
+                { source: faceImages[ i ], ...options },
                 { texture, origin: [ 0, 0, i ] },
                 [ width, height ]
             );
