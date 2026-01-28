@@ -20,7 +20,7 @@ export const ui = {
     {
         this.fs = fs;
         this.area = await LX.init();
-        this.currentView = null; // 'home' | 'explore' | 'shader' | 'user'
+        this.currentView = null; // 'home' | 'explore' | 'view' | 'create' | 'user'
 
         if( fs.user )
         {
@@ -176,7 +176,7 @@ export const ui = {
         }
 
         menubar.setButtonImage("ShaderHub", mobile ? `${ShaderHub.imagesRootPath}/favicon.png` : `${ShaderHub.imagesRootPath}/icon_${ starterMode }.png`, ( element, event ) => {
-            window.location.href = window.location.origin;
+            this._openPage( '', event );
         }, { float: "left" } );
 
         LX.addSignal( "@on_new_color_scheme", ( el, value ) => {
@@ -223,10 +223,13 @@ export const ui = {
     async router()
     {
         const path = window.location.pathname;
-        const goingToShader = path.startsWith( '/view' ) || path.startsWith( '/create' );
-        const currentlyInShader = ( this.currentView === 'shader' );
 
-        if ( currentlyInShader && !goingToShader )
+        const isGraphicsPath = ( path ) =>
+            path.startsWith( '/view' ) || path.startsWith( '/create' );
+
+        const goingToGraphics = isGraphicsPath( path );
+        const currentlyInGraphics = isGraphicsPath( '/' + this.currentView );
+        if ( this.currentView && ( goingToGraphics || currentlyInGraphics ) )
         {
             window.location.href = window.location.origin + path;
             return;
@@ -813,7 +816,7 @@ export const ui = {
     {
         this._clearContent();
 
-        this.currentView = 'shader';
+        this.currentView = ( shaderUid === 'new' ) ? 'create' : 'view';
 
         this.area.root.style.height = "100dvh";
 
