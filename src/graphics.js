@@ -145,7 +145,7 @@ class Renderer
 
     async createTexture( data, id, label = "", options = {} )
     {
-        options.flipY = options.flipY ?? false;
+        options.flipY = options.flipY ?? true;
         options.useMipmaps = options.useMipmaps ?? true;
 
         const imageBitmap = await createImageBitmap( await new Blob( [ data ] ) );
@@ -976,6 +976,18 @@ class ShaderPass
         const samplerBindings   = {};
         const storageBindings   = {};
 
+        // Flip Y or not the shader if it's a render target
+        {
+            const flipYIndex = templateCodeLines.indexOf( "$vs_flip_y" );
+            if( flipYIndex > -1 )
+            {
+                const utils = [
+                    this.type === 'buffer' ? `  output.fragUV.y = 1.0 - output.fragUV.y;` : ``
+                ]
+                templateCodeLines.splice( flipYIndex, 1, ...utils );
+            }
+        }
+
         // Add shader utils depending on bind group
         {
             const features = this.shader.getFeatures();
@@ -1731,8 +1743,8 @@ fn vert_main(@builtin(vertex_index) VertexIndex : u32) -> VertexOutput {
     var output : VertexOutput;
     output.Position = vec4(pos[VertexIndex], 0.0, 1.0);
     output.fragUV = (output.Position.xy * 0.5) + vec2(0.5, 0.5);
-    output.fragUV.y = 1.0 - output.fragUV.y;
-    output.fragCoord = output.fragUV * iResolution;
+$vs_flip_y
+    output.fragCoord = output.fragUV * iResolution + vec2f(0.5);
     return output;
 }
 
