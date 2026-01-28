@@ -64,6 +64,17 @@ class Renderer
             });
         }
 
+        this.mipmapPipeline = this.device.createComputePipeline({
+            layout: "auto",
+            compute: {
+                module: this.device.createShaderModule({
+                    code: Shader.MIMAP_GENERATION_WGSL
+                }),
+                entryPoint: "main"
+            }
+        });
+        // console.log(this.mipmapPipeline)
+
         // clamp-to-edge samplers
         Renderer.nearestSampler = this.device.createSampler();
         Renderer.bilinearSampler = this.device.createSampler({ magFilter: 'linear', minFilter: 'linear' });
@@ -132,26 +143,37 @@ class Renderer
         );
     }
 
-    async createTexture( data, id, label = "" )
+    async createTexture( data, id, label = "", options = {} )
     {
-        const options = { flipY: false };
+        options.flipY = options.flipY ?? false;
+        options.useMipmaps = options.useMipmaps ?? true;
+
         const imageBitmap = await createImageBitmap( await new Blob( [ data ] ) );
+        const mipLevelCount = options.useMipmaps ? 
+            ( Math.floor( Math.log2( Math.max( imageBitmap.width, imageBitmap.height ) ) ) + 1 ) : undefined;
         const dimensions = [ imageBitmap.width, imageBitmap.height ];
         const texture = this.device.createTexture({
             label,
             size: [ imageBitmap.width, imageBitmap.height, 1 ],
+            mipLevelCount,
             format: 'rgba8unorm',
             usage:
                 GPUTextureUsage.TEXTURE_BINDING |
                 GPUTextureUsage.COPY_DST |
+                GPUTextureUsage.STORAGE_BINDING |
                 GPUTextureUsage.RENDER_ATTACHMENT,
         });
 
         this.device.queue.copyExternalImageToTexture(
             { source: imageBitmap, ...options },
-            { texture: texture },
+            { texture: texture, mipLevel: 0 },
             dimensions
         );
+
+        if( options.useMipmaps )
+        {
+            this.generateMipmaps( texture, mipLevelCount );
+        }
 
         this.gpuTextures[ id ] = texture;
 
@@ -198,6 +220,37 @@ class Renderer
         this.gpuTextures[ id ] = texture;
 
         return texture;
+    }
+
+    generateMipmaps( texture, mipLevelCount )
+    {
+        const encoder = this.device.createCommandEncoder();
+
+        for( let i = 0; i < mipLevelCount - 1; i++ )
+        {
+            const srcView = texture.createView({ baseMipLevel: i, mipLevelCount: 1 });
+            const dstView = texture.createView({ baseMipLevel: i + 1, mipLevelCount: 1 });
+
+            const bindGroup = this.device.createBindGroup({
+                layout: this.mipmapPipeline.getBindGroupLayout( 0 ),
+                entries: [
+                    { binding: 0, resource: srcView },
+                    { binding: 1, resource: dstView }
+                ]
+            });
+
+            const pass = encoder.beginComputePass();
+            pass.setPipeline( this.mipmapPipeline );
+            pass.setBindGroup( 0, bindGroup );
+
+            const w = Math.max( 1, texture.width  >> ( i + 1 ) );
+            const h = Math.max( 1, texture.height >> ( i + 1 ) );
+
+            pass.dispatchWorkgroups( Math.ceil( w / 8 ), Math.ceil( h / 8 ) );
+            pass.end();
+        }
+
+        this.device.queue.submit( [ encoder.finish() ] );
     }
 
     quitIfWebGPUNotAvailable()
@@ -1760,6 +1813,29 @@ Shader.COMPUTE_MAIN_TEMPLATE = `fn mainCompute(id: vec3u) {
     // Output to screen (gamma colour space, will be auto-converted later)
     textureStore(screen, id.xy, vec4f(col, 1.0));
 }`.split( "\n" );
+
+Shader.MIMAP_GENERATION_WGSL = `@group(0) @binding(0) var src_texture : texture_2d<f32>;
+@group(0) @binding(1) var dst_texture : texture_storage_2d<rgba8unorm, write>;
+@compute @workgroup_size(8, 8)
+fn main(@builtin(global_invocation_id) id : vec3u)
+{
+    let dst_dize : vec2u = textureDimensions(dst_texture);
+    // check out of bounds 
+    if(id.x >= dst_dize.x || id.y >= dst_dize.y) { return; }
+    // Corresponding top-left pixel in source mip
+    let src_base: vec2u = vec2u(id.xy * 2u);
+    // Clamp to avoid reading outside for NPOT textures
+    let src_size : vec2u = textureDimensions(src_texture, 0);
+    let maxCoord = src_size - vec2u(1);
+    let offset = vec2u(0, 1);
+    let color = (
+        textureLoad(src_texture, clamp( src_base + offset.xx, vec2u(0), maxCoord ), 0) +
+        textureLoad(src_texture, clamp( src_base + offset.xy, vec2u(0), maxCoord ), 0) +
+        textureLoad(src_texture, clamp( src_base + offset.yx, vec2u(0), maxCoord ), 0) +
+        textureLoad(src_texture, clamp( src_base + offset.yy, vec2u(0), maxCoord ), 0)
+    ) * 0.25;
+    textureStore(dst_texture, id.xy, color);
+}`;
 
 class FPSCounter
 {
