@@ -15,7 +15,7 @@ const Query =   Appwrite.Query;
 
 const ShaderHub =
 {
-    version:            "1.2",
+    version:            "1.3",
 
     keyState:           new Map(),
     keyToggleState:     new Map(),
@@ -911,8 +911,8 @@ const ShaderHub =
     filterShaders( shaderList, querySearch )
     {
         const isTagSearch = querySearch && querySearch[ 0 ] === '#';
-        return shaderList.map( d => {
-            let score = 1;
+        const scoringShaders = shaderList.map( d => {
+            let score = 0;
 
             if( isTagSearch )
             {
@@ -921,8 +921,6 @@ const ShaderHub =
             }
             else if( querySearch )
             {
-                score = 0;
-
                 const name = d.name.toLowerCase();
                 const desc = ( d.description || "" ).toLowerCase();
                 const author = ( d.author_name || "" ).toLowerCase();
@@ -937,7 +935,9 @@ const ShaderHub =
             }
 
             return { ...d, score };
-        }).filter( d => d.score > 0 );
+        });
+        
+        return scoringShaders.sort( ( a, b ) => b.score - a.score );
     },
 
     async updateShaderPreview( shaderUid, showFeedback = true )

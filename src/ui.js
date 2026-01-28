@@ -442,10 +442,10 @@ export const ui = {
             
             const header = LX.makeContainer( [ null, "auto" ], "flex flex-col mt-8 px-4 md:px-10 gap-4 text-center items-center place-content-center", `
                 <img src="${ShaderHub.imagesRootPath}/favicon.png" class="">
-                <span class="mb-6 text-muted-foreground text-2xl sm:text-3xl font-medium">ShaderHub (beta ${ ShaderHub.version })</span>
+                <span class="mb-6 text-muted-foreground text-2xl sm:text-3xl font-medium">ShaderHub (Pre alpha ${ ShaderHub.version })</span>
                 <span class="text-balanced text-4xl sm:text-5xl font-medium">Create and share shaders using latest WebGPU!</span>
                 <a onclick='ui._openShader("new")' class="flex flex-row gap-1 items-center text-sm p-1 px-4 rounded-full text-secondary-foreground decoration-none hover:bg-secondary cursor-pointer"><span class="flex flex-auto-keep bg-orange-500 w-2 h-2 rounded-full"></span>
-                <span class="flex flex-auto-fill">New Sound Channel, User Avatars, Shader Comments, UI Improvements</span>${ LX.makeIcon( "ArrowRight", { svgClass: "flex flex-auto-keep sm" } ).innerHTML }</a>
+                <span class="flex flex-auto-fill">Texture Mipmaps, New Sound Channel, and New Docs</span>${ LX.makeIcon( "ArrowRight", { svgClass: "flex flex-auto-keep sm" } ).innerHTML }</a>
             `, container );
 
             if( !mobile )
@@ -479,7 +479,7 @@ export const ui = {
         for( let i = 0; i < 3; ++i )
         {
             const shaderItem = LX.makeElement( "li", `shader-item ${ i === 0 ? "featured" : "" } lexskeletonpart relative bg-card hover:bg-accent/50 overflow-hidden flex flex-col h-auto`, "" );
-            const shaderPreview = LX.makeElement( "img", "opacity-0 rounded-lg bg-background-blur border-none cursor-pointer self-center mt-2", "", shaderItem );
+            const shaderPreview = LX.makeElement( "img", "opacity-0 rounded-lg border-none cursor-pointer self-center mt-2", "", shaderItem );
             shaderPreview.style.width = "calc(100% - 1rem)";
             shaderPreview.style.height = "calc(100% - 1rem)";
             shaderPreview.src = ShaderHub.shaderPreviewPath;
@@ -663,6 +663,24 @@ export const ui = {
             Query.limit( this.pageExploreLimit )
         ]
 
+        if( querySearch )
+        {
+            // Tag search
+            if( querySearch[ 0 ] === '#' )
+            {
+                const tag = querySearch.substring( 1 );
+                shaderQueries.push( Query.contains( "tags", tag ) );
+            }
+            else
+            {
+                shaderQueries.push( Query.or( [
+                    Query.contains( "name", querySearch ),
+                    Query.contains( "description", querySearch ),
+                    Query.contains( "author_name", querySearch ),
+                ] ) );
+            }
+        }
+
         if( queryFeature )
         {
             shaderQueries.push( Query.contains( "features", queryFeature ) );
@@ -704,8 +722,8 @@ export const ui = {
 
         for( let i = 0; i < dbShaders.length; ++i )
         {
-            const shaderItem = LX.makeElement( "li", `shader-item lexskeletonpart relative bg-background-blur hover:bg-accent overflow-hidden flex flex-col h-auto`, "" );
-            const shaderPreview = LX.makeElement( "img", "opacity-0 rounded-lg bg-background-blur hover:bg-accent border-none cursor-pointer self-center mt-2", "", shaderItem );
+            const shaderItem = LX.makeElement( "li", `shader-item lexskeletonpart relative bg-card hover:bg-accent/50 overflow-hidden flex flex-col h-auto`, "" );
+            const shaderPreview = LX.makeElement( "img", "opacity-0 rounded-lg border-none cursor-pointer self-center mt-2", "", shaderItem );
             shaderPreview.style.width = "calc(100% - 1rem)";
             shaderPreview.style.height = "calc(100% - 1rem)";
             shaderPreview.src = ShaderHub.shaderPreviewPath;
@@ -1631,6 +1649,24 @@ export const ui = {
                     queries.push( Query.or( [ Query.equal( "public", true ), Query.isNull( "public" ) ] ) );
                 }
 
+                if( this._lastFilterSearch !== '' )
+                {
+                    // Tag search
+                    if( this._lastFilterSearch[ 0 ] === '#' )
+                    {
+                        const tag = this._lastFilterSearch.substring( 1 );
+                        queries.push( Query.contains( "tags", tag ) );
+                    }
+                    else
+                    {
+                        queries.push( Query.or( [
+                            Query.contains( "name", this._lastFilterSearch ),
+                            Query.contains( "description", this._lastFilterSearch ),
+                            Query.contains( "author_name", this._lastFilterSearch ),
+                        ] ) );
+                    }
+                }
+
                 const result = await this.fs.listDocuments( FS.SHADERS_COLLECTION_ID, queries );
 
                 paginator.setPages( Math.ceil( result.total / PAGE_LIMIT ) );
@@ -1650,8 +1686,8 @@ export const ui = {
 
                 for( let i = 0; i < dbShaders.length; ++i )
                 {
-                    const shaderItem = LX.makeElement( "li", `shader-item lexskeletonpart relative bg-background-blur hover:bg-accent overflow-hidden flex flex-col h-auto`, "" );
-                    const shaderPreview = LX.makeElement( "img", "opacity-0 rounded-lg bg-background-blur hover:bg-accent border-none cursor-pointer self-center mt-2", "", shaderItem );
+                    const shaderItem = LX.makeElement( "li", `shader-item lexskeletonpart relative bg-card hover:bg-accent/50 overflow-hidden flex flex-col h-auto`, "" );
+                    const shaderPreview = LX.makeElement( "img", "opacity-0 rounded-lg border-none cursor-pointer self-center mt-2", "", shaderItem );
                     shaderPreview.style.width = "calc(100% - 1rem)";
                     shaderPreview.style.height = "calc(100% - 1rem)";
                     shaderPreview.src = ShaderHub.shaderPreviewPath;
@@ -1836,6 +1872,24 @@ export const ui = {
                         return;
                     }
 
+                    if( this._lastFilterSearch !== '' )
+                    {
+                        // Tag search
+                        if( this._lastFilterSearch[ 0 ] === '#' )
+                        {
+                            const tag = this._lastFilterSearch.substring( 1 );
+                            queries.push( Query.contains( "tags", tag ) );
+                        }
+                        else
+                        {
+                            queries.push( Query.or( [
+                                Query.contains( "name", this._lastFilterSearch ),
+                                Query.contains( "description", this._lastFilterSearch ),
+                                Query.contains( "author_name", this._lastFilterSearch ),
+                            ] ) );
+                        }
+                    }
+
                     const result = await this.fs.listDocuments( FS.SHADERS_COLLECTION_ID, queries );
 
                     paginator.setPages( Math.ceil( result.total / PAGE_LIMIT ) );
@@ -1852,8 +1906,8 @@ export const ui = {
 
                     for( let i = 0; i < dbShaders.length; ++i )
                     {
-                        const shaderItem = LX.makeElement( "li", `shader-item lexskeletonpart relative bg-background-blur hover:bg-accent overflow-hidden flex flex-col h-auto`, "" );
-                        const shaderPreview = LX.makeElement( "img", "opacity-0 rounded-lg bg-background-blur hover:bg-accent border-none cursor-pointer self-center mt-2", "", shaderItem );
+                        const shaderItem = LX.makeElement( "li", `shader-item lexskeletonpart relative bg-card hover:bg-accent/50 overflow-hidden flex flex-col h-auto`, "" );
+                        const shaderPreview = LX.makeElement( "img", "opacity-0 rounded-lg border-none cursor-pointer self-center mt-2", "", shaderItem );
                         shaderPreview.style.width = "calc(100% - 1rem)";
                         shaderPreview.style.height = "calc(100% - 1rem)";
                         shaderPreview.src = ShaderHub.shaderPreviewPath;

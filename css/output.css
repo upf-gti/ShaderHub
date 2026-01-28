@@ -992,12 +992,13 @@
   border-radius: 0.75rem;
   border: 1px solid light-dark(#9492927a, #ffffff26);
   overflow: hidden;
+  transition: background-color 0.15s ease-out;
 }
 .shader-item > div {
   z-index: 1;
 }
 .shader-item > img {
-  transition: scale 0.2s ease-out;
+  transition: scale 0.15s ease-out;
 }
 .shader-item:hover img {
   scale: 1.025;
